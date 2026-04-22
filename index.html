@@ -306,7 +306,10 @@ async function kintoneGet(appId, token, query, fields = []) {
   const res = await fetch(`${BASE}/records.json?${params}`, {
     headers: { 'X-Cybozu-API-Token': token }
   });
-  if (!res.ok) throw new Error(`kintone APIエラー: ${res.status}`);
+  if (!res.ok) {
+    const errText = await res.text();
+    throw new Error(`kintone APIエラー: ${res.status} - ${errText}`);
+  }
   const data = await res.json();
   return data.records;
 }
@@ -335,7 +338,7 @@ async function startWork() {
 
     // kintoneから担当者の今月レコードを取得
     // グループが設定されていない場合は担当者名で絞り込み
-    const query = `作業月 = "${currentMonth}" and (担当者名 = "${currentWorker}" or 担当者名 = "") order by ルート asc, ルート順 asc limit 500`;
+    const query = `文字列__1行_ = "${currentMonth}" and (文字列__1行__10 = "${currentWorker}" or 文字列__1行__10 = "") order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
     if (records.length === 0) {
@@ -364,7 +367,7 @@ function renderCards() {
   doneCount = 0; absentCount = 0; todoCount = 0;
 
   records.forEach(r => {
-    const s = r['ステータス']?.value || '未着手';
+    const s = r['ドロップダウン']?.value || '未着手';
     if (s === '完了') doneCount++;
     else if (s === '不在') absentCount++;
     else todoCount++;
@@ -375,7 +378,7 @@ function renderCards() {
   // グループ別にまとめる
   const groups = {};
   records.forEach(r => {
-    const g = r['グループ']?.value || r['ビル名']?.value || 'その他';
+    const g = r['文字列__1行__0']?.value || r['文字列__1行__2']?.value || 'その他';
     if (!groups[g]) groups[g] = [];
     groups[g].push(r);
   });
@@ -400,19 +403,19 @@ function renderCards() {
 
 function renderCard(r, container) {
   const recId = r['$id'].value;
-  const status = r['ステータス']?.value || '未着手';
-  const shopName = r['店名']?.value || '';
-  const floor = r['階数']?.value || '';
-  const genre = r['ジャンル']?.value || '';
-  const closed = r['定休日']?.value || '';
-  const location = r['設置場所説明']?.value || '';
-  const comment = r['コメント']?.value || '';
-  const nabon = r['通常納本数']?.value || '';
-  const absent1 = r['不在時間1']?.value || '';
-  const absent2 = r['不在時間2']?.value || '';
-  const absent3 = r['不在時間3']?.value || '';
-  const nabonVal = r['納本数']?.value || '';
-  const henkyakuVal = r['返却数']?.value || '';
+  const status = r['ドロップダウン']?.value || '未着手';
+  const shopName = r['文字列__1行__1']?.value || '';
+  const floor = r['文字列__1行__3']?.value || '';
+  const genre = r['文字列__1行__3']?.value || '';
+  const closed = '' || '';
+  const location = r['文字列__1行__7']?.value || '';
+  const comment = r['文字列__1行__9']?.value || '';
+  const nabon = r['数値_2']?.value || '';
+  const absent1 = r['文字列__1行__11']?.value || '';
+  const absent2 = r['文字列__1行__12']?.value || '';
+  const absent3 = r['文字列__1行__13']?.value || '';
+  const nabonVal = r['数値']?.value || '';
+  const henkyakuVal = r['数値_0']?.value || '';
 
   const card = document.createElement('div');
   card.id = 'card-' + recId;
@@ -490,7 +493,7 @@ function renderCard(r, container) {
       ${dynamicHtml}
       <div class="memo-area" id="memo-area-${recId}" style="display:none">
         <label>メモ（次回訪問時間など）</label>
-        <textarea id="memo-${recId}" placeholder="例：17時以降に再訪">${r['メモ']?.value || ''}</textarea>
+        <textarea id="memo-${recId}" placeholder="例：17時以降に再訪">${r['文字列__複数行_']?.value || ''}</textarea>
       </div>
       <div id="tap-hint-${recId}" style="padding:10px 14px 14px">
         <button onclick="openCard('${recId}')" style="width:100%;padding:11px;border:2px dashed var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif">タップして入力開始</button>
@@ -544,11 +547,11 @@ async function markDone(recId) {
 
   try {
     await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-      'ステータス': { value: '完了' },
-      '担当者名': { value: currentWorker },
-      '納本数': { value: nabon },
-      '返却数': { value: henkyaku },
-      'メモ': { value: memo },
+      'ドロップダウン': { value: '完了' },
+      '文字列__1行__10': { value: currentWorker },
+      '数値': { value: nabon },
+      '数値_0': { value: henkyaku },
+      '文字列__複数行_': { value: memo },
       ...dynamicFields
     });
 
@@ -597,11 +600,11 @@ async function markAbsent(recId) {
 
   try {
     await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-      'ステータス': { value: '不在' },
-      '担当者名': { value: currentWorker },
-      '不在時間1': { value: newT1 },
-      '不在時間2': { value: newT2 },
-      '不在時間3': { value: newT3 },
+      'ドロップダウン': { value: '不在' },
+      '文字列__1行__10': { value: currentWorker },
+      '文字列__1行__11': { value: newT1 },
+      '文字列__1行__12': { value: newT2 },
+      '文字列__1行__13': { value: newT3 },
     });
 
     // UI更新
