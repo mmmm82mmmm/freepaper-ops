@@ -338,7 +338,7 @@ async function startWork() {
 
     // kintoneから担当者の今月レコードを取得
     // グループが設定されていない場合は担当者名で絞り込み
-    const query = `文字列__1行_ = "${currentMonth}" and (文字列__1行__10 = "${currentWorker}" or 文字列__1行__10 = "") order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    const query = `作業月 = "${currentMonth}" and (担当者名 = "${currentWorker}" or 担当者名 = "") order by ルート asc, ルート順 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
     if (records.length === 0) {
