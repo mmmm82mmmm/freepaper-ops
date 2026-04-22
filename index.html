@@ -301,9 +301,10 @@ function checkLogin() {
 
 // ===== kintone API =====
 async function kintoneGet(appId, token, query, fields = []) {
-  const params = new URLSearchParams({ app: appId, query, subdomain: KINTONE_DOMAIN });
-  if (fields.length) params.append('fields', fields.join(','));
-  const res = await fetch(`${BASE}/records.json?${params}`, {
+  const queryEncoded = encodeURIComponent(query);
+  let paramStr = `app=${appId}&query=${queryEncoded}&subdomain=${KINTONE_DOMAIN}`;
+  if (fields.length) paramStr += `&fields=${fields.map(encodeURIComponent).join(',')}`;
+  const res = await fetch(`${BASE}/records.json?${paramStr}`, {
     headers: { 'X-Cybozu-API-Token': token }
   });
   if (!res.ok) {
