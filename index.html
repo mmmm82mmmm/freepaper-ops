@@ -574,7 +574,7 @@ async function markDone(recId) {
 
     // レコードのステータスを更新
     const rec = records.find(r => r['$id'].value === recId);
-    if (rec) { rec['ステータス'].value = '完了'; rec['納本数'] = { value: nabon }; rec['返却数'] = { value: henkyaku }; }
+    if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; rec['数値_0'] = { value: henkyaku }; }
 
     doneCount++; todoCount = Math.max(0, todoCount - 1);
     updateProgress();
@@ -632,7 +632,7 @@ async function markAbsent(recId) {
       </div>`;
     card.appendChild(div);
 
-    if (rec) { rec['ステータス'].value = '不在'; rec['不在時間1'] = { value: newT1 }; rec['不在時間2'] = { value: newT2 }; rec['不在時間3'] = { value: newT3 }; }
+    if (rec) { rec['ドロップダウン'] = { value: '不在' }; rec['文字列__1行__11'] = { value: newT1 }; rec['文字列__1行__12'] = { value: newT2 }; rec['文字列__1行__13'] = { value: newT3 }; }
     absentCount++; todoCount = Math.max(0, todoCount - 1);
     updateProgress();
 
@@ -645,9 +645,9 @@ function reopenCard(recId) {
   // ステータスをリセットして再表示
   const rec = records.find(r => r['$id'].value == recId);
   if (rec) {
-    rec['ステータス'].value = '未着手';
-    if (rec['ステータス'].value === '完了') doneCount--;
-    else if (rec['ステータス'].value === '不在') absentCount--;
+    rec['ドロップダウン'] = { value: '未着手' };
+    if (rec['ドロップダウン'].value === '完了') doneCount--;
+    else if (rec['ドロップダウン'].value === '不在') absentCount--;
     todoCount++;
   }
   renderCards();
