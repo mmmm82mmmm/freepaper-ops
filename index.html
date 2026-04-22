@@ -248,7 +248,8 @@ const TOKEN_MASTER = 'STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg';
 const APP_NABON = 269;
 const APP_MASTER = 268;
 
-const BASE = `https://${KINTONE_DOMAIN}.cybozu.com/k/v1`;
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const BASE = `${PROXY}/proxy/k/v1`;
 
 // ===== 今月の流動項目設定（毎月ここを変更）=====
 const DYNAMIC_ITEMS = [
@@ -300,7 +301,7 @@ function checkLogin() {
 
 // ===== kintone API =====
 async function kintoneGet(appId, token, query, fields = []) {
-  const params = new URLSearchParams({ app: appId, query });
+  const params = new URLSearchParams({ app: appId, query, subdomain: KINTONE_DOMAIN });
   if (fields.length) params.append('fields', fields.join(','));
   const res = await fetch(`${BASE}/records.json?${params}`, {
     headers: { 'X-Cybozu-API-Token': token }
@@ -311,10 +312,10 @@ async function kintoneGet(appId, token, query, fields = []) {
 }
 
 async function kintoneUpdate(appId, token, id, fields) {
-  const res = await fetch(`${BASE}/record.json`, {
+  const res = await fetch(`${BASE}/record.json?subdomain=${KINTONE_DOMAIN}`, {
     method: 'PUT',
     headers: { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: appId, id, record: fields })
+    body: JSON.stringify({ app: appId, id, record: fields, subdomain: KINTONE_DOMAIN })
   });
   if (!res.ok) throw new Error(`更新エラー: ${res.status}`);
   return await res.json();
