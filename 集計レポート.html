@@ -1,0 +1,473 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>集計・レポート</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888;
+  --border:#e0dbd0; --green:#1a8a4a; --amber:#c47a0a;
+  --blue:#1a5cd4; --red:#d42020;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:40px;}
+
+.app-header{background:var(--ink);color:white;padding:14px 16px;}
+.app-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:10px;}
+.app-title{font-size:15px;font-weight:900;}
+.month-sel{font-size:11px;background:#333;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;}
+
+.tabs{display:flex;border-top:1px solid #333;}
+.tab{flex:1;padding:11px;text-align:center;font-size:12px;font-weight:700;color:#888;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;}
+.tab.active{color:white;border-bottom-color:var(--amber);}
+
+.container{padding:16px;max-width:700px;margin:0 auto;}
+
+.screen{display:none;}
+.screen.active{display:block;}
+
+/* LOADING */
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:50vh;gap:16px;}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--ink);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--muted);}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;}
+.kpi-card{background:var(--card);border-radius:12px;padding:14px 16px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.kpi-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.kpi-val{font-family:'DM Mono',monospace;font-size:28px;font-weight:500;line-height:1;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+.kpi-card.green .kpi-val{color:var(--green);}
+.kpi-card.amber .kpi-val{color:var(--amber);}
+.kpi-card.blue .kpi-val{color:var(--blue);}
+.kpi-card.red .kpi-val{color:var(--red);}
+
+/* SECTION */
+.section{background:var(--card);border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.section-title{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:14px;display:flex;justify-content:space-between;align-items:center;}
+
+/* BAR CHART */
+.bar-chart{display:flex;flex-direction:column;gap:8px;}
+.bar-row{display:flex;align-items:center;gap:8px;}
+.bar-label{font-size:11px;font-weight:700;width:60px;flex-shrink:0;text-align:right;}
+.bar-wrap{flex:1;background:var(--bg);border-radius:4px;height:22px;overflow:hidden;position:relative;}
+.bar-fill{height:100%;border-radius:4px;display:flex;align-items:center;justify-content:flex-end;padding-right:8px;min-width:4px;transition:width .8s ease;}
+.bar-fill-text{font-family:'DM Mono',monospace;font-size:10px;font-weight:500;color:white;white-space:nowrap;}
+.bar-val{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);width:50px;flex-shrink:0;}
+
+/* DONUT CHART */
+.donut-wrap{display:flex;align-items:center;gap:20px;}
+.donut-canvas-wrap{position:relative;flex-shrink:0;}
+.donut-center{position:absolute;top:50%;left:50%;transform:translate(-50%,-50%);text-align:center;}
+.donut-center-val{font-family:'DM Mono',monospace;font-size:22px;font-weight:500;}
+.donut-center-lbl{font-size:9px;color:var(--muted);}
+.donut-legend{flex:1;}
+.legend-item{display:flex;align-items:center;gap:8px;margin-bottom:8px;}
+.legend-dot{width:10px;height:10px;border-radius:50%;flex-shrink:0;}
+.legend-label{font-size:12px;flex:1;}
+.legend-val{font-family:'DM Mono',monospace;font-size:12px;color:var(--muted);}
+
+/* TREND CHART */
+.trend-chart{position:relative;height:160px;margin-top:8px;}
+.trend-canvas{width:100%;height:100%;}
+
+/* TABLE */
+.data-table{width:100%;border-collapse:collapse;font-size:12px;}
+.data-table th{text-align:left;padding:8px 10px;background:var(--ink);color:white;font-size:10px;letter-spacing:.06em;font-weight:700;}
+.data-table td{padding:8px 10px;border-bottom:1px solid var(--border);}
+.data-table tr:last-child td{border-bottom:none;}
+.data-table tr:hover td{background:#f8f5f0;}
+.mono{font-family:'DM Mono',monospace;}
+.badge-done{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;background:#d4f5e2;color:var(--green);}
+.badge-absent{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;background:#fef3d0;color:var(--amber);}
+.badge-todo{display:inline-block;padding:2px 7px;border-radius:3px;font-size:10px;font-weight:700;background:#f0ede8;color:var(--muted);}
+
+/* EXPORT BTN */
+.export-btn{width:100%;padding:13px;background:var(--ink);color:white;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:900;cursor:pointer;margin-top:14px;}
+.export-btn:active{transform:scale(.98);}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div class="app-header-top">
+    <div class="app-title">📊 集計・レポート</div>
+    <select class="month-sel" id="month-sel" onchange="loadData()"></select>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('summary', this)">📈 サマリー</div>
+    <div class="tab" onclick="switchTab('route', this)">🗺️ ルート別</div>
+    <div class="tab" onclick="switchTab('worker', this)">👤 作業者別</div>
+    <div class="tab" onclick="switchTab('detail', this)">📋 明細</div>
+  </div>
+</div>
+
+<!-- サマリー -->
+<div class="screen active container" id="screen-summary">
+  <div class="loading" id="loading-summary">
+    <div class="spinner"></div>
+    <div class="loading-text">読み込み中...</div>
+  </div>
+  <div id="summary-content" style="display:none">
+
+    <div class="kpi-grid">
+      <div class="kpi-card green">
+        <div class="kpi-label">総納本数</div>
+        <div class="kpi-val" id="kpi-nabon">0</div>
+        <div class="kpi-sub">冊</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">総返却数</div>
+        <div class="kpi-val" id="kpi-henkyaku">0</div>
+        <div class="kpi-sub">冊（残部率 <span id="kpi-zanbu">0</span>%）</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">完了件数</div>
+        <div class="kpi-val" id="kpi-done">0</div>
+        <div class="kpi-sub" id="kpi-done-pct">/ 0件</div>
+      </div>
+      <div class="kpi-card red">
+        <div class="kpi-label">不在件数</div>
+        <div class="kpi-val" id="kpi-absent">0</div>
+        <div class="kpi-sub" id="kpi-absent-pct">件</div>
+      </div>
+    </div>
+
+    <!-- ステータス内訳 -->
+    <div class="section">
+      <div class="section-title">ステータス内訳</div>
+      <div class="donut-wrap">
+        <div class="donut-canvas-wrap">
+          <canvas id="donut-canvas" width="120" height="120"></canvas>
+          <div class="donut-center">
+            <div class="donut-center-val" id="donut-center-val">0%</div>
+            <div class="donut-center-lbl">完了率</div>
+          </div>
+        </div>
+        <div class="donut-legend">
+          <div class="legend-item"><div class="legend-dot" style="background:var(--green)"></div><div class="legend-label">完了</div><div class="legend-val" id="leg-done">0件</div></div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--amber)"></div><div class="legend-label">不在</div><div class="legend-val" id="leg-absent">0件</div></div>
+          <div class="legend-item"><div class="legend-dot" style="background:var(--border)"></div><div class="legend-label">未着手</div><div class="legend-val" id="leg-todo">0件</div></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- ルート別納本数 -->
+    <div class="section">
+      <div class="section-title">ルート別 納本数</div>
+      <div class="bar-chart" id="route-bar-chart"></div>
+    </div>
+
+    <button class="export-btn" onclick="exportCSV()">⬇️ CSVエクスポート</button>
+  </div>
+</div>
+
+<!-- ルート別 -->
+<div class="screen container" id="screen-route">
+  <div id="route-table-content"></div>
+</div>
+
+<!-- 作業者別 -->
+<div class="screen container" id="screen-worker">
+  <div id="worker-table-content"></div>
+</div>
+
+<!-- 明細 -->
+<div class="screen container" id="screen-detail">
+  <div style="overflow-x:auto">
+    <table class="data-table" id="detail-table">
+      <thead>
+        <tr>
+          <th>ルート</th>
+          <th>店名</th>
+          <th>ビル</th>
+          <th>担当者</th>
+          <th>納本</th>
+          <th>返却</th>
+          <th>ステータス</th>
+        </tr>
+      </thead>
+      <tbody id="detail-tbody"></tbody>
+    </table>
+  </div>
+</div>
+
+<script>
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const BASE = `${PROXY}/kintone/v1`;
+const TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const APP = 269;
+const DOMAIN = 'white';
+
+let allRecords = [];
+let currentMonth = '';
+
+// 月選択初期化
+function initMonthSel() {
+  const sel = document.getElementById('month-sel');
+  const now = new Date();
+  for (let i = -2; i <= 2; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const label = `${d.getFullYear()}年${d.getMonth()+1}月号`;
+    const o = document.createElement('option');
+    o.value = label; o.textContent = label;
+    if (i === 1) { o.selected = true; currentMonth = label; }
+    sel.appendChild(o);
+  }
+}
+
+async function loadData() {
+  currentMonth = document.getElementById('month-sel').value;
+  document.getElementById('loading-summary').style.display = 'flex';
+  document.getElementById('summary-content').style.display = 'none';
+
+  try {
+    const q = encodeURIComponent(`文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`);
+    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    const data = await res.json();
+    allRecords = data.records || [];
+
+    renderSummary();
+    renderRouteTable();
+    renderWorkerTable();
+    renderDetailTable();
+
+  } catch(e) {
+    alert('データ取得エラー: ' + e.message);
+  } finally {
+    document.getElementById('loading-summary').style.display = 'none';
+    document.getElementById('summary-content').style.display = 'block';
+  }
+}
+
+function getVal(r, key) { return r[key]?.value || ''; }
+function getNum(r, key) { return parseFloat(r[key]?.value) || 0; }
+
+function renderSummary() {
+  const done = allRecords.filter(r => getVal(r,'ドロップダウン') === '完了');
+  const absent = allRecords.filter(r => getVal(r,'ドロップダウン') === '不在');
+  const todo = allRecords.filter(r => getVal(r,'ドロップダウン') === '未着手');
+  const total = allRecords.length;
+
+  const totalNabon = done.reduce((s,r) => s + getNum(r,'数値'), 0);
+  const totalHenkyaku = done.reduce((s,r) => s + getNum(r,'数値_0'), 0);
+  const zanbu = totalNabon > 0 ? Math.round(totalHenkyaku / totalNabon * 100) : 0;
+
+  document.getElementById('kpi-nabon').textContent = totalNabon.toLocaleString();
+  document.getElementById('kpi-henkyaku').textContent = totalHenkyaku.toLocaleString();
+  document.getElementById('kpi-zanbu').textContent = zanbu;
+  document.getElementById('kpi-done').textContent = done.length;
+  document.getElementById('kpi-done-pct').textContent = `/ ${total}件 (${total>0?Math.round(done.length/total*100):0}%)`;
+  document.getElementById('kpi-absent').textContent = absent.length;
+  document.getElementById('kpi-absent-pct').textContent = `件 (${total>0?Math.round(absent.length/total*100):0}%)`;
+
+  // ドーナツグラフ
+  const pct = total > 0 ? Math.round(done.length / total * 100) : 0;
+  document.getElementById('donut-center-val').textContent = pct + '%';
+  document.getElementById('leg-done').textContent = done.length + '件';
+  document.getElementById('leg-absent').textContent = absent.length + '件';
+  document.getElementById('leg-todo').textContent = todo.length + '件';
+  drawDonut(done.length, absent.length, todo.length);
+
+  // ルート別棒グラフ
+  const routeMap = {};
+  allRecords.forEach(r => {
+    const route = getVal(r,'文字列__1行__4') || '未設定';
+    if (!routeMap[route]) routeMap[route] = 0;
+    routeMap[route] += getNum(r,'数値');
+  });
+  const maxVal = Math.max(...Object.values(routeMap), 1);
+  const barChart = document.getElementById('route-bar-chart');
+  barChart.innerHTML = Object.entries(routeMap).sort().map(([route, val]) => `
+    <div class="bar-row">
+      <div class="bar-label">${route}</div>
+      <div class="bar-wrap">
+        <div class="bar-fill" style="width:${val/maxVal*100}%;background:var(--blue)">
+          ${val > 0 ? `<span class="bar-fill-text">${val.toLocaleString()}</span>` : ''}
+        </div>
+      </div>
+      <div class="bar-val">${val.toLocaleString()}冊</div>
+    </div>`).join('');
+}
+
+function drawDonut(done, absent, todo) {
+  const canvas = document.getElementById('donut-canvas');
+  const ctx = canvas.getContext('2d');
+  const total = done + absent + todo;
+  if (total === 0) return;
+
+  const cx = 60, cy = 60, r = 50, ir = 35;
+  ctx.clearRect(0, 0, 120, 120);
+
+  const segments = [
+    { val: done, color: '#1a8a4a' },
+    { val: absent, color: '#c47a0a' },
+    { val: todo, color: '#e0dbd0' },
+  ];
+
+  let startAngle = -Math.PI / 2;
+  segments.forEach(seg => {
+    if (seg.val === 0) return;
+    const angle = (seg.val / total) * Math.PI * 2;
+    ctx.beginPath();
+    ctx.moveTo(cx, cy);
+    ctx.arc(cx, cy, r, startAngle, startAngle + angle);
+    ctx.closePath();
+    ctx.fillStyle = seg.color;
+    ctx.fill();
+    startAngle += angle;
+  });
+
+  // 内側を白くくり抜く
+  ctx.beginPath();
+  ctx.arc(cx, cy, ir, 0, Math.PI * 2);
+  ctx.fillStyle = 'white';
+  ctx.fill();
+}
+
+function renderRouteTable() {
+  const routeMap = {};
+  allRecords.forEach(r => {
+    const route = getVal(r,'文字列__1行__4') || '未設定';
+    if (!routeMap[route]) routeMap[route] = { done:0, absent:0, todo:0, nabon:0, henkyaku:0 };
+    const s = getVal(r,'ドロップダウン');
+    if (s === '完了') { routeMap[route].done++; routeMap[route].nabon += getNum(r,'数値'); routeMap[route].henkyaku += getNum(r,'数値_0'); }
+    else if (s === '不在') routeMap[route].absent++;
+    else routeMap[route].todo++;
+  });
+
+  const rows = Object.entries(routeMap).sort().map(([route, d]) => {
+    const total = d.done + d.absent + d.todo;
+    const pct = total > 0 ? Math.round(d.done/total*100) : 0;
+    return `<tr>
+      <td><strong>ルート${route}</strong></td>
+      <td class="mono">${total}</td>
+      <td class="mono" style="color:var(--green)">${d.done}</td>
+      <td class="mono" style="color:var(--amber)">${d.absent}</td>
+      <td class="mono" style="color:var(--muted)">${d.todo}</td>
+      <td class="mono">${d.nabon.toLocaleString()}</td>
+      <td class="mono">${d.henkyaku.toLocaleString()}</td>
+      <td class="mono">${pct}%</td>
+    </tr>`;
+  }).join('');
+
+  document.getElementById('route-table-content').innerHTML = `
+    <div class="section" style="margin-top:16px;overflow-x:auto">
+      <div class="section-title">ルート別集計</div>
+      <table class="data-table">
+        <thead><tr>
+          <th>ルート</th><th>総件数</th><th>完了</th><th>不在</th><th>未着手</th><th>納本</th><th>返却</th><th>完了率</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderWorkerTable() {
+  const workerMap = {};
+  allRecords.forEach(r => {
+    const worker = getVal(r,'文字列__1行__10') || '未割当';
+    if (!workerMap[worker]) workerMap[worker] = { done:0, absent:0, todo:0, nabon:0, henkyaku:0 };
+    const s = getVal(r,'ドロップダウン');
+    if (s === '完了') { workerMap[worker].done++; workerMap[worker].nabon += getNum(r,'数値'); workerMap[worker].henkyaku += getNum(r,'数値_0'); }
+    else if (s === '不在') workerMap[worker].absent++;
+    else workerMap[worker].todo++;
+  });
+
+  const rows = Object.entries(workerMap)
+    .sort((a,b) => (b[1].done+b[1].absent) - (a[1].done+a[1].absent))
+    .map(([worker, d]) => {
+      const total = d.done + d.absent + d.todo;
+      const pct = total > 0 ? Math.round(d.done/total*100) : 0;
+      return `<tr>
+        <td><strong>${worker}</strong></td>
+        <td class="mono">${total}</td>
+        <td class="mono" style="color:var(--green)">${d.done}</td>
+        <td class="mono" style="color:var(--amber)">${d.absent}</td>
+        <td class="mono" style="color:var(--muted)">${d.todo}</td>
+        <td class="mono">${d.nabon.toLocaleString()}</td>
+        <td class="mono">${d.henkyaku.toLocaleString()}</td>
+        <td class="mono">${pct}%</td>
+      </tr>`;
+    }).join('');
+
+  document.getElementById('worker-table-content').innerHTML = `
+    <div class="section" style="margin-top:16px;overflow-x:auto">
+      <div class="section-title">作業者別集計</div>
+      <table class="data-table">
+        <thead><tr>
+          <th>作業者</th><th>総件数</th><th>完了</th><th>不在</th><th>未着手</th><th>納本</th><th>返却</th><th>完了率</th>
+        </tr></thead>
+        <tbody>${rows}</tbody>
+      </table>
+    </div>`;
+}
+
+function renderDetailTable() {
+  const tbody = document.getElementById('detail-tbody');
+  tbody.innerHTML = allRecords.map(r => {
+    const status = getVal(r,'ドロップダウン');
+    const badgeClass = status === '完了' ? 'badge-done' : status === '不在' ? 'badge-absent' : 'badge-todo';
+    return `<tr>
+      <td class="mono">${getVal(r,'文字列__1行__4')}</td>
+      <td><strong>${getVal(r,'文字列__1行__1')}</strong></td>
+      <td style="color:var(--muted);font-size:11px">${getVal(r,'文字列__1行__2')}</td>
+      <td>${getVal(r,'文字列__1行__10') || '―'}</td>
+      <td class="mono">${getVal(r,'数値') || '―'}</td>
+      <td class="mono">${getVal(r,'数値_0') || '―'}</td>
+      <td><span class="${badgeClass}">${status}</span></td>
+    </tr>`;
+  }).join('');
+}
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('screen-' + tab).classList.add('active');
+}
+
+function exportCSV() {
+  const headers = ['ルート','ルート順','店名','ビル名','階数','担当者名','納本数','返却数','ステータス','不在時間1','不在時間2','不在時間3','メモ'];
+  const escape = v => {
+    const s = String(v ?? '');
+    return s.includes(',') || s.includes('"') || s.includes('\n') ? `"${s.replace(/"/g,'""')}"` : s;
+  };
+  let csv = '\uFEFF' + headers.map(escape).join(',') + '\n';
+  allRecords.forEach(r => {
+    csv += [
+      getVal(r,'文字列__1行__4'),
+      getVal(r,'数値_1'),
+      getVal(r,'文字列__1行__1'),
+      getVal(r,'文字列__1行__2'),
+      getVal(r,'文字列__1行__3'),
+      getVal(r,'文字列__1行__10'),
+      getVal(r,'数値'),
+      getVal(r,'数値_0'),
+      getVal(r,'ドロップダウン'),
+      getVal(r,'文字列__1行__11'),
+      getVal(r,'文字列__1行__12'),
+      getVal(r,'文字列__1行__13'),
+      getVal(r,'文字列__複数行_'),
+    ].map(escape).join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `集計_${currentMonth}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+initMonthSel();
+loadData();
+</script>
+</body>
+</html>
