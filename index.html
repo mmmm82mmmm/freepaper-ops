@@ -267,8 +267,28 @@ let currentMonth = '';
 let records = []; // kintoneから取得したレコード
 let doneCount = 0, absentCount = 0, todoCount = 0;
 
+// ===== URLパラメータチェック =====
+function getUrlParam(key) {
+  const params = new URLSearchParams(window.location.search);
+  return params.get(key);
+}
+
 // ===== 初期化 =====
 function init() {
+  // URLパラメータに worker が含まれていたら自動ログイン
+  const workerParam = getUrlParam('worker');
+  if (workerParam) {
+    currentWorker = workerParam;
+    // ログイン画面をスキップして直接作業開始
+    const now = new Date();
+    // 来月号をデフォルトに
+    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+    currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('loading-screen').style.display = 'block';
+    startWorkDirect();
+    return;
+  }
   // 作業者セレクト
   const wsel = document.getElementById('worker-select');
   WORKERS.forEach(w => {
@@ -291,6 +311,19 @@ function init() {
 
   wsel.addEventListener('change', checkLogin);
   msel.addEventListener('change', checkLogin);
+}
+
+function initLoginScreen() {
+  // ログイン画面の初期化（月選択など）
+  const wsel = document.getElementById('worker-select');
+  const msel = document.getElementById('month-select');
+  if (currentWorker && wsel) {
+    // URLパラメータの名前を選択状態に
+    for (const opt of wsel.options) {
+      if (opt.value === currentWorker) { opt.selected = true; break; }
+    }
+  }
+  checkLogin();
 }
 
 function checkLogin() {
@@ -323,6 +356,34 @@ async function kintoneUpdate(appId, token, id, fields) {
   });
   if (!res.ok) throw new Error(`更新エラー: ${res.status}`);
   return await res.json();
+}
+
+// ===== 直接作業開始（URLパラメータから） =====
+async function startWorkDirect() {
+  try {
+    document.getElementById('loading-text').textContent = '担当場所を読み込んでいます...';
+    const query = `文字列__1行_ = "${currentMonth}" and (文字列__1行__10 = "${currentWorker}" or 文字列__1行__10 = "") order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+    if (records.length === 0) {
+      // データがなければ月選択画面を表示
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'block';
+      initLoginScreen();
+      return;
+    }
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('work-screen').style.display = 'block';
+    document.getElementById('return-footer').style.display = 'block';
+    document.getElementById('work-title').textContent = `📦 ${currentMonth}`;
+    document.getElementById('work-worker').textContent = `${currentWorker} さん`;
+    renderCards();
+  } catch(e) {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('login-screen').style.display = 'block';
+    document.getElementById('login-error').style.display = 'block';
+    document.getElementById('login-error').textContent = `⚠️ ${e.message}`;
+    initLoginScreen();
+  }
 }
 
 // ===== 作業開始 =====
@@ -573,7 +634,7 @@ async function markDone(recId) {
     card.querySelectorAll('.dynamic-section,.memo-area').forEach(el => el.style.display = 'none');
 
     // レコードのステータスを更新
-    const rec = records.find(r => r['$id'].value === recId);
+    const rec = records.find(r => r['$id'].value == recId);
     if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; rec['数値_0'] = { value: henkyaku }; }
 
     doneCount++; todoCount = Math.max(0, todoCount - 1);
