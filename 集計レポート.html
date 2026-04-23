@@ -467,9 +467,9 @@ function renderShouka() {
   allRecords.forEach(r => {
     const setchiId = getVal(r,'ルックアップ') || '';
     const master = masterIndex[setchiId] || {};
-    const jo = master['条']?.value || '?';
-    const chome = master['丁目']?.value || '?';
-    const addr = `${jo}条${chome}丁目`;
+    const jo = master['文字列__1行__7']?.value || '?';
+    const chome = master['文字列__1行__8']?.value || '?';
+    const addr = (jo === '100' && chome === '100') ? 'エリア外' : `${jo}条${chome}丁目`;
     if (!addrMap[addr]) addrMap[addr] = { nabon:0, henkyaku:0, count:0 };
     addrMap[addr].nabon += getNum(r,'数値_2');
     addrMap[addr].henkyaku += getNum(r,'数値_0');
@@ -481,7 +481,7 @@ function renderShouka() {
   allRecords.forEach(r => {
     const setchiId = getVal(r,'ルックアップ') || '';
     const master = masterIndex[setchiId] || {};
-    const genre = master['ジャンル']?.value || '不明';
+    const genre = master['文字列__1行__1']?.value || '不明';
     if (!genreMap[genre]) genreMap[genre] = { nabon:0, henkyaku:0, count:0 };
     genreMap[genre].nabon += getNum(r,'数値_2');
     genreMap[genre].henkyaku += getNum(r,'数値_0');
