@@ -458,17 +458,17 @@ function renderShouka() {
   // マスタデータをkintone番号でインデックス化
   const masterIndex = {};
   masterRecords.forEach(m => {
-    const kno = m['kintone番号']?.value || m['文字列__1行__16']?.value || '';
+    const kno = m['文字列__1行__0']?.value || '';
     if (kno) masterIndex[kno] = m;
   });
 
   // 住所別集計
   const addrMap = {};
   allRecords.forEach(r => {
-    const setchiId = getVal(r,'ルックアップ') || getVal(r,'設置場所ID') || '';
+    const setchiId = getVal(r,'ルックアップ') || '';
     const master = masterIndex[setchiId] || {};
-    const jo = master['条']?.value || master['文字列__1行__18']?.value || '?';
-    const chome = master['丁目']?.value || master['文字列__1行__19']?.value || '?';
+    const jo = master['条']?.value || '?';
+    const chome = master['丁目']?.value || '?';
     const addr = `${jo}条${chome}丁目`;
     if (!addrMap[addr]) addrMap[addr] = { nabon:0, henkyaku:0, count:0 };
     addrMap[addr].nabon += getNum(r,'数値_2');
@@ -479,9 +479,9 @@ function renderShouka() {
   // ジャンル別集計
   const genreMap = {};
   allRecords.forEach(r => {
-    const setchiId = getVal(r,'ルックアップ') || getVal(r,'設置場所ID') || '';
+    const setchiId = getVal(r,'ルックアップ') || '';
     const master = masterIndex[setchiId] || {};
-    const genre = master['ジャンル']?.value || master['文字列__1行__17']?.value || '不明';
+    const genre = master['ジャンル']?.value || '不明';
     if (!genreMap[genre]) genreMap[genre] = { nabon:0, henkyaku:0, count:0 };
     genreMap[genre].nabon += getNum(r,'数値_2');
     genreMap[genre].henkyaku += getNum(r,'数値_0');
