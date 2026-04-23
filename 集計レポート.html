@@ -241,14 +241,20 @@ async function loadData() {
     const data = await res.json();
     allRecords = data.records || [];
 
-    // 設置店マスタ取得（条・丁目・ジャンル用）
+    // 設置店マスタ全件取得（500件ずつ）
     if (masterRecords.length === 0) {
-      const mq = encodeURIComponent(`limit 500`);
-      const mres = await fetch(`${BASE}/records.json?app=268&query=${mq}&subdomain=${DOMAIN}`, {
-        headers: { 'X-Cybozu-API-Token': 'STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg' }
-      });
-      const mdata = await mres.json();
-      masterRecords = mdata.records || [];
+      let offset = 0;
+      while (true) {
+        const mq = encodeURIComponent(`limit 500 offset ${offset}`);
+        const mres = await fetch(`${BASE}/records.json?app=268&query=${mq}&subdomain=${DOMAIN}`, {
+          headers: { 'X-Cybozu-API-Token': 'STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg' }
+        });
+        const mdata = await mres.json();
+        const batch = mdata.records || [];
+        masterRecords = masterRecords.concat(batch);
+        if (batch.length < 500) break;
+        offset += 500;
+      }
     }
 
     renderSummary();
