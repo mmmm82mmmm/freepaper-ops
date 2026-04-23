@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>運転手画面</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888;
+  --border:#e0dbd0; --green:#1a8a4a; --amber:#c47a0a;
+  --blue:#1a5cd4; --red:#d42020;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:80px;}
+
+/* HEADER */
+.app-header{background:var(--ink);color:white;padding:14px 16px 0;position:sticky;top:0;z-index:100;}
+.app-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.app-title{font-size:15px;font-weight:900;}
+.month-badge{font-size:11px;background:#333;padding:4px 10px;border-radius:20px;}
+
+/* TABS */
+.tabs{display:flex;border-top:1px solid #333;}
+.tab{flex:1;padding:11px;text-align:center;font-size:13px;font-weight:700;color:#888;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;}
+.tab.active{color:white;border-bottom-color:var(--green);}
+
+/* LOADING */
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--ink);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--muted);}
+
+/* SCREEN */
+.screen{display:none;padding:16px;}
+.screen.active{display:block;}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;}
+.kpi-card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.kpi-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.kpi-val{font-family:'DM Mono',monospace;font-size:28px;font-weight:500;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+.kpi-card.green .kpi-val{color:var(--green);}
+.kpi-card.amber .kpi-val{color:var(--amber);}
+.kpi-card.blue .kpi-val{color:var(--blue);}
+.kpi-card.muted .kpi-val{color:var(--muted);}
+
+/* PROGRESS BAR */
+.progress-section{background:var(--card);border-radius:12px;padding:14px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.progress-label{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;}
+.progress-bar-bg{height:10px;background:var(--bg);border-radius:5px;overflow:hidden;}
+.progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--green),#2dd472);border-radius:5px;transition:width 1s ease;}
+.progress-segments{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:1px;}
+.seg-done{background:var(--green);}
+.seg-absent{background:var(--amber);}
+.seg-todo{background:var(--border);}
+
+/* WORKER LIST */
+.section-title{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;margin-top:16px;}
+
+.worker-card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid var(--border);}
+.worker-card.has-done{border-left-color:var(--green);}
+.worker-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.worker-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:white;flex-shrink:0;}
+.worker-name{font-size:15px;font-weight:900;}
+.worker-status{font-size:11px;color:var(--muted);}
+.worker-stats{display:flex;gap:8px;}
+.worker-stat{flex:1;text-align:center;background:var(--bg);border-radius:8px;padding:8px 4px;}
+.worker-stat .val{font-family:'DM Mono',monospace;font-size:18px;font-weight:500;display:block;}
+.worker-stat .lbl{font-size:9px;color:var(--muted);margin-top:2px;}
+.worker-stat.green .val{color:var(--green);}
+.worker-stat.amber .val{color:var(--amber);}
+.worker-stat.muted .val{color:var(--muted);}
+
+/* ROUTE LIST */
+.route-section{background:var(--card);border-radius:12px;overflow:hidden;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.route-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
+.route-badge{font-family:'DM Mono',monospace;font-size:11px;font-weight:700;background:var(--ink);color:white;padding:3px 8px;border-radius:4px;}
+.route-name{font-size:13px;font-weight:700;flex:1;}
+.route-stats{display:flex;gap:8px;font-size:11px;}
+.route-stat-done{color:var(--green);font-weight:700;}
+.route-stat-absent{color:var(--amber);font-weight:700;}
+.route-stat-todo{color:var(--muted);}
+.route-toggle{font-size:12px;color:var(--muted);}
+
+.route-items{display:none;}
+.route-items.open{display:block;}
+
+.route-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);}
+.route-item:last-child{border-bottom:none;}
+.item-status{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.item-status.done{background:var(--green);}
+.item-status.absent{background:var(--amber);}
+.item-status.todo{background:var(--border);}
+.item-info{flex:1;min-width:0;}
+.item-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.item-meta{font-size:10px;color:var(--muted);margin-top:2px;}
+.item-worker{font-size:10px;color:var(--blue);font-weight:700;}
+.item-nabon{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
+
+/* REFRESH BTN */
+.refresh-btn{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:var(--ink);color:white;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;transition:all .2s;z-index:200;}
+.refresh-btn:active{transform:scale(.95);}
+.refresh-btn.spinning{animation:spin .8s linear infinite;}
+
+/* ERROR */
+.error-box{margin:20px 0;padding:16px;background:#fde8e8;border:1px solid #f0a0a0;border-radius:10px;font-size:13px;color:var(--red);line-height:1.6;}
+
+/* LAST UPDATE */
+.last-update{text-align:center;font-size:11px;color:var(--muted);margin-top:8px;}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div class="app-header-top">
+    <div class="app-title">🚐 運転手画面</div>
+    <div class="month-badge" id="month-badge">読み込み中...</div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('progress')">📊 進捗確認</div>
+    <div class="tab" onclick="switchTab('route')">🗺️ ルート別</div>
+  </div>
+</div>
+
+<!-- 進捗タブ -->
+<div class="screen active" id="screen-progress">
+  <div class="loading" id="loading-progress">
+    <div class="spinner"></div>
+    <div class="loading-text">データを読み込んでいます...</div>
+  </div>
+  <div id="progress-content" style="display:none">
+    <div class="error-box" id="progress-error" style="display:none"></div>
+
+    <!-- KPI -->
+    <div class="kpi-grid">
+      <div class="kpi-card green">
+        <div class="kpi-label">完了</div>
+        <div class="kpi-val" id="kpi-done">0</div>
+        <div class="kpi-sub">件</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">不在</div>
+        <div class="kpi-val" id="kpi-absent">0</div>
+        <div class="kpi-sub">件</div>
+      </div>
+      <div class="kpi-card muted">
+        <div class="kpi-label">未着手</div>
+        <div class="kpi-val" id="kpi-todo">0</div>
+        <div class="kpi-sub">件</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">総件数</div>
+        <div class="kpi-val" id="kpi-total">0</div>
+        <div class="kpi-sub">件</div>
+      </div>
+    </div>
+
+    <!-- 進捗バー -->
+    <div class="progress-section">
+      <div class="progress-label">
+        <span>全体進捗</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress-segments" id="progress-segments"></div>
+    </div>
+
+    <!-- 作業者別 -->
+    <div class="section-title">作業者別</div>
+    <div id="worker-list"></div>
+
+    <div class="last-update" id="last-update"></div>
+  </div>
+</div>
+
+<!-- ルート別タブ -->
+<div class="screen" id="screen-route">
+  <div class="loading" id="loading-route" style="display:none">
+    <div class="spinner"></div>
+    <div class="loading-text">読み込み中...</div>
+  </div>
+  <div id="route-content"></div>
+</div>
+
+<!-- 更新ボタン -->
+<button class="refresh-btn" id="refresh-btn" onclick="loadData()">🔄</button>
+
+<script>
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const BASE = `${PROXY}/kintone/v1`;
+const TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const APP = 269;
+const DOMAIN = 'white';
+
+const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d42020','#5c4a1a'];
+
+let allRecords = [];
+let currentMonth = '';
+
+// 今月を自動判定
+const now = new Date();
+currentMonth = `${now.getFullYear()}年${now.getMonth()+1}月号`;
+
+async function kintoneGet(query) {
+  const q = encodeURIComponent(query);
+  const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  if (!res.ok) {
+    const err = await res.json();
+    throw new Error(err.message || `APIエラー: ${res.status}`);
+  }
+  const data = await res.json();
+  return data.records;
+}
+
+async function loadData() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+
+  try {
+    // 今月のデータを全件取得（500件ずつ）
+    const query = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    allRecords = await kintoneGet(query);
+
+    document.getElementById('month-badge').textContent = currentMonth;
+    renderProgress();
+    renderRoute();
+
+    document.getElementById('last-update').textContent =
+      `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`;
+
+  } catch(e) {
+    document.getElementById('progress-error').style.display = 'block';
+    document.getElementById('progress-error').textContent = `⚠️ ${e.message}`;
+  } finally {
+    btn.classList.remove('spinning');
+    document.getElementById('loading-progress').style.display = 'none';
+    document.getElementById('progress-content').style.display = 'block';
+  }
+}
+
+function getStatus(r) {
+  return r['ドロップダウン']?.value || '未着手';
+}
+
+function renderProgress() {
+  const done = allRecords.filter(r => getStatus(r) === '完了').length;
+  const absent = allRecords.filter(r => getStatus(r) === '不在').length;
+  const todo = allRecords.filter(r => getStatus(r) === '未着手').length;
+  const total = allRecords.length;
+
+  document.getElementById('kpi-done').textContent = done;
+  document.getElementById('kpi-absent').textContent = absent;
+  document.getElementById('kpi-todo').textContent = todo;
+  document.getElementById('kpi-total').textContent = total;
+
+  const pct = total > 0 ? Math.round((done + absent) / total * 100) : 0;
+  document.getElementById('progress-pct').textContent = `${pct}%`;
+
+  // 進捗バー
+  const seg = document.getElementById('progress-segments');
+  seg.innerHTML = '';
+  if (total > 0) {
+    const donePct = done / total * 100;
+    const absentPct = absent / total * 100;
+    const todoPct = todo / total * 100;
+    if (donePct > 0) seg.innerHTML += `<div class="seg-done" style="flex:${donePct}" title="完了:${done}件"></div>`;
+    if (absentPct > 0) seg.innerHTML += `<div class="seg-absent" style="flex:${absentPct}" title="不在:${absent}件"></div>`;
+    if (todoPct > 0) seg.innerHTML += `<div class="seg-todo" style="flex:${todoPct}" title="未着手:${todo}件"></div>`;
+  }
+
+  // 作業者別集計
+  const workerMap = {};
+  allRecords.forEach(r => {
+    const worker = r['文字列__1行__10']?.value || '未割当';
+    if (!workerMap[worker]) workerMap[worker] = { done:0, absent:0, todo:0 };
+    const s = getStatus(r);
+    if (s === '完了') workerMap[worker].done++;
+    else if (s === '不在') workerMap[worker].absent++;
+    else workerMap[worker].todo++;
+  });
+
+  const workerList = document.getElementById('worker-list');
+  workerList.innerHTML = '';
+
+  Object.entries(workerMap)
+    .sort((a,b) => (b[1].done + b[1].absent) - (a[1].done + a[1].absent))
+    .forEach(([name, stats], idx) => {
+      const color = WORKER_COLORS[idx % WORKER_COLORS.length];
+      const total = stats.done + stats.absent + stats.todo;
+      const hasDone = stats.done > 0 || stats.absent > 0;
+      workerList.innerHTML += `
+        <div class="worker-card ${hasDone ? 'has-done' : ''}">
+          <div class="worker-header">
+            <div class="worker-avatar" style="background:${color}">${name[0]}</div>
+            <div>
+              <div class="worker-name">${name}</div>
+              <div class="worker-status">${total}件担当</div>
+            </div>
+          </div>
+          <div class="worker-stats">
+            <div class="worker-stat green"><span class="val">${stats.done}</span><div class="lbl">完了</div></div>
+            <div class="worker-stat amber"><span class="val">${stats.absent}</span><div class="lbl">不在</div></div>
+            <div class="worker-stat muted"><span class="val">${stats.todo}</span><div class="lbl">未着手</div></div>
+          </div>
+        </div>`;
+    });
+}
+
+function renderRoute() {
+  const routeMap = {};
+  allRecords.forEach(r => {
+    const route = r['文字列__1行__4']?.value || '未設定';
+    if (!routeMap[route]) routeMap[route] = [];
+    routeMap[route].push(r);
+  });
+
+  const content = document.getElementById('route-content');
+  content.innerHTML = '';
+
+  Object.entries(routeMap).sort().forEach(([route, records]) => {
+    const done = records.filter(r => getStatus(r) === '完了').length;
+    const absent = records.filter(r => getStatus(r) === '不在').length;
+    const todo = records.filter(r => getStatus(r) === '未着手').length;
+
+    const items = records.map(r => {
+      const status = getStatus(r);
+      const statusClass = status === '完了' ? 'done' : status === '不在' ? 'absent' : 'todo';
+      const worker = r['文字列__1行__10']?.value || '';
+      const shop = r['文字列__1行__1']?.value || '';
+      const floor = r['文字列__1行__3']?.value || '';
+      const nabon = r['数値']?.value || '';
+      const henkyaku = r['数値_0']?.value || '';
+      return `
+        <div class="route-item">
+          <div class="item-status ${statusClass}"></div>
+          <div class="item-info">
+            <div class="item-name">${shop}</div>
+            <div class="item-meta">${floor ? floor+'階 ' : ''}${worker ? `<span class="item-worker">${worker}</span>` : ''}</div>
+          </div>
+          <div class="item-nabon">${nabon ? `${nabon}冊` : ''}</div>
+        </div>`;
+    }).join('');
+
+    content.innerHTML += `
+      <div class="route-section">
+        <div class="route-header" onclick="toggleRoute('route-${route}')">
+          <div class="route-badge">ルート${route}</div>
+          <div class="route-name">${records.length}件</div>
+          <div class="route-stats">
+            <span class="route-stat-done">✓${done}</span>
+            <span class="route-stat-absent">不在${absent}</span>
+            <span class="route-stat-todo">未${todo}</span>
+          </div>
+          <div class="route-toggle" id="toggle-${route}">▼</div>
+        </div>
+        <div class="route-items" id="route-${route}">
+          ${items}
+        </div>
+      </div>`;
+  });
+}
+
+function toggleRoute(id) {
+  const el = document.getElementById(id);
+  const route = id.replace('route-', '');
+  const toggle = document.getElementById('toggle-' + route);
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    toggle.textContent = '▼';
+  } else {
+    el.classList.add('open');
+    toggle.textContent = '▲';
+  }
+}
+
+function switchTab(tab) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  event.target.classList.add('active');
+  document.getElementById('screen-' + tab).classList.add('active');
+}
+
+// 起動時に読み込み
+loadData();
+
+// 30秒ごとに自動更新
+setInterval(loadData, 30000);
+</script>
+</body>
+</html>
