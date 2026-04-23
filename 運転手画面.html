@@ -116,7 +116,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <div class="app-header">
   <div class="app-header-top">
     <div class="app-title">🚐 運転手画面</div>
-    <div class="month-badge" id="month-badge">読み込み中...</div>
+    <select id="month-badge" onchange="changeMonth(this.value)" style="font-size:11px;background:#333;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;"></select>
   </div>
   <div class="tabs">
     <div class="tab active" onclick="switchTab('progress')">📊 進捗確認</div>
@@ -198,9 +198,15 @@ const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab
 let allRecords = [];
 let currentMonth = '';
 
-// 今月を自動判定
+// 作業月を選択（画面上部に選択肢を表示）
 const now = new Date();
-currentMonth = `${now.getFullYear()}年${now.getMonth()+1}月号`;
+const months = [];
+for (let i = -1; i <= 2; i++) {
+  const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+  months.push(`${d.getFullYear()}年${d.getMonth()+1}月号`);
+}
+// デフォルトは来月（通常は翌月号を配布）
+currentMonth = months[2];
 
 async function kintoneGet(query) {
   const q = encodeURIComponent(query);
@@ -383,7 +389,24 @@ function switchTab(tab) {
   document.getElementById('screen-' + tab).classList.add('active');
 }
 
+// 月選択セレクトを初期化
+function initMonthSelect() {
+  const sel = document.getElementById('month-badge');
+  months.forEach(m => {
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    if (m === currentMonth) o.selected = true;
+    sel.appendChild(o);
+  });
+}
+
+function changeMonth(month) {
+  currentMonth = month;
+  loadData();
+}
+
 // 起動時に読み込み
+initMonthSelect();
 loadData();
 
 // 30秒ごとに自動更新
