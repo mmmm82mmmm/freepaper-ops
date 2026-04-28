@@ -25,99 +25,38 @@
     max-width: 560px;
     box-shadow: 0 8px 32px rgba(0,0,0,0.4);
   }
-  h1 {
-    font-size: 18px;
-    font-weight: 700;
-    color: #e94560;
-    margin-bottom: 6px;
-    letter-spacing: 0.05em;
-  }
-  .subtitle {
-    font-size: 12px;
-    color: #7a8099;
-    margin-bottom: 28px;
-  }
-  .field {
-    margin-bottom: 18px;
-  }
-  label {
-    display: block;
-    font-size: 12px;
-    color: #7a8099;
-    margin-bottom: 6px;
-    letter-spacing: 0.05em;
-  }
+  h1 { font-size: 18px; font-weight: 700; color: #e94560; margin-bottom: 6px; letter-spacing: 0.05em; }
+  .subtitle { font-size: 12px; color: #7a8099; margin-bottom: 28px; }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 12px; color: #7a8099; margin-bottom: 6px; letter-spacing: 0.05em; }
   input {
-    width: 100%;
-    background: #0f3460;
-    border: 1px solid #1a4a7a;
-    border-radius: 6px;
-    padding: 10px 14px;
-    color: #e0e0e0;
-    font-size: 13px;
-    font-family: monospace;
-    outline: none;
-    transition: border-color 0.2s;
+    width: 100%; background: #0f3460; border: 1px solid #1a4a7a;
+    border-radius: 6px; padding: 10px 14px; color: #e0e0e0;
+    font-size: 13px; font-family: monospace; outline: none; transition: border-color 0.2s;
   }
   input:focus { border-color: #e94560; }
   .btn {
-    width: 100%;
-    padding: 13px;
-    background: #e94560;
-    border: none;
-    border-radius: 8px;
-    color: white;
-    font-size: 14px;
-    font-weight: 700;
-    cursor: pointer;
-    letter-spacing: 0.05em;
-    transition: background 0.2s, transform 0.1s;
-    margin-top: 8px;
+    width: 100%; padding: 13px; background: #e94560; border: none;
+    border-radius: 8px; color: white; font-size: 14px; font-weight: 700;
+    cursor: pointer; letter-spacing: 0.05em; transition: background 0.2s, transform 0.1s; margin-top: 8px;
   }
   .btn:hover { background: #c73652; }
   .btn:active { transform: scale(0.98); }
   .btn:disabled { background: #444; cursor: not-allowed; transform: none; }
   .log {
-    margin-top: 24px;
-    background: #0a0a1a;
-    border-radius: 8px;
-    padding: 16px;
-    font-size: 12px;
-    font-family: monospace;
-    min-height: 100px;
-    max-height: 300px;
-    overflow-y: auto;
-    line-height: 1.8;
-    display: none;
+    margin-top: 24px; background: #0a0a1a; border-radius: 8px; padding: 16px;
+    font-size: 12px; font-family: monospace; min-height: 100px; max-height: 300px;
+    overflow-y: auto; line-height: 1.8; display: none;
   }
   .log.visible { display: block; }
   .log-info { color: #7ecfff; }
   .log-success { color: #4ecca3; }
   .log-error { color: #e94560; }
   .log-warn { color: #f6c90e; }
-  .progress-bar {
-    width: 100%;
-    height: 4px;
-    background: #0f3460;
-    border-radius: 2px;
-    margin-top: 16px;
-    display: none;
-    overflow: hidden;
-  }
+  .progress-bar { width: 100%; height: 4px; background: #0f3460; border-radius: 2px; margin-top: 16px; display: none; overflow: hidden; }
   .progress-bar.visible { display: block; }
-  .progress-fill {
-    height: 100%;
-    background: #e94560;
-    border-radius: 2px;
-    width: 0%;
-    transition: width 0.3s;
-  }
-  .note {
-    font-size: 11px;
-    color: #556;
-    margin-top: 6px;
-    line-height: 1.6;
-  }
+  .progress-fill { height: 100%; background: #e94560; border-radius: 2px; width: 0%; transition: width 0.3s; }
+  .note { font-size: 11px; color: #556; margin-top: 6px; line-height: 1.6; }
 </style>
 </head>
 <body>
@@ -144,12 +83,10 @@
   <div class="progress-bar" id="progressBar">
     <div class="progress-fill" id="progressFill"></div>
   </div>
-
   <div class="log" id="log"></div>
 </div>
 
 <script>
-const KINTONE_DOMAIN = 'white.cybozu.com';
 const APP_ID = 269;
 
 function log(msg, type='info') {
@@ -167,34 +104,41 @@ function setProgress(pct) {
   document.getElementById('progressFill').style.width = pct + '%';
 }
 
-async function kintoneGet(proxyUrl, token, query, fields, offset=0, limit=500) {
+// WorkerのURL構造に合わせたGET
+async function kintoneGet(proxyUrl, token, workMonth, offset=0, limit=500) {
+  const query = `文字列__1行_ = "${workMonth}" limit ${limit} offset ${offset}`;
   const params = new URLSearchParams({
+    subdomain: 'white',
     app: APP_ID,
-    query: `${query} limit ${limit} offset ${offset}`,
-    fields: fields.join(',')
+    query: query
   });
   const res = await fetch(`${proxyUrl}/k/v1/records.json?${params}`, {
+    method: 'GET',
     headers: {
       'X-Cybozu-API-Token': token,
-      'X-Kintone-Domain': KINTONE_DOMAIN
+      'X-Requested-With': 'XMLHttpRequest'
     }
   });
-  if (!res.ok) throw new Error(`GET失敗: ${res.status} ${await res.text()}`);
-  return await res.json();
+  const json = await res.json();
+  if (!res.ok) throw new Error(`GET失敗: ${res.status} / ${JSON.stringify(json)}`);
+  return json;
 }
 
+// WorkerのURL構造に合わせたPUT
 async function kintonePut(proxyUrl, token, records) {
-  const res = await fetch(`${proxyUrl}/k/v1/records.json`, {
+  const params = new URLSearchParams({ subdomain: 'white' });
+  const res = await fetch(`${proxyUrl}/k/v1/records.json?${params}`, {
     method: 'PUT',
     headers: {
       'X-Cybozu-API-Token': token,
-      'X-Kintone-Domain': KINTONE_DOMAIN,
-      'Content-Type': 'application/json'
+      'Content-Type': 'application/json',
+      'X-Requested-With': 'XMLHttpRequest'
     },
     body: JSON.stringify({ app: APP_ID, records })
   });
-  if (!res.ok) throw new Error(`PUT失敗: ${res.status} ${await res.text()}`);
-  return await res.json();
+  const json = await res.json();
+  if (!res.ok) throw new Error(`PUT失敗: ${res.status} / ${JSON.stringify(json)}`);
+  return json;
 }
 
 async function run() {
@@ -212,17 +156,13 @@ async function run() {
     let allRecords = [];
     let offset = 0;
     while (true) {
-      const data = await kintoneGet(
-        proxyUrl, token,
-        `文字列__1行_ = "${workMonth}"`,
-        ['$id', 'グループ'],
-        offset
-      );
+      const data = await kintoneGet(proxyUrl, token, workMonth, offset);
       allRecords = allRecords.concat(data.records);
+      log(`${allRecords.length}件取得中...`);
       if (data.records.length < 500) break;
       offset += 500;
     }
-    log(`${allRecords.length}件取得しました`, 'success');
+    log(`合計 ${allRecords.length}件 取得完了`, 'success');
     setProgress(20);
 
     if (allRecords.length === 0) {
@@ -231,20 +171,20 @@ async function run() {
       return;
     }
 
-    // 2. 100件ずつ更新（kintone上限）
+    // 2. 100件ずつ空更新（ルックアップ再取得）
     const BATCH = 100;
     let updated = 0;
     for (let i = 0; i < allRecords.length; i += BATCH) {
       const batch = allRecords.slice(i, i + BATCH);
       const updateRecords = batch.map(r => ({
         id: r.$id.value,
-        record: {} // 空更新でルックアップを再取得させる
+        record: {}  // 空更新でルックアップを再取得させる
       }));
       await kintonePut(proxyUrl, token, updateRecords);
       updated += batch.length;
       const pct = 20 + Math.round((updated / allRecords.length) * 80);
       setProgress(pct);
-      log(`${updated}/${allRecords.length}件 更新完了`, 'info');
+      log(`${updated} / ${allRecords.length}件 更新済み`);
     }
 
     setProgress(100);
