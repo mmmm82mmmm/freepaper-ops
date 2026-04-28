@@ -84,6 +84,14 @@ const PROXY = () => document.getElementById('proxyUrl').value.trim().replace(/\/
 const APP_MASTER = 268;
 const APP_NOHON = 269;
 
+// 設置店マスタのフィールドコード
+const MASTER_KINTONE_NO = '文字列__1行__0';   // kintone番号
+const MASTER_GROUP     = '文字列__1行__11';   // グループ
+
+// 納本データのフィールドコード
+const NOHON_LOOKUP     = 'ルックアップ';       // 設置場所ID（kintone番号）
+const NOHON_GROUP      = '文字列__1行__0';    // グループ（書き込み先）
+
 function log(msg, type='info') {
   const el = document.getElementById('log');
   el.classList.add('visible');
@@ -99,7 +107,7 @@ function setProgress(pct) {
   document.getElementById('progressFill').style.width = pct + '%';
 }
 
-async function getAll(appId, token, query, fields) {
+async function getAll(appId, token, query) {
   let all = [], offset = 0;
   while (true) {
     const params = new URLSearchParams({
@@ -135,48 +143,76 @@ async function putRecords(appId, token, records) {
 
 async function run() {
   const tokenMaster = document.getElementById('tokenMaster').value.trim();
-  const tokenNohon = document.getElementById('tokenNohon').value.trim();
-  const workMonth = document.getElementById('workMonth').value.trim();
+  const tokenNohon  = document.getElementById('tokenNohon').value.trim();
+  const workMonth   = document.getElementById('workMonth').value.trim();
 
   document.getElementById('log').innerHTML = '';
   document.getElementById('runBtn').disabled = true;
   setProgress(0);
 
   try {
-    // 1. 設置店マスタからグループ情報を全件取得
+    // 1. 設置店マスタから kintone番号→グループ のマップを作成
     log('設置店マスタからグループ情報を取得中...');
-    const masterRecords = await getAll(APP_MASTER, tokenMaster, 'order by レコード番号 asc', []);
+    const masterRecords = await getAll(APP_MASTER, tokenMaster, 'order by レコード番号 asc');
     log(`設置店マスタ: ${masterRecords.length}件取得`, 'success');
     setProgress(20);
 
-    // kintone番号 → グループ のマップを作成
-    const groupMap = {};
+    const groupMap = {}; // kintone番号 → グループ
+    let noGroupCount = 0;
     for (const r of masterRecords) {
-      const kintoneNo = r['文字列__1行__0']?.value;  // kintone番号
-      const group = r['文字列__1行__0_0']?.value || r['グループ']?.value || '';
-      // フィールドコードを確認しながらグループを取得
-      // レコード番号ベースのマップも作成
-      const recNo = r['$id']?.value;
-      if (recNo) groupMap[`id_${recNo}`] = group;
-      if (kintoneNo && kintoneNo !== 'なし') groupMap[kintoneNo] = group;
+      const kintoneNo = r[MASTER_KINTONE_NO]?.value;
+      const group     = r[MASTER_GROUP]?.value || '';
+      if (kintoneNo && kintoneNo !== 'なし') {
+        groupMap[kintoneNo] = group;
+      }
+      if (!group) noGroupCount++;
     }
+    log(`グループマップ作成: ${Object.keys(groupMap).length}件（グループ未設定: ${noGroupCount}件）`);
+    setProgress(30);
 
-    // 設置店マスタのフィールド確認用ログ
-    if (masterRecords.length > 0) {
-      const sample = masterRecords[0];
-      log(`マスタフィールド確認: ${Object.keys(sample).join(', ')}`, 'warn');
-    }
-
-    // 2. 納本データ管理から5月号レコードを全件取得
+    // 2. 納本データから5月号を全件取得
     log(`納本データ管理から「${workMonth}」を取得中...`);
-    const nohonRecords = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${workMonth}"`, []);
+    const nohonRecords = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${workMonth}"`);
     log(`納本データ: ${nohonRecords.length}件取得`, 'success');
-    setProgress(40);
+    setProgress(50);
 
-    // 納本データのフィールド確認用ログ
-    if (nohonRecords.length > 0) {
-      const sample = nohonRecords[0];
-      log(`納本フィールド確認: ${Object.keys(sample).join(', ')}`, 'warn');
+    // 3. kintone番号をキーに突合してグループを書き込む
+    let matched = 0, unmatched = 0;
+    const updateRecords = [];
+    for (const r of nohonRecords) {
+      const kintoneNo = r[NOHON_LOOKUP]?.value;  // 設置場所ID
+      const group = kintoneNo ? (groupMap[kintoneNo] || '') : '';
+      if (group) {
+        matched++;
+      } else {
+        unmatched++;
+      }
+      updateRecords.push({
+        id: r['$id'].value,
+        record: {
+          [NOHON_GROUP]: { value: group }
+        }
+      });
+    }
+    log(`突合結果: マッチ ${matched}件 / 未マッチ ${unmatched}件`);
+    setProgress(55);
+
+    // 4. 100件ずつPUT
+    const BATCH = 100;
+    let updated = 0;
+    for (let i = 0; i < updateRecords.length; i += BATCH) {
+      const batch = updateRecords.slice(i, i + BATCH);
+      await putRecords(APP_NOHON, tokenNohon, batch);
+      updated += batch.length;
+      const pct = 55 + Math.round((updated / updateRecords.length) * 45);
+      setProgress(pct);
+      log(`${updated} / ${updateRecords.length}件 書き込み済み`);
+    }
+
+    setProgress(100);
+    log(`✅ 完了！${updated}件にグループを書き込みました`, 'success');
+    if (unmatched > 0) {
+      log(`⚠ ${unmatched}件はkintone番号が未マッチのため空白のままです`, 'warn');
     }
 
   } catch(e) {
