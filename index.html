@@ -310,6 +310,11 @@ async function init() {
     startWorkDirect();
     return;
   }
+  // currentMonthを先に設定（来月号をデフォルト）
+  const nowTmp = new Date();
+  const nextTmp = new Date(nowTmp.getFullYear(), nowTmp.getMonth() + 1, 1);
+  currentMonth = `${nextTmp.getFullYear()}年${nextTmp.getMonth()+1}月号`;
+
   // 作業者セレクト（kintoneの割当JSONから取得）
   const wsel = document.getElementById('worker-select');
   try {
