@@ -560,6 +560,25 @@ async function loadAssignData() {
 
     if (!assignState.routeCars) assignState.routeCars = {};
 
+    // 戻ってきた作業者に自動割当
+    let autoAssigned = false;
+    const returned = [...(assignState.returned || [])];
+    for (const worker of returned) {
+      if (!assignState.assignments[worker]) {
+        const group = autoAssign(worker);
+        if (group) {
+          assignState.assignments[worker] = group;
+          assignState.returned = assignState.returned.filter(w => w !== worker);
+          autoAssigned = true;
+          console.log(`🤖 自動割当: ${worker} → ${group}`);
+        }
+      }
+    }
+    if (autoAssigned) {
+      assignState.updatedAt = new Date().toISOString();
+      await saveAssign();
+    }
+
     renderCars();
     renderRouteCars();
     renderAssign();
@@ -688,6 +707,47 @@ async function saveAssign() {
     body: JSON.stringify({ app: APP, id, record: { '文字列__複数行__0': { value: JSON.stringify(assignState, null, 2) } } })
   });
   if (!res.ok) throw new Error('保存失敗');
+}
+
+function autoAssign(workerName) {
+  // 作業者の車番号を取得
+  const carNum = assignState.cars?.[workerName] || 0;
+  if (!carNum) return null;
+
+  // 車に紐付いたルートを取得
+  const carRoutes = Object.entries(assignState.routeCars || {})
+    .filter(([r, c]) => c === carNum)
+    .map(([r]) => r);
+  if (!carRoutes.length) return null;
+
+  // グループごとの完了状況を集計
+  const groupCounts = {}, groupDone = {};
+  allRecords.forEach(r => {
+    const g = r['文字列__1行__0']?.value;
+    if (!g) return;
+    groupCounts[g] = (groupCounts[g] || 0) + 1;
+    if (r['ドロップダウン']?.value === '完了' || r['ドロップダウン']?.value === '不在') {
+      groupDone[g] = (groupDone[g] || 0) + 1;
+    }
+  });
+
+  // 既に割当済みのグループ
+  const assignedGroups = new Set(Object.values(assignState.assignments || {}));
+
+  // 対象ルートの未完了・未割当グループを取得
+  const candidates = allGroups.filter(g => {
+    const route = getGroupRoute(g);
+    if (!carRoutes.includes(route)) return false;
+    if (assignedGroups.has(g)) return false;
+    const count = groupCounts[g] || 0;
+    const done = groupDone[g] || 0;
+    return !(count > 0 && done >= count); // 未完了
+  });
+
+  if (!candidates.length) return null;
+
+  // 最も番号が若いグループを返す（既にソート済み）
+  return candidates[0];
 }
 
 async function assignWorker(groupCode, workerName) {
