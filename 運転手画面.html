@@ -214,6 +214,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
       <div class="section-title" style="margin:0">🚐 車の編成</div>
       <button onclick="loadAssignData()" style="padding:6px 12px;background:var(--ink);color:white;border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;">🔄 更新</button>
     </div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <input id="new-worker-input" type="text" placeholder="作業者名を入力" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;">
+      <button onclick="addWorkerFromInput()" style="padding:8px 14px;background:var(--green);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">追加</button>
+    </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
       <div class="car-panel" id="car-panel-1">
         <div class="car-panel-title">🚐 1号車</div>
@@ -574,6 +578,22 @@ function renderCars() {
       ? returned.map(w => `<div class="returned-chip">🏃 ${w}</div>`).join('')
       : '<div style="color:var(--muted);font-size:11px;align-self:center">なし</div>';
   });
+}
+
+async function addWorkerFromInput() {
+  const input = document.getElementById('new-worker-input');
+  const name = input.value.trim();
+  if (!name) return;
+  if (!assignState.cars) assignState.cars = {};
+  if (assignState.cars[name] !== undefined) {
+    alert(`「${name}」はすでに登録されています`);
+    return;
+  }
+  assignState.cars[name] = 0;
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  input.value = '';
+  renderCars();
 }
 
 async function moveCar(workerName, carNum) {
