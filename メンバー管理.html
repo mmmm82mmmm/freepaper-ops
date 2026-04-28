@@ -111,24 +111,79 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <script>
 const BASE_URL = 'https://mmmm82mmmm.github.io/freepaper-ops/';
 const COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d42020','#5c4a1a'];
-const STORAGE_KEY = 'freepaper_members';
+
+// kintone設定
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const APP = 269;
+
+// 作業月
+const now = new Date();
+const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+const currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
 
 let members = [];
+let assignState = { members: [], cars: {}, assignments: {}, returned: [], updatedAt: '' };
 
-// ローカルストレージから読み込み
-function loadMembers() {
+// kintoneから割当JSONを取得
+async function loadAssignState() {
+  const params = new URLSearchParams({
+    subdomain: 'white', app: APP,
+    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
+  });
+  const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  const data = await res.json();
+  if (!data.records?.length) return;
+  const raw = data.records[0]['文字列__複数行__0']?.value || '';
   try {
-    const saved = localStorage.getItem(STORAGE_KEY);
-    if (saved) members = JSON.parse(saved);
+    const parsed = JSON.parse(raw);
+    assignState = { members:[], cars:{}, assignments:{}, returned:[], ...parsed };
+    members = assignState.members || [];
   } catch(e) {}
+}
+
+async function saveAssignState() {
+  assignState.members = members;
+  assignState.updatedAt = new Date().toISOString();
+
+  const params = new URLSearchParams({
+    subdomain: 'white', app: APP,
+    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
+  });
+  const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  const data = await res.json();
+  if (!data.records?.length) throw new Error('レコードが見つかりません');
+  const recId = data.records[0]['$id'].value;
+
+  const putRes = await fetch(`${PROXY}/k/v1/record.json?subdomain=white`, {
+    method: 'PUT',
+    headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app: APP, id: recId, record: {
+      '文字列__複数行__0': { value: JSON.stringify(assignState, null, 2) }
+    }})
+  });
+  if (!putRes.ok) throw new Error('保存失敗');
+}
+
+// 読み込み
+async function loadMembers() {
+  try {
+    await loadAssignState();
+  } catch(e) { console.error(e); }
   renderMembers();
 }
 
-function saveMembers() {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(members));
+async function saveMembers() {
+  try {
+    await saveAssignState();
+  } catch(e) { console.error('保存エラー:', e); }
 }
 
-function addMember() {
+async function addMember() {
   const input = document.getElementById('name-input');
   const name = input.value.trim();
   if (!name) return;
@@ -137,17 +192,19 @@ function addMember() {
     return;
   }
   members.push(name);
-  saveMembers();
   renderMembers();
   input.value = '';
   input.focus();
+  await saveMembers();
 }
 
-function deleteMember(name) {
+async function deleteMember(name) {
   if (!confirm(`「${name}」を削除しますか？`)) return;
   members = members.filter(m => m !== name);
-  saveMembers();
+  // 車の割当も削除
+  delete assignState.cars[name];
   renderMembers();
+  await saveMembers();
 }
 
 function renderMembers() {

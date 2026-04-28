@@ -295,7 +295,7 @@ function getUrlParam(key) {
 }
 
 // ===== 初期化 =====
-function init() {
+async function init() {
   // URLパラメータに worker が含まれていたら自動ログイン
   const workerParam = getUrlParam('worker');
   if (workerParam) {
@@ -310,13 +310,24 @@ function init() {
     startWorkDirect();
     return;
   }
-  // 作業者セレクト
+  // 作業者セレクト（kintoneの割当JSONから取得）
   const wsel = document.getElementById('worker-select');
-  WORKERS.forEach(w => {
-    const o = document.createElement('option');
-    o.value = w; o.textContent = w + ' さん';
-    wsel.appendChild(o);
-  });
+  try {
+    const state = await getAssignState();
+    const memberList = state.members && state.members.length > 0 ? state.members : WORKERS;
+    memberList.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w; o.textContent = w + ' さん';
+      wsel.appendChild(o);
+    });
+  } catch(e) {
+    // フォールバック: WORKERS定数を使用
+    WORKERS.forEach(w => {
+      const o = document.createElement('option');
+      o.value = w; o.textContent = w + ' さん';
+      wsel.appendChild(o);
+    });
+  }
 
   // 作業月セレクト
   const msel = document.getElementById('month-select');
@@ -816,13 +827,11 @@ async function confirmReturn() {
 }
 
 async function reportReturn() {
-  // 割当JSONを取得
   const state = await getAssignState();
-  // returnedリストに追加（重複なし）
+  if (!state.returned) state.returned = [];
   if (!state.returned.includes(currentWorker)) {
     state.returned.push(currentWorker);
   }
-  // 自分の割当をクリア
   delete state.assignments[currentWorker];
   state.updatedAt = new Date().toISOString();
   await saveAssignState(state);

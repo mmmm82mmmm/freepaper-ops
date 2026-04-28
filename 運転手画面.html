@@ -215,8 +215,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
       <button onclick="loadAssignData()" style="padding:6px 12px;background:var(--ink);color:white;border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;">🔄 更新</button>
     </div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
-      <input id="new-worker-input" type="text" placeholder="作業者名を入力" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;">
-      <button onclick="addWorkerFromInput()" style="padding:8px 14px;background:var(--green);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">追加</button>
+      <select id="new-worker-select" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:var(--card);">
+        <option value="">-- 作業者を選択 --</option>
+      </select>
+      <button onclick="addWorkerFromSelect()" style="padding:8px 14px;background:var(--green);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">追加</button>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
       <div class="car-panel" id="car-panel-1">
@@ -534,6 +536,19 @@ async function loadAssignData() {
       });
     }
 
+    // 作業者セレクトを更新
+    const memberSel = document.getElementById('new-worker-select');
+    if (memberSel) {
+      const memberList = assignState.members || [];
+      const existingWorkers = Object.keys(assignState.cars || {});
+      memberSel.innerHTML = '<option value="">-- 作業者を選択 --</option>';
+      memberList.filter(m => !existingWorkers.includes(m)).forEach(m => {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        memberSel.appendChild(o);
+      });
+    }
+
     renderCars();
     renderAssign();
   } catch(e) { console.error('割当データ取得エラー:', e); }
@@ -580,19 +595,19 @@ function renderCars() {
   });
 }
 
-async function addWorkerFromInput() {
-  const input = document.getElementById('new-worker-input');
-  const name = input.value.trim();
+async function addWorkerFromSelect() {
+  const sel = document.getElementById('new-worker-select');
+  const name = sel.value;
   if (!name) return;
   if (!assignState.cars) assignState.cars = {};
   if (assignState.cars[name] !== undefined) {
-    alert(`「${name}」はすでに登録されています`);
+    alert(`「${name}」はすでに追加されています`);
     return;
   }
   assignState.cars[name] = 0;
   assignState.updatedAt = new Date().toISOString();
   await saveAssign();
-  input.value = '';
+  sel.value = '';
   renderCars();
 }
 
