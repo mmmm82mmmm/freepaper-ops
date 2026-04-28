@@ -133,7 +133,7 @@ function buildRecord(master, workMonth) {
     文字列__1行__2:  { value: master['文字列__1行__3']?.value || '' },              // ビル名
     文字列__1行__3:  { value: master['文字列__1行__7']?.value || '' },              // 階数
     文字列__1行__4:  { value: master['ドロップダウン_0']?.value || '' },            // ルート
-    数値_1:          { value: master['文字列__1行__4']?.value || '' },              // ルート順
+    数値_1:          { value: parseFloat(master['文字列__1行__4']?.value) || 0 },  // ルート順
     数値_2:          { value: master['数値_2']?.value || '' },                     // 通常納本数
     チェックボックス:  { value: master['チェックボックス']?.value || [] },           // 遅
     文字列__1行__0:  { value: master['文字列__1行__11']?.value || '' },             // グループ
