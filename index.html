@@ -238,6 +238,12 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
       <div style="font-size:13px;color:var(--muted)">割当を待っています</div>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-top:16px">次のグループ: <strong id="waiting-group" style="font-family:'DM Mono',monospace;color:var(--ink)">待機中</strong></div>
+    <div id="driver-location-area" style="display:none;margin-top:8px;">
+      <a id="driver-location-link" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:12px 20px;background:var(--blue);color:white;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
+        📍 運転手の現在地を確認
+      </a>
+      <div id="driver-location-time" style="font-size:10px;color:var(--muted);margin-top:6px;"></div>
+    </div>
   </div>
 </div>
 
@@ -912,13 +918,28 @@ let pollTimer = null;
 async function pollAssignment() {
   try {
     const state = await getAssignState();
+
+    // 運転手の位置情報を表示
+    if (state.driverLocation) {
+      const loc = state.driverLocation;
+      const locArea = document.getElementById('driver-location-area');
+      const locLink = document.getElementById('driver-location-link');
+      const locTime = document.getElementById('driver-location-time');
+      if (locArea && locLink) {
+        locArea.style.display = 'block';
+        locLink.href = loc.url;
+        if (locTime && loc.updatedAt) {
+          const t = new Date(loc.updatedAt).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+          locTime.textContent = `${t} 時点の位置`;
+        }
+      }
+    }
+
     const myGroup = state.assignments[currentWorker];
     if (myGroup) {
-      // グループが割り当てられた！
       clearTimeout(pollTimer);
       document.getElementById('waiting-group').textContent = myGroup.toUpperCase();
       document.getElementById('waiting-screen').style.display = 'none';
-      // 新しいグループを読み込む
       await loadGroup(myGroup);
       return;
     }

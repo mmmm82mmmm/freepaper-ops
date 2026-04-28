@@ -142,7 +142,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <div class="app-header">
   <div class="app-header-top">
     <div class="app-title">🚐 運転手画面</div>
-    <select id="month-badge" onchange="changeMonth(this.value)" style="font-size:11px;background:#333;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;"></select>
+    <div style="display:flex;align-items:center;gap:8px;">
+      <button id="location-btn" onclick="shareLocation()" style="font-size:11px;background:#1a5cd4;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;cursor:pointer;">📍 現在地を共有</button>
+      <select id="month-badge" onchange="changeMonth(this.value)" style="font-size:11px;background:#333;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;"></select>
+    </div>
   </div>
   <div class="tabs">
     <div class="tab active" onclick="switchTab('progress')">📊 進捗確認</div>
@@ -907,6 +910,55 @@ function renderAssign() {
     html += doneGroups.map(g => renderGroup(g, true)).join('');
   }
   assignEl.innerHTML = html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>';
+}
+
+// ===== 運転手位置情報共有 =====
+async function shareLocation() {
+  const btn = document.getElementById('location-btn');
+  btn.textContent = '📍 取得中...';
+  btn.disabled = true;
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+
+    try {
+      // 割当JSONに位置情報を保存
+      const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
+      if (!recs.length) throw new Error('レコードが見つかりません');
+      const recId = recs[0]['$id'].value;
+      const raw = recs[0]['文字列__複数行__0']?.value || '';
+      let state;
+      try { state = JSON.parse(raw); } catch(e) { state = {}; }
+      state.driverLocation = { lat, lng, url: mapsUrl, updatedAt: new Date().toISOString() };
+
+      const params = new URLSearchParams({ subdomain: 'white' });
+      await fetch(`${PROXY}/k/v1/record.json?${params}`, {
+        method: 'PUT',
+        headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: APP, id: recId, record: {
+          '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
+        }})
+      });
+
+      btn.textContent = '📍 共有済み ✓';
+      btn.style.background = '#1a8a4a';
+      setTimeout(() => {
+        btn.textContent = '📍 現在地を共有';
+        btn.style.background = '#1a5cd4';
+        btn.disabled = false;
+      }, 3000);
+    } catch(e) {
+      alert('保存エラー: ' + e.message);
+      btn.textContent = '📍 現在地を共有';
+      btn.disabled = false;
+    }
+  }, err => {
+    alert('位置情報の取得に失敗しました。ブラウザの位置情報を許可してください。');
+    btn.textContent = '📍 現在地を共有';
+    btn.disabled = false;
+  }, { timeout: 10000 });
 }
 
 // 起動時にタブ状態を復元
