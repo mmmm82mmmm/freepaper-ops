@@ -199,14 +199,13 @@ async function run() {
     let deleted = 0;
     for (let i = 0; i < nohonIds.length; i += BATCH) {
       const batch = nohonIds.slice(i, i + BATCH);
-      const params = new URLSearchParams({ subdomain: 'white' });
+      const params = new URLSearchParams({ subdomain: 'white', app: APP_NOHON });
+      batch.forEach(id => params.append('ids[]', id));
       const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
         method: 'DELETE',
         headers: {
           'X-Cybozu-API-Token': tokenNohon,
-          'Content-Type': 'application/json'
-        },
-        body: JSON.stringify({ app: APP_NOHON, ids: batch })
+        }
       });
       const data = await res.json();
       if (!res.ok) throw new Error(`削除失敗: ${JSON.stringify(data)}`);
