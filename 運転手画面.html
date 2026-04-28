@@ -466,6 +466,12 @@ function renderRoute() {
   });
 }
 
+function toggleGroupDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
 function toggleRoute(id) {
   const el = document.getElementById(id);
   const route = id.replace('route-', '');
@@ -848,15 +854,42 @@ function renderAssign() {
       return `<button class="assign-worker-btn ${cls}" onclick="assignWorker('${g}','${w}')">${w}${carTag}</button>`;
     }).join('');
 
+    // 店舗一覧HTML（コメント付き）
+    const groupRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g);
+    const shopList = groupRecs.map(r => {
+      const shop = r['文字列__1行__1']?.value || '';
+      const building = r['文字列__1行__2']?.value || '';
+      const floor = r['文字列__1行__3']?.value || '';
+      const comment = r['文字列__1行__9']?.value || '';
+      const location = r['文字列__1行__7']?.value || '';
+      const nabonNum = r['数値_2']?.value || '';
+      const status = r['ドロップダウン']?.value || '未着手';
+      const statusColor = status === '完了' ? 'var(--green)' : status === '不在' ? 'var(--amber)' : 'var(--border)';
+      return `
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
+          <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;margin-top:4px;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:700;">${shop}</div>
+            <div style="font-size:10px;color:var(--muted);">${building}${floor ? ` ${floor}階` : ''}${nabonNum ? ` 📦${nabonNum}冊` : ''}</div>
+            ${location ? `<div style="font-size:10px;color:#555;margin-top:2px;">📍${location}</div>` : ''}
+            ${comment ? `<div style="font-size:10px;color:#7a5a00;background:#fff8e8;padding:3px 6px;border-radius:4px;margin-top:3px;border-left:2px solid var(--amber);">💬 ${comment}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
     return `
       <div class="assign-group" style="${isDone ? 'opacity:0.4' : ''}">
-        <div class="assign-group-header">
+        <div class="assign-group-header" onclick="toggleGroupDetail('detail-${g}')" style="cursor:pointer;">
           <div class="assign-group-code">${g}</div>
           <div style="flex:1">
             <div class="assign-group-info">${count}件 ${done > 0 ? `完了${done}/` : ''}📦<strong>${nabon}冊</strong></div>
             <div style="margin-top:2px">${routeCarLabel}</div>
           </div>
           <div class="assign-group-worker">${assignedWorker ? `${carLabel}👤 ${assignedWorker}` : isDone ? '✅ 完了' : '未割当'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-left:4px;">▼</div>
+        </div>
+        <div id="detail-${g}" style="display:none;border-top:1px solid var(--border);">
+          ${shopList}
         </div>
         ${!isDone ? `<div class="assign-btn-row">
           ${workerBtns}

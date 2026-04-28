@@ -567,11 +567,11 @@ function renderCard(r, container) {
   const recId = r['$id'].value;
   const status = r['ドロップダウン']?.value || '未着手';
   const shopName = r['文字列__1行__1']?.value || '';
-  const floor = r['文字列__1行__3']?.value || '';
-  const genre = r['文字列__1行__3']?.value || '';
+  const floor = r['文字列__1行__3']?.value || '';   // 階数
+  const genre = r['文字列__1行__2']?.value || '';   // ビル名
   const closed = '' || '';
-  const location = r['文字列__1行__7']?.value || '';
-  const comment = r['文字列__1行__9']?.value || '';
+  const location = r['文字列__1行__7']?.value || '';  // 設置場所説明
+  const comment = r['文字列__1行__9']?.value || '';   // コメント
   const nabon = r['数値_2']?.value || '';
   const absent1 = r['文字列__1行__11']?.value || '';
   const absent2 = r['文字列__1行__12']?.value || '';
@@ -667,8 +667,8 @@ function renderCard(r, container) {
       <div class="card-header-left">
         <div class="shop-name">${shopName}</div>
         <div class="shop-meta">
-          ${floor ? `<span class="meta-chip floor">${floor}</span>` : ''}
           ${genre ? `<span class="meta-chip genre">${genre}</span>` : ''}
+          ${floor ? `<span class="meta-chip floor">${floor}階</span>` : ''}
           ${closed ? `<span class="meta-chip closed">定休：${closed}</span>` : ''}
         </div>
       </div>
