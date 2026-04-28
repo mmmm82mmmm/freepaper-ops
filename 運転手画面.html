@@ -122,6 +122,14 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .assign-worker-btn.assigned{background:var(--blue);color:white;border-color:var(--blue);}
 .assign-worker-btn.returned{background:#e8f5e9;color:var(--green);border-color:var(--green);}
 .returned-chip{padding:8px 14px;border-radius:20px;background:#e8f5e9;border:2px solid var(--green);font-size:12px;font-weight:700;color:var(--green);cursor:default;}
+
+/* CAR PANEL */
+.car-panel{background:var(--card);border-radius:10px;padding:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);min-height:80px;}
+.car-panel-title{font-size:11px;font-weight:900;margin-bottom:8px;color:var(--ink);}
+.car-worker-list{display:flex;flex-direction:column;gap:4px;}
+.car-worker-chip{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:6px;background:var(--bg);font-size:11px;font-weight:700;}
+.car-worker-chip .move-btn{font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:white;cursor:pointer;color:var(--muted);}
+.car-worker-chip.returned{background:#e8f5e9;color:var(--green);}
 </style>
 </head>
 <body>
@@ -199,24 +207,57 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 
 <!-- グループ割当スクリーン -->
 <div class="screen" id="screen-assign">
-  <div style="display:flex;gap:10px;margin-bottom:12px">
-    <select id="route-filter" onchange="renderAssign()" style="flex:1;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:var(--card);">
-      <option value="">全ルート</option>
-    </select>
-    <button onclick="loadAssignData()" style="padding:10px 16px;background:var(--ink);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🔄 更新</button>
+
+  <!-- 車の編成 -->
+  <div style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="section-title" style="margin:0">🚐 車の編成</div>
+      <button onclick="loadAssignData()" style="padding:6px 12px;background:var(--ink);color:white;border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;">🔄 更新</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div class="car-panel" id="car-panel-1">
+        <div class="car-panel-title">🚐 1号車</div>
+        <div class="car-worker-list" id="car-1"></div>
+      </div>
+      <div class="car-panel" id="car-panel-2">
+        <div class="car-panel-title">🚐 2号車</div>
+        <div class="car-worker-list" id="car-2"></div>
+      </div>
+      <div class="car-panel" id="car-panel-0">
+        <div class="car-panel-title" style="color:var(--muted)">未割当</div>
+        <div class="car-worker-list" id="car-0"></div>
+      </div>
+    </div>
   </div>
 
   <!-- 戻り報告 -->
   <div style="margin-bottom:16px">
     <div class="section-title">戻り待ち作業者</div>
-    <div id="returned-list" style="display:flex;flex-wrap:wrap;gap:8px;min-height:40px;padding:8px;background:var(--card);border-radius:10px;border:2px dashed var(--border);">
-      <div style="color:var(--muted);font-size:12px;align-self:center">なし</div>
+    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">1号車</div>
+        <div id="returned-list-1" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:var(--card);border-radius:8px;border:2px dashed var(--border);"></div>
+      </div>
+      <div>
+        <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">2号車</div>
+        <div id="returned-list-2" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:var(--card);border-radius:8px;border:2px dashed var(--border);"></div>
+      </div>
     </div>
   </div>
 
-  <!-- グループ一覧 -->
+  <!-- グループ割当 -->
   <div>
-    <div class="section-title">グループ割当</div>
+    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
+      <div class="section-title" style="margin:0">グループ割当</div>
+      <select id="route-filter" onchange="renderAssign()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:11px;background:var(--card);">
+        <option value="">全ルート</option>
+      </select>
+      <select id="car-filter" onchange="renderAssign()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:11px;background:var(--card);">
+        <option value="">全車</option>
+        <option value="1">1号車</option>
+        <option value="2">2号車</option>
+      </select>
+    </div>
     <div id="assign-list"></div>
   </div>
 </div>
@@ -235,7 +276,7 @@ const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab
 
 let allRecords = [];
 let currentMonth = '';
-let assignState = { assignments: {}, returned: [], updatedAt: '' };
+let assignState = { cars: {}, assignments: {}, returned: [], updatedAt: '' };
 let allGroups = []; // 全グループコード一覧
 let workerList = []; // 作業者一覧
 
@@ -451,38 +492,100 @@ function changeMonth(month) {
 // ===== グループ割当 =====
 async function loadAssignData() {
   try {
-    // 割当JSON取得
     const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
     if (recs.length) {
       const raw = recs[0]['文字列__複数行__0']?.value || '';
-      try { assignState = JSON.parse(raw); } catch(e) { assignState = { assignments:{}, returned:[], updatedAt:'' }; }
+      try { assignState = JSON.parse(raw); } catch(e) { assignState = { cars:{}, assignments:{}, returned:[], updatedAt:'' }; }
+      if (!assignState.cars) assignState.cars = {};
     }
-    // グループ一覧を収集
+
+    // グループ・作業者一覧を収集
     const groupSet = new Set();
     const workerSet = new Set();
     allRecords.forEach(r => {
       const g = r['文字列__1行__0']?.value;
       if (g) groupSet.add(g);
-      const w = r['文字列__1行__10']?.value;
-      if (w) workerSet.add(w);
     });
     allGroups = [...groupSet].sort();
-    workerList = [...workerSet].filter(w => w);
 
+    // 作業者はWORKER_COLORSベースで全員リストアップ
     // ルートフィルタ更新
     const routes = [...new Set(allGroups.map(g => g.replace(/[0-9]/g,'')))].sort();
     const sel = document.getElementById('route-filter');
-    const cur = sel.value;
-    sel.innerHTML = '<option value="">全ルート</option>';
-    routes.forEach(r => {
-      const o = document.createElement('option');
-      o.value = r; o.textContent = `ルート${r.toUpperCase()}`;
-      if (r === cur) o.selected = true;
-      sel.appendChild(o);
-    });
+    const cur = sel?.value || '';
+    if (sel) {
+      sel.innerHTML = '<option value="">全ルート</option>';
+      routes.forEach(r => {
+        const o = document.createElement('option');
+        o.value = r; o.textContent = `ルート${r.toUpperCase()}`;
+        if (r === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+    }
 
+    renderCars();
     renderAssign();
   } catch(e) { console.error('割当データ取得エラー:', e); }
+}
+
+function renderCars() {
+  // 全作業者を収集（割当JSONに含まれる人 + 戻り報告した人）
+  const allWorkers = [...new Set([
+    ...Object.keys(assignState.cars || {}),
+    ...(assignState.returned || []),
+    ...Object.keys(assignState.assignments || {}),
+  ])].filter(w => w);
+
+  // 未登録の作業者も「未割当」として表示
+  [1, 2, 0].forEach(carNum => {
+    const el = document.getElementById('car-' + carNum);
+    if (!el) return;
+    const workers = allWorkers.filter(w => (assignState.cars[w] || 0) === carNum);
+    if (workers.length === 0) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--muted)">なし</div>';
+      return;
+    }
+    el.innerHTML = workers.map(w => {
+      const isReturned = (assignState.returned || []).includes(w);
+      const otherCar = carNum === 1 ? 2 : 1;
+      const moveBtn = carNum !== 0
+        ? `<button class="move-btn" onclick="moveCar('${w}',${otherCar})">${otherCar}号車へ</button>`
+        : `<button class="move-btn" onclick="moveCar('${w}',1)">1号車</button><button class="move-btn" onclick="moveCar('${w}',2)" style="margin-left:2px">2号車</button>`;
+      return `<div class="car-worker-chip ${isReturned ? 'returned' : ''}">
+        <span>${isReturned ? '🏃 ' : ''}${w}</span>
+        <span style="display:flex;gap:2px">${moveBtn}</span>
+      </div>`;
+    }).join('');
+  });
+
+  // 戻り待ちリスト（車別）
+  [1, 2].forEach(carNum => {
+    const el = document.getElementById('returned-list-' + carNum);
+    if (!el) return;
+    const returned = (assignState.returned || []).filter(w => (assignState.cars[w] || 0) === carNum);
+    el.innerHTML = returned.length
+      ? returned.map(w => `<div class="returned-chip">🏃 ${w}</div>`).join('')
+      : '<div style="color:var(--muted);font-size:11px;align-self:center">なし</div>';
+  });
+}
+
+async function moveCar(workerName, carNum) {
+  if (!assignState.cars) assignState.cars = {};
+  assignState.cars[workerName] = carNum;
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  renderCars();
+  renderAssign();
+}
+
+// 作業者を新規追加
+async function addWorker(name) {
+  if (!name) return;
+  if (!assignState.cars) assignState.cars = {};
+  assignState.cars[name] = 0; // 未割当
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  renderCars();
 }
 
 async function saveAssign() {
@@ -515,22 +618,10 @@ async function assignWorker(groupCode, workerName) {
 
 function renderAssign() {
   const routeFilter = document.getElementById('route-filter')?.value || '';
+  const carFilter = document.getElementById('car-filter')?.value || '';
 
-  // 戻り待ち作業者
-  const returnedEl = document.getElementById('returned-list');
-  if (assignState.returned && assignState.returned.length > 0) {
-    returnedEl.innerHTML = assignState.returned.map(w =>
-      `<div class="returned-chip">🏃 ${w}</div>`
-    ).join('');
-  } else {
-    returnedEl.innerHTML = '<div style="color:var(--muted);font-size:12px;align-self:center">なし</div>';
-  }
-
-  // グループ割当一覧
   const assignEl = document.getElementById('assign-list');
-  const filtered = routeFilter
-    ? allGroups.filter(g => g.startsWith(routeFilter))
-    : allGroups;
+  let filtered = routeFilter ? allGroups.filter(g => g.startsWith(routeFilter)) : allGroups;
 
   if (!filtered.length) {
     assignEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">データなし</div>';
@@ -538,8 +629,7 @@ function renderAssign() {
   }
 
   // グループの店舗数を集計
-  const groupCounts = {};
-  const groupDone = {};
+  const groupCounts = {}, groupDone = {};
   allRecords.forEach(r => {
     const g = r['文字列__1行__0']?.value;
     if (!g) return;
@@ -549,24 +639,32 @@ function renderAssign() {
     }
   });
 
-  // 作業者ボタンリスト（全作業者）
+  // 作業者ボタン（車フィルタあれば該当車の作業者のみ）
   const allWorkers = [...new Set([
-    ...Object.keys(assignState.assignments),
+    ...Object.keys(assignState.cars || {}),
     ...(assignState.returned || []),
-    ...workerList
+    ...Object.keys(assignState.assignments || {}),
   ])].filter(w => w);
 
+  const filteredWorkers = carFilter
+    ? allWorkers.filter(w => String(assignState.cars?.[w] || 0) === carFilter)
+    : allWorkers;
+
   assignEl.innerHTML = filtered.map(g => {
-    const assignedWorker = Object.entries(assignState.assignments).find(([w, grp]) => grp === g)?.[0] || '';
+    const assignedWorker = Object.entries(assignState.assignments || {}).find(([w, grp]) => grp === g)?.[0] || '';
     const count = groupCounts[g] || 0;
     const done = groupDone[g] || 0;
     const isDone = count > 0 && done >= count;
+    const assignedCar = assignedWorker ? (assignState.cars?.[assignedWorker] || 0) : 0;
+    const carLabel = assignedCar ? `🚐${assignedCar}` : '';
 
-    const workerBtns = allWorkers.map(w => {
+    const workerBtns = filteredWorkers.map(w => {
       const isAssigned = assignedWorker === w;
       const isReturned = (assignState.returned || []).includes(w);
+      const carNum = assignState.cars?.[w] || 0;
+      const carTag = carNum ? `<span style="font-size:9px;opacity:0.7"> ${carNum}号車</span>` : '';
       const cls = isAssigned ? 'assigned' : isReturned ? 'returned' : '';
-      return `<button class="assign-worker-btn ${cls}" onclick="assignWorker('${g}','${w}')">${w}</button>`;
+      return `<button class="assign-worker-btn ${cls}" onclick="assignWorker('${g}','${w}')">${w}${carTag}</button>`;
     }).join('');
 
     return `
@@ -574,7 +672,7 @@ function renderAssign() {
         <div class="assign-group-header">
           <div class="assign-group-code">${g}</div>
           <div class="assign-group-info">${count}件 ${done > 0 ? `(完了${done})` : ''}</div>
-          <div class="assign-group-worker">${assignedWorker ? '👤 ' + assignedWorker : '未割当'}</div>
+          <div class="assign-group-worker">${assignedWorker ? `${carLabel} 👤 ${assignedWorker}` : '未割当'}</div>
         </div>
         <div class="assign-btn-row">
           ${workerBtns}
