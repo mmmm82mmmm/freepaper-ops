@@ -127,19 +127,18 @@ async function getAll(appId, token, query) {
 
 function buildRecord(master, workMonth) {
   return {
-    文字列__1行_:   { value: workMonth },                                            // 作業月
-    文字列__1行__10: { value: master['文字列__1行__0']?.value || '' },               // kintone番号
-    文字列__1行__5:  { value: master['文字列__1行__0']?.value || '' },               // 設置場所ID
-    文字列__1行__1:  { value: master['文字列__1行__2']?.value || '' },               // 店名
-    文字列__1行__2:  { value: master['文字列__1行__3']?.value || '' },               // ビル名
-    文字列__1行__3:  { value: master['文字列__1行__7']?.value || '' },               // 階数
-    文字列__1行__4:  { value: master['ドロップダウン_0']?.value || '' },             // ルート
-    数値_1:          { value: parseFloat(master['文字列__1行__4']?.value) || 0 },   // ルート順
-    数値_2:          { value: master['数値_2']?.value || '' },                      // 通常納本数
-    チェックボックス:  { value: master['チェックボックス']?.value || [] },            // 遅
-    文字列__1行__0:  { value: master['文字列__1行__11']?.value || '' },              // グループ
-    文字列__1行__7:  { value: master['文字列__1行__9']?.value || '' },               // 設置場所説明
-    文字列__1行__9:  { value: master['文字列__複数行__0']?.value || '' },            // コメント
+    文字列__1行_:  { value: workMonth },                                            // 作業月
+    文字列__1行__5: { value: master['文字列__1行__0']?.value || '' },               // 設置場所ID（kintone番号）
+    文字列__1行__1: { value: master['文字列__1行__2']?.value || '' },               // 店名
+    文字列__1行__2: { value: master['文字列__1行__3']?.value || '' },               // ビル名
+    文字列__1行__3: { value: master['文字列__1行__7']?.value || '' },               // 階数
+    文字列__1行__4: { value: master['ドロップダウン_0']?.value || '' },             // ルート
+    数値_1:         { value: parseFloat(master['文字列__1行__4']?.value) || 0 },   // ルート順
+    数値_2:         { value: master['数値_2']?.value || '' },                      // 通常納本数
+    チェックボックス: { value: master['チェックボックス']?.value || [] },            // 遅
+    文字列__1行__0: { value: master['文字列__1行__11']?.value || '' },              // グループ
+    文字列__1行__7: { value: master['文字列__1行__9']?.value || '' },               // 設置場所説明
+    文字列__1行__9: { value: master['文字列__複数行__0']?.value || '' },            // コメント
   };
 }
 
