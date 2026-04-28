@@ -1,0 +1,191 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>納本データ グループ直接書き込みツール</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+    background: #1a1a2e; color: #e0e0e0;
+    min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px;
+  }
+  .container {
+    background: #16213e; border: 1px solid #0f3460; border-radius: 12px;
+    padding: 32px; width: 100%; max-width: 560px; box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  h1 { font-size: 18px; font-weight: 700; color: #e94560; margin-bottom: 6px; letter-spacing: 0.05em; }
+  .subtitle { font-size: 12px; color: #7a8099; margin-bottom: 28px; }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 12px; color: #7a8099; margin-bottom: 6px; }
+  input {
+    width: 100%; background: #0f3460; border: 1px solid #1a4a7a;
+    border-radius: 6px; padding: 10px 14px; color: #e0e0e0;
+    font-size: 13px; font-family: monospace; outline: none; transition: border-color 0.2s;
+  }
+  input:focus { border-color: #e94560; }
+  .btn {
+    width: 100%; padding: 13px; background: #e94560; border: none;
+    border-radius: 8px; color: white; font-size: 14px; font-weight: 700;
+    cursor: pointer; letter-spacing: 0.05em; transition: background 0.2s; margin-top: 8px;
+  }
+  .btn:hover { background: #c73652; }
+  .btn:disabled { background: #444; cursor: not-allowed; }
+  .log {
+    margin-top: 24px; background: #0a0a1a; border-radius: 8px; padding: 16px;
+    font-size: 12px; font-family: monospace; min-height: 100px; max-height: 300px;
+    overflow-y: auto; line-height: 1.8; display: none;
+  }
+  .log.visible { display: block; }
+  .log-info { color: #7ecfff; }
+  .log-success { color: #4ecca3; }
+  .log-error { color: #e94560; }
+  .log-warn { color: #f6c90e; }
+  .progress-bar { width: 100%; height: 4px; background: #0f3460; border-radius: 2px; margin-top: 16px; display: none; overflow: hidden; }
+  .progress-bar.visible { display: block; }
+  .progress-fill { height: 100%; background: #e94560; border-radius: 2px; width: 0%; transition: width 0.3s; }
+  .note { font-size: 11px; color: #556; margin-top: 6px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>納本データ グループ直接書き込み</h1>
+  <p class="subtitle">設置店マスタのグループを納本データに直接書き込みます</p>
+
+  <div class="field">
+    <label>PROXY URL（Cloudflare Workers）</label>
+    <input type="text" id="proxyUrl" value="https://kintone-proxy.mmmm82mmmm.workers.dev" />
+  </div>
+  <div class="field">
+    <label>APIトークン：設置店マスタ（App ID: 268）</label>
+    <input type="text" id="tokenMaster" value="STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg" />
+  </div>
+  <div class="field">
+    <label>APIトークン：納本データ管理（App ID: 269）</label>
+    <input type="text" id="tokenNohon" value="jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF" />
+  </div>
+  <div class="field">
+    <label>作業月</label>
+    <input type="text" id="workMonth" value="2026年5月号" />
+    <p class="note">※ この作業月のレコードのみ更新します</p>
+  </div>
+
+  <button class="btn" id="runBtn" onclick="run()">▶ グループを書き込む</button>
+
+  <div class="progress-bar" id="progressBar">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const PROXY = () => document.getElementById('proxyUrl').value.trim().replace(/\/$/, '');
+const APP_MASTER = 268;
+const APP_NOHON = 269;
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = `log-${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString('ja-JP')}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progressBar').classList.add('visible');
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+async function getAll(appId, token, query, fields) {
+  let all = [], offset = 0;
+  while (true) {
+    const params = new URLSearchParams({
+      subdomain: 'white', app: appId,
+      query: `${query} limit 500 offset ${offset}`
+    });
+    const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+      headers: { 'X-Cybozu-API-Token': token }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`取得失敗: ${JSON.stringify(data)}`);
+    all = all.concat(data.records);
+    if (data.records.length < 500) break;
+    offset += 500;
+  }
+  return all;
+}
+
+async function putRecords(appId, token, records) {
+  const params = new URLSearchParams({ subdomain: 'white' });
+  const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+    method: 'PUT',
+    headers: {
+      'X-Cybozu-API-Token': token,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ app: appId, records })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(`更新失敗: ${JSON.stringify(data)}`);
+  return data;
+}
+
+async function run() {
+  const tokenMaster = document.getElementById('tokenMaster').value.trim();
+  const tokenNohon = document.getElementById('tokenNohon').value.trim();
+  const workMonth = document.getElementById('workMonth').value.trim();
+
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('runBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    // 1. 設置店マスタからグループ情報を全件取得
+    log('設置店マスタからグループ情報を取得中...');
+    const masterRecords = await getAll(APP_MASTER, tokenMaster, 'order by レコード番号 asc', []);
+    log(`設置店マスタ: ${masterRecords.length}件取得`, 'success');
+    setProgress(20);
+
+    // kintone番号 → グループ のマップを作成
+    const groupMap = {};
+    for (const r of masterRecords) {
+      const kintoneNo = r['文字列__1行__0']?.value;  // kintone番号
+      const group = r['文字列__1行__0_0']?.value || r['グループ']?.value || '';
+      // フィールドコードを確認しながらグループを取得
+      // レコード番号ベースのマップも作成
+      const recNo = r['$id']?.value;
+      if (recNo) groupMap[`id_${recNo}`] = group;
+      if (kintoneNo && kintoneNo !== 'なし') groupMap[kintoneNo] = group;
+    }
+
+    // 設置店マスタのフィールド確認用ログ
+    if (masterRecords.length > 0) {
+      const sample = masterRecords[0];
+      log(`マスタフィールド確認: ${Object.keys(sample).join(', ')}`, 'warn');
+    }
+
+    // 2. 納本データ管理から5月号レコードを全件取得
+    log(`納本データ管理から「${workMonth}」を取得中...`);
+    const nohonRecords = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${workMonth}"`, []);
+    log(`納本データ: ${nohonRecords.length}件取得`, 'success');
+    setProgress(40);
+
+    // 納本データのフィールド確認用ログ
+    if (nohonRecords.length > 0) {
+      const sample = nohonRecords[0];
+      log(`納本フィールド確認: ${Object.keys(sample).join(', ')}`, 'warn');
+    }
+
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+    console.error(e);
+  }
+
+  document.getElementById('runBtn').disabled = false;
+}
+</script>
+</body>
+</html>
