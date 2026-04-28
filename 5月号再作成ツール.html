@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>5月号 納本データ 削除→再作成ツール</title>
+<title>5月号 削除→再作成ツール</title>
 <style>
   * { box-sizing: border-box; margin: 0; padding: 0; }
   body {
@@ -26,20 +26,21 @@
   }
   input:focus { border-color: #e94560; }
   .btn {
-    width: 100%; padding: 13px; border: none;
+    width: 100%; padding: 13px; background: #e94560; border: none;
     border-radius: 8px; color: white; font-size: 14px; font-weight: 700;
     cursor: pointer; letter-spacing: 0.05em; transition: background 0.2s; margin-top: 8px;
   }
-  .btn-danger { background: #e94560; }
-  .btn-danger:hover { background: #c73652; }
+  .btn:hover { background: #c73652; }
   .btn:disabled { background: #444; cursor: not-allowed; }
+  .btn.safe { background: #0f3460; margin-top: 0; }
+  .btn.safe:hover { background: #1a4a7a; }
   .warning {
-    background: #2a1500; border: 1px solid #e94560; border-radius: 8px;
-    padding: 12px 16px; margin-bottom: 20px; font-size: 12px; color: #f6a623; line-height: 1.8;
+    background: #2a1a0a; border: 1px solid #e94560; border-radius: 8px;
+    padding: 12px 16px; font-size: 12px; color: #f6c90e; margin-bottom: 16px; line-height: 1.8;
   }
   .log {
     margin-top: 24px; background: #0a0a1a; border-radius: 8px; padding: 16px;
-    font-size: 12px; font-family: monospace; min-height: 100px; max-height: 350px;
+    font-size: 12px; font-family: monospace; min-height: 100px; max-height: 320px;
     overflow-y: auto; line-height: 1.8; display: none;
   }
   .log.visible { display: block; }
@@ -51,20 +52,21 @@
   .progress-bar.visible { display: block; }
   .progress-fill { height: 100%; background: #e94560; border-radius: 2px; width: 0%; transition: width 0.3s; }
   .note { font-size: 11px; color: #556; margin-top: 6px; line-height: 1.6; }
+  .step-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .step-btns .btn { margin-top: 0; }
 </style>
 </head>
 <body>
 <div class="container">
-  <h1>5月号 納本データ 削除→再作成</h1>
-  <p class="subtitle">設置店マスタからグループ込みで再作成します</p>
+  <h1>5月号 削除→再作成ツール</h1>
+  <p class="subtitle">納本データ管理の5月号を設置店マスタから再作成します</p>
 
   <div class="warning">
-    ⚠ 注意：5月号の既存レコードをすべて削除してから再作成します。<br>
-    実行前に必ずバックアップを確認してください。
+    ⚠ 削除したレコードは元に戻せません。実行前に必ず確認してください。
   </div>
 
   <div class="field">
-    <label>PROXY URL（Cloudflare Workers）</label>
+    <label>PROXY URL</label>
     <input type="text" id="proxyUrl" value="https://kintone-proxy.mmmm82mmmm.workers.dev" />
   </div>
   <div class="field">
@@ -81,7 +83,10 @@
     <p class="note">※ この作業月のレコードを削除して再作成します</p>
   </div>
 
-  <button class="btn btn-danger" id="runBtn" onclick="run()">▶ 削除→再作成を実行</button>
+  <div class="step-btns">
+    <button class="btn safe" id="previewBtn" onclick="preview()">🔍 内容を確認</button>
+    <button class="btn" id="runBtn" onclick="run()" disabled>🗑 削除して再作成</button>
+  </div>
 
   <div class="progress-bar" id="progressBar">
     <div class="progress-fill" id="progressFill"></div>
@@ -92,37 +97,7 @@
 <script>
 const PROXY = () => document.getElementById('proxyUrl').value.trim().replace(/\/$/, '');
 const APP_MASTER = 268;
-const APP_NOHON  = 269;
-
-// 設置店マスタ フィールドコード
-const M_KINTONE_NO  = '文字列__1行__0';   // kintone番号
-const M_GENRE       = '文字列__1行__1';   // ジャンル
-const M_SHOP_NAME   = '文字列__1行__2';   // 店名
-const M_BUILDING    = '文字列__1行__3';   // ビル名
-const M_ROUTE_ORDER = '文字列__1行__4';   // ルート順
-const M_CLOSED_DAY  = '文字列__1行__5';   // 定休日
-const M_RACK_TYPE   = '文字列__1行__6';   // ラック種別
-const M_JO          = '文字列__1行__7';   // 条
-const M_CHOME       = '文字列__1行__8';   // 丁目
-const M_PLACE_DESC  = '文字列__1行__9';   // 設置場所説明
-const M_STATUS      = 'ドロップダウン';    // ステータス
-const M_ROUTE       = 'ドロップダウン_0';  // ルート
-const M_GROUP       = '文字列__1行__11';  // グループ
-const M_NOHON_COUNT = '数値_2';           // 通常納本数
-const M_MAP_COUNT   = '数値_3';           // MAP枚数
-const M_COMMENT     = '文字列__複数行__0'; // コメント
-
-// 納本データ管理 フィールドコード
-const N_WORK_MONTH  = '文字列__1行_';     // 作業月
-const N_LOOKUP      = 'ルックアップ';      // 設置場所ID
-const N_SHOP_NAME   = '文字列__1行__1';   // 店名
-const N_BUILDING    = '文字列__1行__2';   // ビル名
-const N_ROUTE       = '文字列__1行__4';   // ルート
-const N_PLACE_DESC  = '文字列__1行__7';   // 設置場所説明
-const N_COMMENT     = '文字列__1行__9';   // コメント
-const N_ROUTE_ORDER = '数値_1';           // ルート順
-const N_NOHON_COUNT = '数値_2';           // 通常納本数
-const N_GROUP       = '文字列__1行__0';   // グループ
+const APP_NOHON = 269;
 
 function log(msg, type='info') {
   const el = document.getElementById('log');
@@ -158,111 +133,119 @@ async function getAll(appId, token, query) {
   return all;
 }
 
-async function deleteRecords(appId, token, ids) {
-  const params = new URLSearchParams({ subdomain: 'white' });
-  // DELETE は ids[] 形式
-  const idsParams = ids.map(id => `ids[]=${id}`).join('&');
-  const res = await fetch(`${PROXY()}/k/v1/records.json?${params}&app=${appId}&${idsParams}`, {
-    method: 'DELETE',
-    headers: { 'X-Cybozu-API-Token': token }
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`削除失敗: ${JSON.stringify(data)}`);
-  return data;
+// 設置店マスタから納本データのレコードを生成
+function buildRecord(master, workMonth) {
+  return {
+    文字列__1行_:  { value: workMonth },                          // 作業月
+    ルックアップ:   { value: master['文字列__1行__0']?.value || '' }, // 設置場所ID（kintone番号）
+    文字列__1行__4: { value: master['ドロップダウン_0']?.value || '' }, // ルート
+    数値_1:        { value: master['文字列__1行__4']?.value || '' },  // ルート順
+    数値_2:        { value: master['数値_2']?.value || '' },         // 通常納本数
+    文字列__1行__0: { value: master['文字列__1行__11']?.value || '' }, // グループ
+    文字列__1行__7: { value: master['文字列__1行__9']?.value || '' },  // 設置場所説明
+    文字列__1行__9: { value: master['文字列__複数行__0']?.value || '' }, // コメント
+  };
 }
 
-async function postRecords(appId, token, records) {
-  const params = new URLSearchParams({ subdomain: 'white' });
-  const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
-    method: 'POST',
-    headers: {
-      'X-Cybozu-API-Token': token,
-      'Content-Type': 'application/json'
-    },
-    body: JSON.stringify({ app: appId, records })
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`作成失敗: ${JSON.stringify(data)}`);
-  return data;
-}
+let masterRecords = [];
+let nohonIds = [];
 
-async function run() {
+async function preview() {
   const tokenMaster = document.getElementById('tokenMaster').value.trim();
   const tokenNohon  = document.getElementById('tokenNohon').value.trim();
   const workMonth   = document.getElementById('workMonth').value.trim();
 
-  if (!confirm(`「${workMonth}」の納本データを全削除して再作成します。よろしいですか？`)) return;
-
   document.getElementById('log').innerHTML = '';
+  document.getElementById('previewBtn').disabled = true;
   document.getElementById('runBtn').disabled = true;
   setProgress(0);
 
   try {
-    // 1. 設置店マスタを全件取得（稼働中のみ）
-    log('設置店マスタから稼働中レコードを取得中...');
-    const masterRecords = await getAll(APP_MASTER, tokenMaster, 'ドロップダウン in ("稼働中") order by レコード番号 asc');
-    log(`設置店マスタ: ${masterRecords.length}件取得`, 'success');
-    setProgress(15);
+    // 設置店マスタ取得（稼働中のみ）
+    log('設置店マスタ（稼働中）を取得中...');
+    masterRecords = await getAll(APP_MASTER, tokenMaster, 'ドロップダウン in ("稼働中") order by レコード番号 asc');
+    log(`設置店マスタ: ${masterRecords.length}件（稼働中）`, 'success');
+    setProgress(40);
 
-    // 2. 5月号の既存レコードを全件取得
-    log(`「${workMonth}」の既存レコードを取得中...`);
-    const existingRecords = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${workMonth}"`);
-    log(`既存レコード: ${existingRecords.length}件取得`, 'success');
-    setProgress(25);
-
-    // 3. 既存レコードを100件ずつ削除
-    if (existingRecords.length > 0) {
-      log(`${existingRecords.length}件を削除中...`);
-      const ids = existingRecords.map(r => r['$id'].value);
-      const BATCH = 100;
-      let deleted = 0;
-      for (let i = 0; i < ids.length; i += BATCH) {
-        const batch = ids.slice(i, i + BATCH);
-        await deleteRecords(APP_NOHON, tokenNohon, batch);
-        deleted += batch.length;
-        setProgress(25 + Math.round((deleted / ids.length) * 25));
-        log(`${deleted} / ${ids.length}件 削除済み`);
-      }
-      log(`✅ ${deleted}件 削除完了`, 'success');
-    } else {
-      log('削除対象なし', 'warn');
-    }
-    setProgress(50);
-
-    // 4. 設置店マスタから新規レコードを作成
-    log('新規レコードを作成中...');
-    const newRecords = masterRecords.map(r => ({
-      [N_WORK_MONTH]:  { value: workMonth },
-      [N_LOOKUP]:      { value: r[M_KINTONE_NO]?.value || '' },
-      [N_SHOP_NAME]:   { value: r[M_SHOP_NAME]?.value || '' },
-      [N_BUILDING]:    { value: r[M_BUILDING]?.value || '' },
-      [N_ROUTE]:       { value: r[M_ROUTE]?.value || '' },
-      [N_ROUTE_ORDER]: { value: r[M_ROUTE_ORDER]?.value || '' },
-      [N_NOHON_COUNT]: { value: r[M_NOHON_COUNT]?.value || '' },
-      [N_PLACE_DESC]:  { value: r[M_PLACE_DESC]?.value || '' },
-      [N_COMMENT]:     { value: r[M_COMMENT]?.value || '' },
-      [N_GROUP]:       { value: r[M_GROUP]?.value || '' },
-    }));
-
-    const BATCH = 100;
-    let created = 0;
-    for (let i = 0; i < newRecords.length; i += BATCH) {
-      const batch = newRecords.slice(i, i + BATCH);
-      await postRecords(APP_NOHON, tokenNohon, batch);
-      created += batch.length;
-      setProgress(50 + Math.round((created / newRecords.length) * 50));
-      log(`${created} / ${newRecords.length}件 作成済み`);
-    }
-
+    // 既存の5月号レコード取得
+    log(`納本データ管理の「${workMonth}」を取得中...`);
+    const nohonRecords = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${workMonth}"`);
+    nohonIds = nohonRecords.map(r => r['$id'].value);
+    log(`削除対象: ${nohonIds.length}件`, 'warn');
+    log(`新規作成予定: ${masterRecords.length}件`, 'success');
     setProgress(100);
-    log(`✅ 完了！${created}件の納本データを再作成しました`, 'success');
+
+    log('--- 内容を確認して「削除して再作成」を押してください ---', 'warn');
+    document.getElementById('runBtn').disabled = false;
 
   } catch(e) {
     log(`エラー: ${e.message}`, 'error');
-    console.error(e);
+  }
+  document.getElementById('previewBtn').disabled = false;
+}
+
+async function run() {
+  const tokenNohon  = document.getElementById('tokenNohon').value.trim();
+  const workMonth   = document.getElementById('workMonth').value.trim();
+
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('previewBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    // 1. 既存レコードを100件ずつ削除
+    log(`${nohonIds.length}件を削除中...`);
+    const BATCH = 100;
+    let deleted = 0;
+    for (let i = 0; i < nohonIds.length; i += BATCH) {
+      const batch = nohonIds.slice(i, i + BATCH);
+      const params = new URLSearchParams({ subdomain: 'white' });
+      const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+        method: 'DELETE',
+        headers: {
+          'X-Cybozu-API-Token': tokenNohon,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ app: APP_NOHON, ids: batch })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(`削除失敗: ${JSON.stringify(data)}`);
+      deleted += batch.length;
+      setProgress(Math.round(deleted / nohonIds.length * 40));
+      log(`${deleted} / ${nohonIds.length}件 削除済み`);
+    }
+    log(`✅ ${deleted}件削除完了`, 'success');
+
+    // 2. 設置店マスタから新規レコードを100件ずつ作成
+    log(`${masterRecords.length}件を新規作成中...`);
+    let created = 0;
+    for (let i = 0; i < masterRecords.length; i += BATCH) {
+      const batch = masterRecords.slice(i, i + BATCH);
+      const records = batch.map(m => buildRecord(m, workMonth));
+      const params = new URLSearchParams({ subdomain: 'white' });
+      const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+        method: 'POST',
+        headers: {
+          'X-Cybozu-API-Token': tokenNohon,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ app: APP_NOHON, records })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(`作成失敗: ${JSON.stringify(data)}`);
+      created += batch.length;
+      setProgress(40 + Math.round(created / masterRecords.length * 60));
+      log(`${created} / ${masterRecords.length}件 作成済み`);
+    }
+
+    setProgress(100);
+    log(`✅ 完了！${created}件の5月号レコードを作成しました`, 'success');
+
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
   }
 
-  document.getElementById('runBtn').disabled = false;
+  document.getElementById('previewBtn').disabled = false;
 }
 </script>
 </body>
