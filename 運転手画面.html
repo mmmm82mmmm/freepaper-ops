@@ -266,7 +266,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div>
     <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
       <div class="section-title" style="margin:0">グループ割当</div>
-      <select id="car-filter" onchange="renderAssign()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:11px;background:var(--card);">
+      <select id="car-filter" onchange="localStorage.setItem('fp_car_filter',this.value);renderAssign()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:11px;background:var(--card);">
         <option value="">全車</option>
         <option value="1">1号車</option>
         <option value="2">2号車</option>
@@ -824,6 +824,13 @@ function restoreTab() {
   const idx = tabNames.indexOf(saved);
   if (idx >= 0) {
     switchTab(saved, tabs[idx]);
+  }
+  // 車フィルタを復元
+  const savedCar = localStorage.getItem('fp_car_filter') || '';
+  const carFilter = document.getElementById('car-filter');
+  if (carFilter) {
+    carFilter.value = savedCar;
+    renderAssign();
   }
 }
 
