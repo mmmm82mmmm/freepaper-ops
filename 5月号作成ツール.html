@@ -129,6 +129,7 @@ function buildRecord(master, workMonth) {
   return {
     文字列__1行_:   { value: workMonth },                                            // 作業月
     文字列__1行__10: { value: master['文字列__1行__0']?.value || '' },               // kintone番号
+    文字列__1行__5:  { value: master['文字列__1行__0']?.value || '' },               // 設置場所ID
     文字列__1行__1:  { value: master['文字列__1行__2']?.value || '' },               // 店名
     文字列__1行__2:  { value: master['文字列__1行__3']?.value || '' },               // ビル名
     文字列__1行__3:  { value: master['文字列__1行__7']?.value || '' },               // 階数
