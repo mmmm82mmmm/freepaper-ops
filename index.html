@@ -278,12 +278,8 @@ const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
 const BASE = `${PROXY}/kintone/v1`;
 const ASSIGN_RECORD_ID = 1; // 割当JSON保存用レコードID（作業月の最初のレコード）
 
-// ===== 今月の流動項目設定（毎月ここを変更）=====
-const DYNAMIC_ITEMS = [
-  { key: 'chirashi_a', label: 'チラシA（求人）', type: 'distribute' },
-  { key: 'chirashi_b', label: 'チラシB（クーポン）', type: 'distribute' },
-  { key: 'poster_ok', label: 'ポスターを貼ってくれますか？', sublabel: '来月持参予定', type: 'yesno' },
-];
+// ===== 今月の流動項目設定（メンバー管理画面で設定）=====
+let DYNAMIC_ITEMS = []; // kintoneから読み込む
 
 // ===== 作業者リスト（毎月更新）=====
 const WORKERS = ['田中','鈴木','山田','佐藤','高橋','小林','伊藤','渡辺'];
@@ -463,8 +459,9 @@ async function saveAssignState(state) {
 async function startWorkDirect() {
   try {
     document.getElementById('loading-text').textContent = '担当場所を読み込んでいます...';
-    // 割当グループを取得
+    // 割当グループ・配布物設定を取得
     const state = await getAssignState();
+    DYNAMIC_ITEMS = state.dynamicItems || [];
     const assignedGroup = state.assignments?.[currentWorker];
     let query;
     if (assignedGroup) {

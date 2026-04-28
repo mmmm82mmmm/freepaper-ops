@@ -67,6 +67,17 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .empty-state{text-align:center;padding:40px 20px;color:var(--muted);}
 .empty-icon{font-size:40px;margin-bottom:12px;}
 .empty-text{font-size:14px;}
+
+/* 配布物設定 */
+.item-card{background:var(--bg);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.item-label-input{flex:1;padding:8px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:white;}
+.item-label-input:focus{outline:none;border-color:var(--blue);}
+.item-type-select{padding:8px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:12px;background:white;}
+.item-sublabel-input{flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:12px;background:white;color:var(--muted);}
+.btn-item-delete{padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:none;font-size:11px;color:var(--red);cursor:pointer;}
+.btn-save{width:100%;padding:13px;background:var(--green);color:white;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:900;cursor:pointer;margin-top:8px;}
+.btn-save:active{transform:scale(.98);}
+.save-status{text-align:center;font-size:12px;color:var(--green);margin-top:8px;height:16px;}
 </style>
 </head>
 <body>
@@ -106,6 +117,19 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <button class="btn-print" onclick="window.print()">🖨️ QRコードを一括印刷</button>
   </div>
 
+  <!-- 今月の配布物・アンケート設定 -->
+  <div class="add-form" style="margin-top:20px;">
+    <div class="add-form-title">📋 今月の配布物・アンケート設定</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">作業者画面に表示される項目を設定します</div>
+    <div id="items-list"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button onclick="addItem('distribute')" style="flex:1;padding:10px;background:var(--bg);border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">＋ 配布物を追加</button>
+      <button onclick="addItem('yesno')" style="flex:1;padding:10px;background:var(--bg);border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">＋ アンケートを追加</button>
+    </div>
+    <button class="btn-save" onclick="saveItems()">💾 保存する</button>
+    <div class="save-status" id="save-status"></div>
+  </div>
+
 </div>
 
 <script>
@@ -123,7 +147,7 @@ const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
 const currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
 
 let members = [];
-let assignState = { members: [], cars: {}, assignments: {}, returned: [], updatedAt: '' };
+let assignState = { members: [], cars: {}, assignments: {}, returned: [], dynamicItems: [], updatedAt: '' };
 
 // kintoneから割当JSONを取得
 async function loadAssignState() {
@@ -139,7 +163,7 @@ async function loadAssignState() {
   const raw = data.records[0]['文字列__複数行__0']?.value || '';
   try {
     const parsed = JSON.parse(raw);
-    assignState = { members:[], cars:{}, assignments:{}, returned:[], ...parsed };
+    assignState = { members:[], cars:{}, assignments:{}, returned:[], dynamicItems:[], ...parsed };
     members = assignState.members || [];
   } catch(e) {}
 }
@@ -175,6 +199,7 @@ async function loadMembers() {
     await loadAssignState();
   } catch(e) { console.error(e); }
   renderMembers();
+  renderItems();
 }
 
 async function saveMembers() {
@@ -291,6 +316,64 @@ function copyUrl(url, idx) {
 document.getElementById('name-input').addEventListener('keypress', e => {
   if (e.key === 'Enter') addMember();
 });
+
+// ===== 配布物・アンケート設定 =====
+function renderItems() {
+  const items = assignState.dynamicItems || [];
+  const el = document.getElementById('items-list');
+  if (!el) return;
+
+  if (items.length === 0) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">項目がありません</div>';
+    return;
+  }
+
+  el.innerHTML = items.map((item, i) => `
+    <div class="item-card">
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <span style="font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;background:${item.type==='distribute'?'#e0eaff':'#f5f0e8'};color:${item.type==='distribute'?'var(--blue)':'var(--amber)'};">${item.type==='distribute'?'配布物':'アンケート'}</span>
+          <input class="item-label-input" value="${item.label || ''}" placeholder="項目名を入力" oninput="updateItem(${i},'label',this.value)">
+          <button class="btn-item-delete" onclick="deleteItem(${i})">✕</button>
+        </div>
+        <input class="item-sublabel-input" style="width:100%;" value="${item.sublabel || ''}" placeholder="補足説明（任意）" oninput="updateItem(${i},'sublabel',this.value)">
+      </div>
+    </div>`).join('');
+}
+
+function addItem(type) {
+  if (!assignState.dynamicItems) assignState.dynamicItems = [];
+  assignState.dynamicItems.push({ key: 'item_' + Date.now(), label: '', sublabel: '', type });
+  renderItems();
+}
+
+function updateItem(i, field, value) {
+  if (assignState.dynamicItems?.[i]) {
+    assignState.dynamicItems[i][field] = value;
+  }
+}
+
+function deleteItem(i) {
+  assignState.dynamicItems.splice(i, 1);
+  renderItems();
+}
+
+async function saveItems() {
+  const btn = document.querySelector('.btn-save');
+  const status = document.getElementById('save-status');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+  try {
+    await saveAssignState();
+    status.textContent = '✅ 保存しました';
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  } catch(e) {
+    status.textContent = '❌ 保存失敗: ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+  btn.textContent = '💾 保存する';
+}
 
 // 起動時に読み込み
 loadMembers();
