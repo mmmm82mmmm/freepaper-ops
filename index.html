@@ -288,6 +288,24 @@ let currentMonth = '';
 let records = []; // kintoneから取得したレコード
 let doneCount = 0, absentCount = 0, todoCount = 0;
 
+// セッション保存・復元
+function saveSession() {
+  if (currentWorker && currentMonth) {
+    localStorage.setItem('fp_worker', currentWorker);
+    localStorage.setItem('fp_month', currentMonth);
+  }
+}
+function clearSession() {
+  localStorage.removeItem('fp_worker');
+  localStorage.removeItem('fp_month');
+}
+function loadSession() {
+  return {
+    worker: localStorage.getItem('fp_worker') || '',
+    month: localStorage.getItem('fp_month') || ''
+  };
+}
+
 // ===== URLパラメータチェック =====
 function getUrlParam(key) {
   const params = new URLSearchParams(window.location.search);
@@ -300,11 +318,21 @@ async function init() {
   const workerParam = getUrlParam('worker');
   if (workerParam) {
     currentWorker = workerParam;
-    // ログイン画面をスキップして直接作業開始
     const now = new Date();
-    // 来月号をデフォルトに
     const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
     currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+    saveSession();
+    document.getElementById('login-screen').style.display = 'none';
+    document.getElementById('loading-screen').style.display = 'block';
+    startWorkDirect();
+    return;
+  }
+
+  // セッション復元（リロード対応）
+  const session = loadSession();
+  if (session.worker && session.month) {
+    currentWorker = session.worker;
+    currentMonth = session.month;
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('loading-screen').style.display = 'block';
     startWorkDirect();
@@ -455,6 +483,7 @@ async function startWorkDirect() {
 async function startWork() {
   currentWorker = document.getElementById('worker-select').value;
   currentMonth = document.getElementById('month-select').value;
+  saveSession();
 
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('loading-screen').style.display = 'block';
@@ -463,13 +492,19 @@ async function startWork() {
   try {
     document.getElementById('loading-text').textContent = '担当場所を読み込んでいます...';
 
-    // kintoneから担当者の今月レコードを取得
-    // グループが設定されていない場合は担当者名で絞り込み
-    const query = `文字列__1行_ = "${currentMonth}" and (文字列__1行__10 = "${currentWorker}" or 文字列__1行__10 = "") order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    // 割当グループを取得
+    const state = await getAssignState();
+    const assignedGroup = state.assignments?.[currentWorker];
+    let query;
+    if (assignedGroup) {
+      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    } else {
+      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    }
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
     if (records.length === 0) {
-      throw new Error(`${currentMonth}の担当レコードが見つかりませんでした。\n管理者に確認してください。`);
+      throw new Error(`${currentMonth}の担当レコードが見つかりませんでした。\n運転手にグループの割当を依頼してください。`);
     }
 
     document.getElementById('loading-screen').style.display = 'none';
@@ -887,6 +922,7 @@ async function loadGroup(groupCode) {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';
     document.getElementById('return-footer').style.display = 'block';
+    saveSession();
     renderCards();
   } catch(e) {
     document.getElementById('loading-screen').style.display = 'none';
