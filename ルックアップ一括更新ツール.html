@@ -1,0 +1,262 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>納本データ ルックアップ一括更新</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body {
+    font-family: 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif;
+    background: #1a1a2e;
+    color: #e0e0e0;
+    min-height: 100vh;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 20px;
+  }
+  .container {
+    background: #16213e;
+    border: 1px solid #0f3460;
+    border-radius: 12px;
+    padding: 32px;
+    width: 100%;
+    max-width: 560px;
+    box-shadow: 0 8px 32px rgba(0,0,0,0.4);
+  }
+  h1 {
+    font-size: 18px;
+    font-weight: 700;
+    color: #e94560;
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+  }
+  .subtitle {
+    font-size: 12px;
+    color: #7a8099;
+    margin-bottom: 28px;
+  }
+  .field {
+    margin-bottom: 18px;
+  }
+  label {
+    display: block;
+    font-size: 12px;
+    color: #7a8099;
+    margin-bottom: 6px;
+    letter-spacing: 0.05em;
+  }
+  input {
+    width: 100%;
+    background: #0f3460;
+    border: 1px solid #1a4a7a;
+    border-radius: 6px;
+    padding: 10px 14px;
+    color: #e0e0e0;
+    font-size: 13px;
+    font-family: monospace;
+    outline: none;
+    transition: border-color 0.2s;
+  }
+  input:focus { border-color: #e94560; }
+  .btn {
+    width: 100%;
+    padding: 13px;
+    background: #e94560;
+    border: none;
+    border-radius: 8px;
+    color: white;
+    font-size: 14px;
+    font-weight: 700;
+    cursor: pointer;
+    letter-spacing: 0.05em;
+    transition: background 0.2s, transform 0.1s;
+    margin-top: 8px;
+  }
+  .btn:hover { background: #c73652; }
+  .btn:active { transform: scale(0.98); }
+  .btn:disabled { background: #444; cursor: not-allowed; transform: none; }
+  .log {
+    margin-top: 24px;
+    background: #0a0a1a;
+    border-radius: 8px;
+    padding: 16px;
+    font-size: 12px;
+    font-family: monospace;
+    min-height: 100px;
+    max-height: 300px;
+    overflow-y: auto;
+    line-height: 1.8;
+    display: none;
+  }
+  .log.visible { display: block; }
+  .log-info { color: #7ecfff; }
+  .log-success { color: #4ecca3; }
+  .log-error { color: #e94560; }
+  .log-warn { color: #f6c90e; }
+  .progress-bar {
+    width: 100%;
+    height: 4px;
+    background: #0f3460;
+    border-radius: 2px;
+    margin-top: 16px;
+    display: none;
+    overflow: hidden;
+  }
+  .progress-bar.visible { display: block; }
+  .progress-fill {
+    height: 100%;
+    background: #e94560;
+    border-radius: 2px;
+    width: 0%;
+    transition: width 0.3s;
+  }
+  .note {
+    font-size: 11px;
+    color: #556;
+    margin-top: 6px;
+    line-height: 1.6;
+  }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>納本データ ルックアップ一括更新</h1>
+  <p class="subtitle">設置店マスタのグループ情報を納本データに反映します</p>
+
+  <div class="field">
+    <label>PROXY URL（Cloudflare Workers）</label>
+    <input type="text" id="proxyUrl" value="https://kintone-proxy.mmmm82mmmm.workers.dev" />
+  </div>
+  <div class="field">
+    <label>APIトークン（納本データ管理 App ID: 269）</label>
+    <input type="text" id="apiToken" value="jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF" />
+  </div>
+  <div class="field">
+    <label>作業月</label>
+    <input type="text" id="workMonth" value="2026年5月号" />
+    <p class="note">※ この作業月のレコードのみ更新します</p>
+  </div>
+
+  <button class="btn" id="runBtn" onclick="run()">▶ 一括更新を実行</button>
+
+  <div class="progress-bar" id="progressBar">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const KINTONE_DOMAIN = 'white.cybozu.com';
+const APP_ID = 269;
+
+function log(msg, type='info') {
+  const logEl = document.getElementById('log');
+  logEl.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = `log-${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString('ja-JP')}] ${msg}`;
+  logEl.appendChild(line);
+  logEl.scrollTop = logEl.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progressBar').classList.add('visible');
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+async function kintoneGet(proxyUrl, token, query, fields, offset=0, limit=500) {
+  const params = new URLSearchParams({
+    app: APP_ID,
+    query: `${query} limit ${limit} offset ${offset}`,
+    fields: fields.join(',')
+  });
+  const res = await fetch(`${proxyUrl}/k/v1/records.json?${params}`, {
+    headers: {
+      'X-Cybozu-API-Token': token,
+      'X-Kintone-Domain': KINTONE_DOMAIN
+    }
+  });
+  if (!res.ok) throw new Error(`GET失敗: ${res.status} ${await res.text()}`);
+  return await res.json();
+}
+
+async function kintonePut(proxyUrl, token, records) {
+  const res = await fetch(`${proxyUrl}/k/v1/records.json`, {
+    method: 'PUT',
+    headers: {
+      'X-Cybozu-API-Token': token,
+      'X-Kintone-Domain': KINTONE_DOMAIN,
+      'Content-Type': 'application/json'
+    },
+    body: JSON.stringify({ app: APP_ID, records })
+  });
+  if (!res.ok) throw new Error(`PUT失敗: ${res.status} ${await res.text()}`);
+  return await res.json();
+}
+
+async function run() {
+  const proxyUrl = document.getElementById('proxyUrl').value.trim().replace(/\/$/, '');
+  const token = document.getElementById('apiToken').value.trim();
+  const workMonth = document.getElementById('workMonth').value.trim();
+
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('runBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    // 1. 対象レコードを全件取得
+    log(`作業月「${workMonth}」のレコードを取得中...`);
+    let allRecords = [];
+    let offset = 0;
+    while (true) {
+      const data = await kintoneGet(
+        proxyUrl, token,
+        `文字列__1行_ = "${workMonth}"`,
+        ['$id', 'グループ'],
+        offset
+      );
+      allRecords = allRecords.concat(data.records);
+      if (data.records.length < 500) break;
+      offset += 500;
+    }
+    log(`${allRecords.length}件取得しました`, 'success');
+    setProgress(20);
+
+    if (allRecords.length === 0) {
+      log('対象レコードが0件でした。作業月の表記を確認してください。', 'warn');
+      document.getElementById('runBtn').disabled = false;
+      return;
+    }
+
+    // 2. 100件ずつ更新（kintone上限）
+    const BATCH = 100;
+    let updated = 0;
+    for (let i = 0; i < allRecords.length; i += BATCH) {
+      const batch = allRecords.slice(i, i + BATCH);
+      const updateRecords = batch.map(r => ({
+        id: r.$id.value,
+        record: {} // 空更新でルックアップを再取得させる
+      }));
+      await kintonePut(proxyUrl, token, updateRecords);
+      updated += batch.length;
+      const pct = 20 + Math.round((updated / allRecords.length) * 80);
+      setProgress(pct);
+      log(`${updated}/${allRecords.length}件 更新完了`, 'info');
+    }
+
+    setProgress(100);
+    log(`✅ 完了！${updated}件のルックアップを更新しました`, 'success');
+
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+    console.error(e);
+  }
+
+  document.getElementById('runBtn').disabled = false;
+}
+</script>
+</body>
+</html>
