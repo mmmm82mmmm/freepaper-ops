@@ -339,6 +339,17 @@ async function init() {
   if (session.worker && session.month) {
     currentWorker = session.worker;
     currentMonth = session.month;
+    // セッション復元でも作業者セレクトを更新しておく（ログイン画面に戻った場合のため）
+    try {
+      const sessionState = await getAssignState();
+      const sessionMembers = sessionState.members && sessionState.members.length > 0 ? sessionState.members : WORKERS;
+      const wselSession = document.getElementById('worker-select');
+      sessionMembers.forEach(w => {
+        const o = document.createElement('option');
+        o.value = w; o.textContent = w + ' さん';
+        wselSession.appendChild(o);
+      });
+    } catch(e) {}
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('loading-screen').style.display = 'block';
     startWorkDirect();
