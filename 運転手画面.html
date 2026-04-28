@@ -506,7 +506,14 @@ async function loadAssignData() {
       const g = r['文字列__1行__0']?.value;
       if (g) groupSet.add(g);
     });
-    allGroups = [...groupSet].sort();
+    allGroups = [...groupSet].sort((a, b) => {
+      const routeA = a.replace(/[0-9]/g, '');
+      const routeB = b.replace(/[0-9]/g, '');
+      if (routeA !== routeB) return routeA.localeCompare(routeB);
+      const numA = parseFloat(a.replace(/[^0-9]/g, '')) || 0;
+      const numB = parseFloat(b.replace(/[^0-9]/g, '')) || 0;
+      return numA - numB;
+    });
 
     // 作業者はWORKER_COLORSベースで全員リストアップ
     // ルートフィルタ更新
