@@ -146,7 +146,7 @@ async function run() {
       if (osoi.length > 0) osaUpdated++;
       return {
         id: r['$id'].value,
-        record: { 'チェックボックス': { value: osoi } }
+        record: { 'チェックボックス_0': { value: osoi } }
       };
     });
     log(`遅フラグあり: ${osaUpdated}件`);
