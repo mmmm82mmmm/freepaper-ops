@@ -479,11 +479,12 @@ function toggleRoute(id) {
   }
 }
 
-function switchTab(tab) {
+function switchTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  event.target.classList.add('active');
+  (el || event.target).classList.add('active');
   document.getElementById('screen-' + tab).classList.add('active');
+  localStorage.setItem('fp_driver_tab', tab);
   if (tab === 'assign') renderAssign();
 }
 
@@ -815,9 +816,21 @@ function renderAssign() {
   assignEl.innerHTML = html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>';
 }
 
+// 起動時にタブ状態を復元
+function restoreTab() {
+  const saved = localStorage.getItem('fp_driver_tab') || 'assign';
+  const tabs = document.querySelectorAll('.tab');
+  const tabNames = ['progress', 'route', 'assign'];
+  const idx = tabNames.indexOf(saved);
+  if (idx >= 0) {
+    switchTab(saved, tabs[idx]);
+  }
+}
+
 // 起動時に読み込み
 initMonthSelect();
 loadData();
+setTimeout(restoreTab, 500);
 
 // 30秒ごとに自動更新
 setInterval(loadData, 30000);
