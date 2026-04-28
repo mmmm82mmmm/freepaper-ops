@@ -1,0 +1,264 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>月次納本データ作成ツール</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .container { background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 32px; width: 100%; max-width: 560px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  h1 { font-size: 18px; font-weight: 700; color: #e94560; margin-bottom: 6px; letter-spacing: 0.05em; }
+  .subtitle { font-size: 12px; color: #7a8099; margin-bottom: 28px; }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 12px; color: #7a8099; margin-bottom: 6px; }
+  input, select { width: 100%; background: #0f3460; border: 1px solid #1a4a7a; border-radius: 6px; padding: 10px 14px; color: #e0e0e0; font-size: 13px; font-family: monospace; outline: none; transition: border-color 0.2s; }
+  input:focus, select:focus { border-color: #e94560; }
+  select option { background: #0f3460; }
+  .btn { width: 100%; padding: 13px; background: #e94560; border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 700; cursor: pointer; letter-spacing: 0.05em; transition: background 0.2s; margin-top: 8px; }
+  .btn:hover { background: #c73652; }
+  .btn:disabled { background: #444; cursor: not-allowed; }
+  .btn.safe { background: #0f3460; margin-top: 0; }
+  .btn.safe:hover { background: #1a4a7a; }
+  .btn.danger { background: #7a1a1a; }
+  .btn.danger:hover { background: #a02020; }
+  .mode-tabs { display: flex; gap: 8px; margin-bottom: 20px; }
+  .mode-tab { flex: 1; padding: 10px; border: 2px solid #0f3460; border-radius: 8px; text-align: center; cursor: pointer; font-size: 12px; font-weight: 700; color: #7a8099; transition: all 0.2s; }
+  .mode-tab.active { border-color: #e94560; color: #e94560; background: #1a0a10; }
+  .mode-desc { font-size: 11px; color: #556; background: #0a0a1a; border-radius: 6px; padding: 10px 14px; margin-bottom: 18px; line-height: 1.8; }
+  .warning-box { background: #2a1a0a; border: 1px solid #e94560; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #f6c90e; margin-bottom: 16px; line-height: 1.8; display: none; }
+  .log { margin-top: 24px; background: #0a0a1a; border-radius: 8px; padding: 16px; font-size: 12px; font-family: monospace; min-height: 100px; max-height: 320px; overflow-y: auto; line-height: 1.8; display: none; }
+  .log.visible { display: block; }
+  .log-info { color: #7ecfff; }
+  .log-success { color: #4ecca3; }
+  .log-error { color: #e94560; }
+  .log-warn { color: #f6c90e; }
+  .progress-bar { width: 100%; height: 4px; background: #0f3460; border-radius: 2px; margin-top: 16px; display: none; overflow: hidden; }
+  .progress-bar.visible { display: block; }
+  .progress-fill { height: 100%; background: #e94560; border-radius: 2px; width: 0%; transition: width 0.3s; }
+  .step-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .step-btns .btn { margin-top: 0; }
+  .note { font-size: 11px; color: #556; margin-top: 6px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>月次納本データ作成ツール</h1>
+  <p class="subtitle">設置店マスタから納本データを一括作成します</p>
+
+  <!-- モード選択 -->
+  <div class="mode-tabs">
+    <div class="mode-tab active" id="tab-add" onclick="setMode('add')">➕ 追加のみ</div>
+    <div class="mode-tab" id="tab-reset" onclick="setMode('reset')">🔄 削除して再作成</div>
+  </div>
+
+  <div class="mode-desc" id="mode-desc">
+    ✅ <strong>通常運用</strong>：既存データを残したまま指定月のレコードを新規追加します。<br>
+    過去データが蓄積されるので月別比較にも使えます。
+  </div>
+
+  <div class="warning-box" id="warning-box">
+    ⚠️ <strong>やり直しモード</strong>：指定月のレコードを全件削除してから再作成します。<br>
+    削除したデータは元に戻せません。通常納本数の修正など、やり直しが必要な時のみ使用してください。
+  </div>
+
+  <div class="field">
+    <label>PROXY URL</label>
+    <input type="text" id="proxyUrl" value="https://kintone-proxy.mmmm82mmmm.workers.dev" />
+  </div>
+  <div class="field">
+    <label>APIトークン：設置店マスタ（App ID: 268）</label>
+    <input type="text" id="tokenMaster" value="STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg" />
+  </div>
+  <div class="field">
+    <label>APIトークン：納本データ管理（App ID: 269）</label>
+    <input type="text" id="tokenNohon" value="jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF" />
+  </div>
+  <div class="field">
+    <label>作業月</label>
+    <input type="text" id="workMonth" value="2026年6月号" />
+    <p class="note">※ 設置店マスタの稼働中レコードからこの作業月でレコードを作成します</p>
+  </div>
+
+  <div class="step-btns">
+    <button class="btn safe" id="previewBtn" onclick="preview()">🔍 内容を確認</button>
+    <button class="btn" id="runBtn" onclick="run()" disabled>▶ 実行</button>
+  </div>
+
+  <div class="progress-bar" id="progressBar">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+
+<script>
+const PROXY = () => document.getElementById('proxyUrl').value.trim().replace(/\/$/, '');
+const APP_MASTER = 268;
+const APP_NOHON  = 269;
+let currentMode = 'add';
+let masterRecords = [];
+let existingIds = [];
+
+function setMode(mode) {
+  currentMode = mode;
+  document.getElementById('tab-add').classList.toggle('active', mode === 'add');
+  document.getElementById('tab-reset').classList.toggle('active', mode === 'reset');
+  document.getElementById('mode-desc').style.display = mode === 'add' ? 'block' : 'none';
+  document.getElementById('warning-box').style.display = mode === 'reset' ? 'block' : 'none';
+  const runBtn = document.getElementById('runBtn');
+  runBtn.className = mode === 'reset' ? 'btn danger' : 'btn';
+  runBtn.disabled = true;
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('log').classList.remove('visible');
+}
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = `log-${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString('ja-JP')}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progressBar').classList.add('visible');
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+async function getAll(appId, token, query) {
+  let all = [], offset = 0;
+  while (true) {
+    const params = new URLSearchParams({ subdomain: 'white', app: appId, query: `${query} limit 500 offset ${offset}` });
+    const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, { headers: { 'X-Cybozu-API-Token': token } });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`取得失敗: ${JSON.stringify(data)}`);
+    all = all.concat(data.records);
+    if (data.records.length < 500) break;
+    offset += 500;
+  }
+  return all;
+}
+
+function buildRecord(master, workMonth) {
+  return {
+    文字列__1行_:    { value: workMonth },
+    文字列__1行__5:  { value: master['文字列__1行__0']?.value || '' },
+    文字列__1行__1:  { value: master['文字列__1行__2']?.value || '' },
+    文字列__1行__2:  { value: master['文字列__1行__3']?.value || '' },
+    文字列__1行__3:  { value: master['文字列__1行__7']?.value || '' },
+    文字列__1行__4:  { value: master['ドロップダウン_0']?.value || '' },
+    数値_1:          { value: parseFloat(master['数値_2']?.value) || 0 },
+    数値_2:          { value: master['数値_4']?.value || '' },
+    チェックボックス_0: { value: master['チェックボックス']?.value || [] },
+    文字列__1行__0:  { value: master['文字列__1行__11']?.value || '' },
+    文字列__1行__7:  { value: master['文字列__1行__9']?.value || '' },
+    文字列__1行__9:  { value: master['文字列__複数行__0']?.value || '' },
+  };
+}
+
+async function preview() {
+  const tokenMaster = document.getElementById('tokenMaster').value.trim();
+  const tokenNohon  = document.getElementById('tokenNohon').value.trim();
+  const workMonth   = document.getElementById('workMonth').value.trim();
+
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('previewBtn').disabled = true;
+  document.getElementById('runBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    log('設置店マスタ（稼働中）を取得中...');
+    masterRecords = await getAll(APP_MASTER, tokenMaster, 'ドロップダウン in ("稼働中") order by レコード番号 asc');
+    const withGroup = masterRecords.filter(r => r['文字列__1行__11']?.value).length;
+    log(`設置店マスタ: ${masterRecords.length}件（グループ設定済み: ${withGroup}件）`, 'success');
+    setProgress(50);
+
+    if (currentMode === 'reset') {
+      log(`「${workMonth}」の既存レコードを確認中...`);
+      const existing = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${workMonth}"`);
+      existingIds = existing.map(r => r['$id'].value);
+      log(`削除対象: ${existingIds.length}件`, 'warn');
+      log(`再作成予定: ${masterRecords.length}件`, 'success');
+      log('--- ⚠️ 削除して再作成 を押すと既存データが削除されます ---', 'warn');
+      document.getElementById('runBtn').textContent = `🗑 ${existingIds.length}件削除して再作成`;
+    } else {
+      log(`作成予定: ${masterRecords.length}件（作業月: ${workMonth}）`, 'success');
+      log('--- 確認できたら「▶ 実行」を押してください ---', 'warn');
+      document.getElementById('runBtn').textContent = `▶ ${masterRecords.length}件を追加`;
+    }
+
+    setProgress(100);
+    document.getElementById('runBtn').disabled = false;
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+  }
+  document.getElementById('previewBtn').disabled = false;
+}
+
+async function run() {
+  const tokenNohon = document.getElementById('tokenNohon').value.trim();
+  const workMonth  = document.getElementById('workMonth').value.trim();
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('previewBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    const BATCH = 100;
+
+    // 削除モードの場合は先に削除
+    if (currentMode === 'reset' && existingIds.length > 0) {
+      log(`${existingIds.length}件を削除中...`);
+      let deleted = 0;
+      for (let i = 0; i < existingIds.length; i += BATCH) {
+        const batch = existingIds.slice(i, i + BATCH);
+        const params = new URLSearchParams({ subdomain: 'white', app: APP_NOHON });
+        batch.forEach(id => params.append('ids[]', id));
+        const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+          method: 'DELETE',
+          headers: { 'X-Cybozu-API-Token': tokenNohon }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(`削除失敗: ${JSON.stringify(data)}`);
+        deleted += batch.length;
+        setProgress(Math.round(deleted / existingIds.length * 40));
+        log(`${deleted} / ${existingIds.length}件 削除済み`);
+      }
+      log(`✅ ${deleted}件削除完了`, 'success');
+    }
+
+    // レコード作成
+    log(`${masterRecords.length}件を作成中...`);
+    let created = 0;
+    for (let i = 0; i < masterRecords.length; i += BATCH) {
+      const batch = masterRecords.slice(i, i + BATCH);
+      const records = batch.map(m => buildRecord(m, workMonth));
+      const params = new URLSearchParams({ subdomain: 'white' });
+      const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+        method: 'POST',
+        headers: { 'X-Cybozu-API-Token': tokenNohon, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: APP_NOHON, records })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(`作成失敗: ${JSON.stringify(data)}`);
+      created += batch.length;
+      const basePct = currentMode === 'reset' ? 40 : 0;
+      setProgress(basePct + Math.round(created / masterRecords.length * (100 - basePct)));
+      log(`${created} / ${masterRecords.length}件 作成済み`);
+    }
+
+    setProgress(100);
+    log(`✅ 完了！${created}件の${workMonth}レコードを作成しました`, 'success');
+    if (currentMode === 'add') {
+      log(`💡 続けて遅フラグ更新ツールを実行してください`, 'warn');
+    }
+
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+  }
+  document.getElementById('previewBtn').disabled = false;
+}
+</script>
+</body>
+</html>
