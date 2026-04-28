@@ -418,7 +418,16 @@ async function saveAssignState(state) {
 async function startWorkDirect() {
   try {
     document.getElementById('loading-text').textContent = '担当場所を読み込んでいます...';
-    const query = `文字列__1行_ = "${currentMonth}" and (文字列__1行__10 = "${currentWorker}" or 文字列__1行__10 = "") order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    // 割当グループを取得
+    const state = await getAssignState();
+    const assignedGroup = state.assignments?.[currentWorker];
+    let query;
+    if (assignedGroup) {
+      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    } else {
+      // グループ未割当の場合は担当者名で絞り込み
+      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    }
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
     if (records.length === 0) {
       // データがなければ月選択画面を表示
