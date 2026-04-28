@@ -554,6 +554,8 @@ function renderCards() {
   const container = document.getElementById('cards-container');
   container.innerHTML = '';
 
+  updateDriverLocationBar();
+
   Object.entries(groups).forEach(([groupName, recs]) => {
     // グループヘッダー
     const gh = document.createElement('div');
@@ -830,6 +832,25 @@ function resetInputCard(recId) {
 function toggleBtn(btn, type) {
   btn.closest('.toggle-group').querySelectorAll('.toggle-btn').forEach(b => b.className = 'toggle-btn');
   btn.classList.add('sel-' + type);
+}
+
+// ===== 運転手位置情報バー更新 =====
+async function updateDriverLocationBar() {
+  try {
+    const state = await getAssignState();
+    const loc = state.driverLocation;
+    const bar = document.getElementById('driver-location-bar');
+    const link = document.getElementById('driver-location-bar-link');
+    const time = document.getElementById('driver-location-bar-time');
+    if (bar && link && loc) {
+      bar.style.display = 'block';
+      link.href = loc.url;
+      if (time && loc.updatedAt) {
+        const t = new Date(loc.updatedAt).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+        time.textContent = `(${t}時点)`;
+      }
+    }
+  } catch(e) { console.error(e); }
 }
 
 // ===== 進捗 =====
