@@ -101,6 +101,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div class="tab active" onclick="switchTab('summary', this)">📈 サマリー</div>
     <div class="tab" onclick="switchTab('route', this)">🗺️ ルート別</div>
     <div class="tab" onclick="switchTab('worker', this)">👤 作業者別</div>
+    <div class="tab" onclick="switchTab('absent', this)">🚫 不在一覧</div>
     <div class="tab" onclick="switchTab('detail', this)">📋 明細</div>
     <div class="tab" onclick="switchTab('shouka', this)">🔥 消化分析</div>
   </div>
@@ -196,6 +197,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   </div>
 </div>
 
+<!-- 不在一覧 -->
+<div class="screen container" id="screen-absent">
+  <div id="absent-content"></div>
+</div>
+
 <!-- 消化分析 -->
 <div class="screen container" id="screen-shouka">
   <div id="shouka-content"></div>
@@ -260,6 +266,7 @@ async function loadData() {
     renderSummary();
     renderRouteTable();
     renderWorkerTable();
+    renderAbsent();
     renderDetailTable();
     renderShouka();
 
@@ -300,25 +307,34 @@ function renderSummary() {
   document.getElementById('leg-todo').textContent = todo.length + '件';
   drawDonut(done.length, absent.length, todo.length);
 
-  // ルート別棒グラフ
+  // ルート別棒グラフ（遅分離）
   const routeMap = {};
   allRecords.forEach(r => {
-    const route = getVal(r,'文字列__1行__4') || '未設定';
+    const route = getRouteKey(r);
     if (!routeMap[route]) routeMap[route] = 0;
     routeMap[route] += getNum(r,'数値');
   });
+  const sortedRouteKeys = Object.keys(routeMap).sort((a, b) => {
+    const la = a.replace('遅',''), lb = b.replace('遅','');
+    if (la !== lb) return la.localeCompare(lb);
+    return a.includes('遅') ? 1 : -1;
+  });
   const maxVal = Math.max(...Object.values(routeMap), 1);
   const barChart = document.getElementById('route-bar-chart');
-  barChart.innerHTML = Object.entries(routeMap).sort().map(([route, val]) => `
+  barChart.innerHTML = sortedRouteKeys.map(route => {
+    const val = routeMap[route];
+    const isOsoi = route.includes('遅');
+    return `
     <div class="bar-row">
-      <div class="bar-label">${route}</div>
+      <div class="bar-label" style="font-size:10px;${isOsoi ? 'color:var(--amber)' : ''}">${route}</div>
       <div class="bar-wrap">
-        <div class="bar-fill" style="width:${val/maxVal*100}%;background:var(--blue)">
+        <div class="bar-fill" style="width:${val/maxVal*100}%;background:${isOsoi ? 'var(--amber)' : 'var(--blue)'}">
           ${val > 0 ? `<span class="bar-fill-text">${val.toLocaleString()}</span>` : ''}
         </div>
       </div>
       <div class="bar-val">${val.toLocaleString()}冊</div>
-    </div>`).join('');
+    </div>`;
+  }).join('');
 }
 
 function drawDonut(done, absent, todo) {
@@ -356,10 +372,17 @@ function drawDonut(done, absent, todo) {
   ctx.fill();
 }
 
+function getRouteKey(r) {
+  // 遅フラグで分離（チェックボックス_0に値があれば「遅」扱い）
+  const route = getVal(r,'文字列__1行__4') || '未設定';
+  const isOsoi = (r['チェックボックス_0']?.value || []).length > 0;
+  return isOsoi ? route + '遅' : route;
+}
+
 function renderRouteTable() {
   const routeMap = {};
   allRecords.forEach(r => {
-    const route = getVal(r,'文字列__1行__4') || '未設定';
+    const route = getRouteKey(r);
     if (!routeMap[route]) routeMap[route] = { done:0, absent:0, todo:0, nabon:0, henkyaku:0 };
     const s = getVal(r,'ドロップダウン');
     if (s === '完了') { routeMap[route].done++; routeMap[route].nabon += getNum(r,'数値'); routeMap[route].henkyaku += getNum(r,'数値_0'); }
@@ -367,11 +390,20 @@ function renderRouteTable() {
     else routeMap[route].todo++;
   });
 
-  const rows = Object.entries(routeMap).sort().map(([route, d]) => {
+  // ルートを正しくソート（A→A遅→B→B遅...）
+  const sortedRoutes = Object.keys(routeMap).sort((a, b) => {
+    const la = a.replace('遅',''), lb = b.replace('遅','');
+    if (la !== lb) return la.localeCompare(lb);
+    return a.includes('遅') ? 1 : -1;
+  });
+
+  const rows = sortedRoutes.map(route => {
+    const d = routeMap[route];
     const total = d.done + d.absent + d.todo;
     const pct = total > 0 ? Math.round(d.done/total*100) : 0;
-    return `<tr>
-      <td><strong>ルート${route}</strong></td>
+    const isOsoi = route.includes('遅');
+    return `<tr style="${isOsoi ? 'background:#fffbf0' : ''}">
+      <td><strong>ルート${route}</strong>${isOsoi ? ' <span style="font-size:10px;color:var(--amber);font-weight:700;">遅</span>' : ''}</td>
       <td class="mono">${total}</td>
       <td class="mono" style="color:var(--green)">${d.done}</td>
       <td class="mono" style="color:var(--amber)">${d.absent}</td>
@@ -384,7 +416,7 @@ function renderRouteTable() {
 
   document.getElementById('route-table-content').innerHTML = `
     <div class="section" style="margin-top:16px;overflow-x:auto">
-      <div class="section-title">ルート別集計</div>
+      <div class="section-title">ルート別集計（遅分離）</div>
       <table class="data-table">
         <thead><tr>
           <th>ルート</th><th>総件数</th><th>完了</th><th>不在</th><th>未着手</th><th>納本</th><th>返却</th><th>完了率</th>
@@ -611,6 +643,87 @@ function renderShouka() {
       </div>
     </div>
   `;
+}
+
+function renderAbsent() {
+  const absentRecords = allRecords
+    .filter(r => getVal(r,'ドロップダウン') === '不在')
+    .sort((a, b) => {
+      const ra = getRouteKey(a), rb = getRouteKey(b);
+      if (ra !== rb) return ra.localeCompare(rb);
+      return getNum(a,'数値_1') - getNum(b,'数値_1');
+    });
+
+  if (!absentRecords.length) {
+    document.getElementById('absent-content').innerHTML = `
+      <div style="text-align:center;padding:60px 20px;color:var(--muted);">
+        <div style="font-size:40px;margin-bottom:12px">✅</div>
+        <div style="font-size:14px;font-weight:700">不在店舗はありません</div>
+      </div>`;
+    return;
+  }
+
+  // ルート別にグループ化
+  const routeGroups = {};
+  absentRecords.forEach(r => {
+    const route = getRouteKey(r);
+    if (!routeGroups[route]) routeGroups[route] = [];
+    routeGroups[route].push(r);
+  });
+
+  const sortedRoutes = Object.keys(routeGroups).sort((a, b) => {
+    const la = a.replace('遅',''), lb = b.replace('遅','');
+    if (la !== lb) return la.localeCompare(lb);
+    return a.includes('遅') ? 1 : -1;
+  });
+
+  const html = `
+    <div style="margin-top:16px">
+      <div style="background:var(--card);border-radius:10px;padding:12px 16px;margin-bottom:14px;display:flex;align-items:center;gap:12px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+        <div style="font-size:28px;font-family:'DM Mono',monospace;font-weight:500;color:var(--amber)">${absentRecords.length}</div>
+        <div>
+          <div style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.08em">不在件数</div>
+          <div style="font-size:12px;color:var(--muted)">2周目の訪問が必要です</div>
+        </div>
+      </div>
+      ${sortedRoutes.map(route => {
+        const recs = routeGroups[route];
+        const isOsoi = route.includes('遅');
+        return `
+          <div class="section" style="margin-bottom:12px;">
+            <div class="section-title">
+              ルート${route}
+              ${isOsoi ? '<span style="font-size:10px;color:var(--amber);font-weight:700;margin-left:4px">遅</span>' : ''}
+              <span style="font-size:11px;color:var(--amber);font-weight:700">${recs.length}件</span>
+            </div>
+            ${recs.map(r => {
+              const t1 = getVal(r,'文字列__1行__11');
+              const t2 = getVal(r,'文字列__1行__12');
+              const t3 = getVal(r,'文字列__1行__13');
+              const times = [t1,t2,t3].filter(Boolean).map((t,i) => `${i+1}回目 ${t}`).join('　');
+              const location = getVal(r,'文字列__1行__7');
+              const comment = getVal(r,'文字列__1行__9');
+              return `
+                <div style="padding:10px 0;border-bottom:1px solid var(--border);">
+                  <div style="display:flex;align-items:flex-start;justify-content:space-between;gap:8px;">
+                    <div style="flex:1;">
+                      <div style="font-size:13px;font-weight:700;">${getVal(r,'文字列__1行__1')}</div>
+                      <div style="font-size:11px;color:var(--muted);margin-top:2px;">${getVal(r,'文字列__1行__2')}${getVal(r,'文字列__1行__3') ? ' '+getVal(r,'文字列__1行__3')+'階' : ''}</div>
+                      ${location ? `<div style="font-size:11px;color:#555;margin-top:2px;">📍${location}</div>` : ''}
+                      ${comment ? `<div style="font-size:11px;color:#7a5a00;background:#fff8e8;padding:2px 6px;border-radius:4px;margin-top:3px;border-left:2px solid var(--amber);">💬${comment}</div>` : ''}
+                    </div>
+                    <div style="flex-shrink:0;text-align:right;">
+                      <div style="font-family:'DM Mono',monospace;font-size:10px;color:var(--amber);">${times || '時刻未記録'}</div>
+                      <div style="font-size:10px;color:var(--muted);margin-top:2px;">担当: ${getVal(r,'文字列__1行__10') || '未割当'}</div>
+                    </div>
+                  </div>
+                </div>`;
+            }).join('')}
+          </div>`;
+      }).join('')}
+    </div>`;
+
+  document.getElementById('absent-content').innerHTML = html;
 }
 
 function switchTab(tab, el) {
