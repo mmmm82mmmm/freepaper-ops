@@ -109,6 +109,19 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 
 /* LAST UPDATE */
 .last-update{text-align:center;font-size:11px;color:var(--muted);margin-top:8px;}
+
+/* ASSIGN */
+.assign-group{background:var(--card);border-radius:10px;margin-bottom:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.assign-group-header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);}
+.assign-group-code{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;background:var(--ink);color:white;padding:3px 8px;border-radius:4px;min-width:36px;text-align:center;}
+.assign-group-info{flex:1;font-size:12px;color:var(--muted);}
+.assign-group-worker{font-size:12px;font-weight:700;color:var(--blue);}
+.assign-btn-row{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;}
+.assign-worker-btn{padding:8px 14px;border-radius:20px;border:2px solid var(--border);font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:white;color:var(--ink);transition:all .15s;}
+.assign-worker-btn:active{transform:scale(.95);}
+.assign-worker-btn.assigned{background:var(--blue);color:white;border-color:var(--blue);}
+.assign-worker-btn.returned{background:#e8f5e9;color:var(--green);border-color:var(--green);}
+.returned-chip{padding:8px 14px;border-radius:20px;background:#e8f5e9;border:2px solid var(--green);font-size:12px;font-weight:700;color:var(--green);cursor:default;}
 </style>
 </head>
 <body>
@@ -121,6 +134,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div class="tabs">
     <div class="tab active" onclick="switchTab('progress')">📊 進捗確認</div>
     <div class="tab" onclick="switchTab('route')">🗺️ ルート別</div>
+    <div class="tab" onclick="switchTab('assign')">👥 グループ割当</div>
   </div>
 </div>
 
@@ -183,6 +197,30 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div id="route-content"></div>
 </div>
 
+<!-- グループ割当スクリーン -->
+<div class="screen" id="screen-assign">
+  <div style="display:flex;gap:10px;margin-bottom:12px">
+    <select id="route-filter" onchange="renderAssign()" style="flex:1;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:var(--card);">
+      <option value="">全ルート</option>
+    </select>
+    <button onclick="loadAssignData()" style="padding:10px 16px;background:var(--ink);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">🔄 更新</button>
+  </div>
+
+  <!-- 戻り報告 -->
+  <div style="margin-bottom:16px">
+    <div class="section-title">戻り待ち作業者</div>
+    <div id="returned-list" style="display:flex;flex-wrap:wrap;gap:8px;min-height:40px;padding:8px;background:var(--card);border-radius:10px;border:2px dashed var(--border);">
+      <div style="color:var(--muted);font-size:12px;align-self:center">なし</div>
+    </div>
+  </div>
+
+  <!-- グループ一覧 -->
+  <div>
+    <div class="section-title">グループ割当</div>
+    <div id="assign-list"></div>
+  </div>
+</div>
+
 <!-- 更新ボタン -->
 <button class="refresh-btn" id="refresh-btn" onclick="loadData()">🔄</button>
 
@@ -197,6 +235,9 @@ const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab
 
 let allRecords = [];
 let currentMonth = '';
+let assignState = { assignments: {}, returned: [], updatedAt: '' };
+let allGroups = []; // 全グループコード一覧
+let workerList = []; // 作業者一覧
 
 // 作業月を選択（画面上部に選択肢を表示）
 const now = new Date();
@@ -233,6 +274,7 @@ async function loadData() {
     document.getElementById('month-badge').textContent = currentMonth;
     renderProgress();
     renderRoute();
+    await loadAssignData();
 
     document.getElementById('last-update').textContent =
       `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`;
@@ -387,6 +429,7 @@ function switchTab(tab) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   event.target.classList.add('active');
   document.getElementById('screen-' + tab).classList.add('active');
+  if (tab === 'assign') renderAssign();
 }
 
 // 月選択セレクトを初期化
@@ -403,6 +446,142 @@ function initMonthSelect() {
 function changeMonth(month) {
   currentMonth = month;
   loadData();
+}
+
+// ===== グループ割当 =====
+async function loadAssignData() {
+  try {
+    // 割当JSON取得
+    const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
+    if (recs.length) {
+      const raw = recs[0]['文字列__複数行__0']?.value || '';
+      try { assignState = JSON.parse(raw); } catch(e) { assignState = { assignments:{}, returned:[], updatedAt:'' }; }
+    }
+    // グループ一覧を収集
+    const groupSet = new Set();
+    const workerSet = new Set();
+    allRecords.forEach(r => {
+      const g = r['文字列__1行__0']?.value;
+      if (g) groupSet.add(g);
+      const w = r['文字列__1行__10']?.value;
+      if (w) workerSet.add(w);
+    });
+    allGroups = [...groupSet].sort();
+    workerList = [...workerSet].filter(w => w);
+
+    // ルートフィルタ更新
+    const routes = [...new Set(allGroups.map(g => g.replace(/[0-9]/g,'')))].sort();
+    const sel = document.getElementById('route-filter');
+    const cur = sel.value;
+    sel.innerHTML = '<option value="">全ルート</option>';
+    routes.forEach(r => {
+      const o = document.createElement('option');
+      o.value = r; o.textContent = `ルート${r.toUpperCase()}`;
+      if (r === cur) o.selected = true;
+      sel.appendChild(o);
+    });
+
+    renderAssign();
+  } catch(e) { console.error('割当データ取得エラー:', e); }
+}
+
+async function saveAssign() {
+  const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
+  if (!recs.length) throw new Error('レコードが見つかりません');
+  const id = recs[0]['$id'].value;
+  const params = new URLSearchParams({ subdomain: 'white' });
+  const res = await fetch(`${PROXY}/k/v1/record.json?${params}`, {
+    method: 'PUT',
+    headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app: APP, id, record: { '文字列__複数行__0': { value: JSON.stringify(assignState, null, 2) } } })
+  });
+  if (!res.ok) throw new Error('保存失敗');
+}
+
+async function assignWorker(groupCode, workerName) {
+  // 既存の割当を外す
+  Object.keys(assignState.assignments).forEach(w => {
+    if (assignState.assignments[w] === groupCode) delete assignState.assignments[w];
+  });
+  if (workerName) {
+    assignState.assignments[workerName] = groupCode;
+    // returnedから外す
+    assignState.returned = assignState.returned.filter(w => w !== workerName);
+  }
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  renderAssign();
+}
+
+function renderAssign() {
+  const routeFilter = document.getElementById('route-filter')?.value || '';
+
+  // 戻り待ち作業者
+  const returnedEl = document.getElementById('returned-list');
+  if (assignState.returned && assignState.returned.length > 0) {
+    returnedEl.innerHTML = assignState.returned.map(w =>
+      `<div class="returned-chip">🏃 ${w}</div>`
+    ).join('');
+  } else {
+    returnedEl.innerHTML = '<div style="color:var(--muted);font-size:12px;align-self:center">なし</div>';
+  }
+
+  // グループ割当一覧
+  const assignEl = document.getElementById('assign-list');
+  const filtered = routeFilter
+    ? allGroups.filter(g => g.startsWith(routeFilter))
+    : allGroups;
+
+  if (!filtered.length) {
+    assignEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">データなし</div>';
+    return;
+  }
+
+  // グループの店舗数を集計
+  const groupCounts = {};
+  const groupDone = {};
+  allRecords.forEach(r => {
+    const g = r['文字列__1行__0']?.value;
+    if (!g) return;
+    groupCounts[g] = (groupCounts[g] || 0) + 1;
+    if (r['ドロップダウン']?.value === '完了' || r['ドロップダウン']?.value === '不在') {
+      groupDone[g] = (groupDone[g] || 0) + 1;
+    }
+  });
+
+  // 作業者ボタンリスト（全作業者）
+  const allWorkers = [...new Set([
+    ...Object.keys(assignState.assignments),
+    ...(assignState.returned || []),
+    ...workerList
+  ])].filter(w => w);
+
+  assignEl.innerHTML = filtered.map(g => {
+    const assignedWorker = Object.entries(assignState.assignments).find(([w, grp]) => grp === g)?.[0] || '';
+    const count = groupCounts[g] || 0;
+    const done = groupDone[g] || 0;
+    const isDone = count > 0 && done >= count;
+
+    const workerBtns = allWorkers.map(w => {
+      const isAssigned = assignedWorker === w;
+      const isReturned = (assignState.returned || []).includes(w);
+      const cls = isAssigned ? 'assigned' : isReturned ? 'returned' : '';
+      return `<button class="assign-worker-btn ${cls}" onclick="assignWorker('${g}','${w}')">${w}</button>`;
+    }).join('');
+
+    return `
+      <div class="assign-group" style="${isDone ? 'opacity:0.5' : ''}">
+        <div class="assign-group-header">
+          <div class="assign-group-code">${g}</div>
+          <div class="assign-group-info">${count}件 ${done > 0 ? `(完了${done})` : ''}</div>
+          <div class="assign-group-worker">${assignedWorker ? '👤 ' + assignedWorker : '未割当'}</div>
+        </div>
+        <div class="assign-btn-row">
+          ${workerBtns}
+          ${assignedWorker ? `<button class="assign-worker-btn" onclick="assignWorker('${g}','')" style="color:var(--red);border-color:var(--red)">✕ 解除</button>` : ''}
+        </div>
+      </div>`;
+  }).join('');
 }
 
 // 起動時に読み込み

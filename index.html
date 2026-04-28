@@ -221,6 +221,26 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   </button>
 </div>
 
+<!-- 待機画面 -->
+<div id="waiting-screen" style="display:none">
+  <div class="app-header" style="position:relative">
+    <div class="app-header-top">
+      <div class="app-title">📦 フリーペーパー作業</div>
+      <div class="worker-name" id="waiting-worker-name"></div>
+    </div>
+  </div>
+  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:20px;padding:24px;text-align:center;">
+    <div style="font-size:48px">🚐</div>
+    <div style="font-size:22px;font-weight:900">お疲れ様でした！</div>
+    <div style="font-size:14px;color:var(--muted);line-height:1.8">戻りを報告しました。<br>運転手が次のグループを割り当て中です...</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+      <div class="spinner"></div>
+      <div style="font-size:13px;color:var(--muted)">割当を待っています</div>
+    </div>
+    <div style="font-size:12px;color:var(--muted);margin-top:16px">次のグループ: <strong id="waiting-group" style="font-family:'DM Mono',monospace;color:var(--ink)">待機中</strong></div>
+  </div>
+</div>
+
 <!-- 確認モーダル -->
 <div class="modal-overlay" id="return-modal">
   <div class="modal-sheet">
@@ -250,6 +270,7 @@ const APP_MASTER = 268;
 
 const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
 const BASE = `${PROXY}/kintone/v1`;
+const ASSIGN_RECORD_ID = 1; // 割当JSON保存用レコードID（作業月の最初のレコード）
 
 // ===== 今月の流動項目設定（毎月ここを変更）=====
 const DYNAMIC_ITEMS = [
@@ -356,6 +377,25 @@ async function kintoneUpdate(appId, token, id, fields) {
   });
   if (!res.ok) throw new Error(`更新エラー: ${res.status}`);
   return await res.json();
+}
+
+// ===== 割当JSON操作 =====
+async function getAssignState() {
+  const records = await kintoneGet(APP_NABON, TOKEN_NABON,
+    `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
+  if (!records.length) return { assignments: {}, returned: [], updatedAt: '' };
+  const raw = records[0]['文字列__複数行__0']?.value || '';
+  try { return JSON.parse(raw); } catch(e) { return { assignments: {}, returned: [], updatedAt: '' }; }
+}
+
+async function saveAssignState(state) {
+  const records = await kintoneGet(APP_NABON, TOKEN_NABON,
+    `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
+  if (!records.length) throw new Error('割当レコードが見つかりません');
+  const recId = records[0]['$id'].value;
+  await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
+    '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
+  });
 }
 
 // ===== 直接作業開始（URLパラメータから） =====
@@ -742,6 +782,7 @@ function showReturnModal() {
   document.getElementById('modal-done').textContent = doneCount;
   document.getElementById('modal-absent').textContent = absentCount;
   document.getElementById('modal-todo').textContent = todoCount;
+  document.getElementById('waiting-worker-name').textContent = currentWorker + ' さん';
   const w = document.getElementById('modal-warning');
   const s = document.getElementById('modal-sub');
   if (todoCount > 0) {
@@ -759,9 +800,77 @@ function closeModal() {
   document.getElementById('return-modal').classList.remove('show');
 }
 
-function confirmReturn() {
-  closeModal();
-  alert(`✅ 「${currentWorker}さん 戻りました」を送信しました！\n\n運転手が次のグループを準備しています。`);
+async function confirmReturn() {
+  const btn = document.getElementById('btn-modal-confirm');
+  btn.disabled = true;
+  btn.textContent = '送信中...';
+  try {
+    await reportReturn();
+    closeModal();
+    showWaitingScreen();
+  } catch(e) {
+    btn.disabled = false;
+    btn.textContent = '車に戻る・次のグループを受け取る';
+    alert('送信エラー: ' + e.message);
+  }
+}
+
+async function reportReturn() {
+  // 割当JSONを取得
+  const state = await getAssignState();
+  // returnedリストに追加（重複なし）
+  if (!state.returned.includes(currentWorker)) {
+    state.returned.push(currentWorker);
+  }
+  // 自分の割当をクリア
+  delete state.assignments[currentWorker];
+  state.updatedAt = new Date().toISOString();
+  await saveAssignState(state);
+}
+
+function showWaitingScreen() {
+  document.getElementById('work-screen').style.display = 'none';
+  document.getElementById('return-footer').style.display = 'none';
+  document.getElementById('waiting-screen').style.display = 'block';
+  // 割当をポーリング
+  pollAssignment();
+}
+
+let pollTimer = null;
+async function pollAssignment() {
+  try {
+    const state = await getAssignState();
+    const myGroup = state.assignments[currentWorker];
+    if (myGroup) {
+      // グループが割り当てられた！
+      clearTimeout(pollTimer);
+      document.getElementById('waiting-group').textContent = myGroup.toUpperCase();
+      document.getElementById('waiting-screen').style.display = 'none';
+      // 新しいグループを読み込む
+      await loadGroup(myGroup);
+      return;
+    }
+  } catch(e) { console.error(e); }
+  pollTimer = setTimeout(pollAssignment, 5000);
+}
+
+async function loadGroup(groupCode) {
+  document.getElementById('loading-screen').style.display = 'block';
+  document.getElementById('loading-text').textContent = `グループ ${groupCode.toUpperCase()} を読み込み中...`;
+  try {
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${groupCode}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+    doneCount = 0; absentCount = 0; todoCount = 0;
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('work-screen').style.display = 'block';
+    document.getElementById('return-footer').style.display = 'block';
+    renderCards();
+  } catch(e) {
+    document.getElementById('loading-screen').style.display = 'none';
+    alert('読み込みエラー: ' + e.message);
+    document.getElementById('waiting-screen').style.display = 'block';
+    pollTimer = setTimeout(pollAssignment, 5000);
+  }
 }
 
 // ===== 起動 =====
