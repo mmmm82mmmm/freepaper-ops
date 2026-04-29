@@ -282,11 +282,11 @@ function renderMembers() {
       if (qrEl) {
         new QRCode(qrEl, {
           text: workerUrl,
-          width: 160,
-          height: 160,
+          width: 180,
+          height: 180,
           colorDark: '#1a1a1a',
           colorLight: '#ffffff',
-          correctLevel: QRCode.CorrectLevel.M
+          correctLevel: QRCode.CorrectLevel.L
         });
       }
     }, 100);
