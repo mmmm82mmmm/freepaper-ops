@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-<title>作業画面</title>
+<title>FreePaper Ops</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
 <style>
 :root {
@@ -12,992 +12,147 @@
   --blue:#1a5cd4; --red:#d42020;
 }
 *{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:120px;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;}
 
-/* HEADER */
-.app-header{background:var(--ink);color:white;padding:14px 16px 12px;position:sticky;top:0;z-index:100;}
-.app-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;}
-.app-title{font-size:15px;font-weight:900;}
-.worker-name{font-size:12px;background:#333;padding:4px 10px;border-radius:20px;font-weight:700;}
-.progress-wrap{display:flex;align-items:center;gap:10px;}
-.progress-bar-bg{flex:1;height:5px;background:#333;border-radius:3px;overflow:hidden;}
-.progress-bar-fill{height:100%;background:var(--green);border-radius:3px;transition:width 0.5s;}
-.progress-text{font-family:'DM Mono',monospace;font-size:11px;color:#aaa;white-space:nowrap;}
+.header{background:var(--ink);color:white;padding:32px 20px 24px;text-align:center;}
+.app-icon{font-size:48px;margin-bottom:12px;}
+.app-title{font-size:24px;font-weight:900;letter-spacing:.04em;}
+.app-sub{font-size:12px;color:#aaa;margin-top:6px;letter-spacing:.04em;}
 
-/* LOGIN */
-.login-screen{max-width:400px;margin:60px auto 0;padding:24px;}
-.login-title{font-size:22px;font-weight:900;margin-bottom:6px;}
-.login-sub{font-size:13px;color:var(--muted);margin-bottom:28px;line-height:1.6;}
-.login-label{font-size:11px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;display:block;}
-.login-select{width:100%;padding:14px;border:2px solid var(--border);border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:16px;background:var(--bg);margin-bottom:16px;-webkit-appearance:none;}
-.login-select:focus{outline:none;border-color:var(--blue);background:white;}
-.btn-login{width:100%;padding:16px;background:var(--ink);color:white;border:none;border-radius:12px;font-family:'Noto Sans JP',sans-serif;font-size:16px;font-weight:900;cursor:pointer;transition:all .2s;}
-.btn-login:active{transform:scale(.98);}
-.btn-login:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;}
+.container{padding:20px;max-width:600px;margin:0 auto;}
 
-/* LOADING */
-.loading-screen{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;}
-.spinner{width:40px;height:40px;border:3px solid var(--border);border-top-color:var(--ink);border-radius:50%;animation:spin .8s linear infinite;}
-@keyframes spin{to{transform:rotate(360deg)}}
-.loading-text{font-size:14px;color:var(--muted);}
+.menu-section{margin-bottom:24px;}
+.section-title{font-size:11px;font-weight:900;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;padding-left:4px;}
 
-/* ERROR */
-.error-box{margin:20px 16px;padding:16px;background:#fde8e8;border:1px solid #f0a0a0;border-radius:10px;font-size:13px;color:var(--red);line-height:1.6;}
+.menu-item{
+  display:flex;align-items:center;gap:14px;background:var(--card);
+  border-radius:12px;padding:18px 16px;margin-bottom:10px;
+  text-decoration:none;color:var(--ink);
+  box-shadow:0 1px 4px rgba(0,0,0,.06);
+  transition:transform .1s, box-shadow .15s;
+}
+.menu-item:active{transform:scale(.98);}
+.menu-item:hover{box-shadow:0 2px 8px rgba(0,0,0,.1);}
 
-/* GROUP HEADER */
-.group-header{display:flex;align-items:center;gap:8px;padding:10px 16px;background:var(--bg);border-bottom:1px solid var(--border);position:sticky;top:68px;z-index:90;}
-.group-badge{font-family:'DM Mono',monospace;font-size:11px;font-weight:500;background:var(--ink);color:white;padding:3px 8px;border-radius:4px;}
-.group-name{font-size:13px;font-weight:700;}
-.group-count{font-size:11px;color:var(--muted);margin-left:auto;}
+.menu-icon{font-size:32px;width:48px;text-align:center;flex-shrink:0;}
+.menu-info{flex:1;}
+.menu-name{font-size:16px;font-weight:900;}
+.menu-desc{font-size:11px;color:var(--muted);margin-top:3px;line-height:1.5;}
+.menu-arrow{color:var(--muted);font-size:18px;}
 
-/* CARD */
-.shop-card{background:var(--card);margin:10px 12px;border-radius:12px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.08);border:2px solid transparent;transition:border-color .2s;animation:slideIn .2s ease;}
-.shop-card.status-done{border-color:var(--green);}
-.shop-card.status-absent{border-color:var(--amber);}
-.shop-card.status-active{border-color:var(--blue);}
-@keyframes slideIn{from{opacity:0;transform:translateY(8px)}to{opacity:1;transform:translateY(0)}}
+/* カラー */
+.menu-item.worker .menu-icon{color:var(--blue);}
+.menu-item.driver .menu-icon{color:var(--amber);}
+.menu-item.member{}
+.menu-item.report{}
 
-.card-header{padding:12px 14px 10px;display:flex;align-items:flex-start;justify-content:space-between;gap:8px;}
-.card-header-left{flex:1;min-width:0;}
-.shop-name{font-size:17px;font-weight:900;line-height:1.2;}
-.shop-meta{display:flex;flex-wrap:wrap;gap:4px;margin-top:6px;}
-.meta-chip{font-size:11px;padding:2px 7px;border-radius:4px;background:var(--bg);color:var(--muted);font-weight:500;}
-.meta-chip.floor{background:#e8f0ff;color:var(--blue);font-weight:700;}
-.meta-chip.genre{background:#f5f0e8;color:#8a7060;}
-.meta-chip.closed{background:#fff3e0;color:var(--amber);font-weight:700;}
-.status-pill{flex-shrink:0;font-size:11px;font-weight:700;padding:4px 10px;border-radius:20px;white-space:nowrap;}
-.pill-todo{background:#f0ede8;color:var(--muted);}
-.pill-done{background:#d4f5e2;color:var(--green);}
-.pill-absent{background:#fef3d0;color:var(--amber);}
-.pill-active{background:#e0eaff;color:var(--blue);}
+.footer-note{
+  text-align:center;font-size:11px;color:var(--muted);
+  margin-top:30px;line-height:1.8;padding:16px;
+}
+.footer-note strong{color:var(--ink);}
 
-.shop-location{padding:0 14px 10px;font-size:13px;color:#555;display:flex;align-items:flex-start;gap:6px;line-height:1.5;}
-.shop-location::before{content:'📍';font-size:13px;flex-shrink:0;}
-.shop-comment{margin:0 14px 10px;padding:8px 10px;background:#fff8e8;border-left:3px solid var(--amber);border-radius:0 6px 6px 0;font-size:12px;color:#7a5a00;line-height:1.5;}
-.nabon-hint{margin:0 14px 10px;font-size:12px;color:var(--muted);display:flex;align-items:center;gap:4px;}
-.nabon-hint strong{font-family:'DM Mono',monospace;font-size:16px;color:var(--ink);font-weight:500;}
-
-/* INPUT */
-.input-area{padding:0 14px 14px;}
-.input-row{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
-.input-group label{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:5px;}
-.input-group input{width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'DM Mono',monospace;font-size:20px;font-weight:500;text-align:center;background:var(--bg);color:var(--ink);transition:border-color .15s;-webkit-appearance:none;}
-.input-group input:focus{outline:none;border-color:var(--blue);background:white;}
-
-/* DYNAMIC */
-.dynamic-section{margin:0 14px 12px;background:#f8f5ff;border:1px solid #d8d0f0;border-radius:8px;overflow:hidden;}
-.dynamic-section-title{padding:7px 12px;font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:#6040b0;background:#ede8ff;border-bottom:1px solid #d8d0f0;}
-.dynamic-item{padding:10px 12px;border-bottom:1px solid #ede8ff;display:flex;align-items:center;gap:10px;}
-.dynamic-item:last-child{border-bottom:none;}
-.dynamic-label{font-size:13px;font-weight:700;flex:1;}
-.dynamic-sublabel{font-size:11px;color:var(--muted);margin-top:1px;}
-.toggle-group{display:flex;gap:4px;flex-shrink:0;flex-wrap:wrap;justify-content:flex-end;}
-.toggle-btn{padding:6px 10px;border-radius:6px;border:2px solid var(--border);font-family:'Noto Sans JP',sans-serif;font-size:11px;font-weight:700;cursor:pointer;background:white;color:var(--muted);transition:all .15s;}
-.toggle-btn:active{transform:scale(.95);}
-.toggle-btn.sel-ok{background:var(--blue);color:white;border-color:var(--blue);}
-.toggle-btn.sel-ng{background:#f0ede8;color:var(--muted);border-color:var(--border);}
-.toggle-btn.sel-yes{background:var(--green);color:white;border-color:var(--green);}
-.toggle-btn.sel-no{background:#fde8e8;color:var(--red);border-color:var(--red);}
-.toggle-btn.sel-later{background:#fff3e0;color:var(--amber);border-color:var(--amber);}
-
-/* ABSENT */
-.absent-times{display:grid;grid-template-columns:1fr 1fr 1fr;gap:6px;margin-bottom:8px;}
-.absent-time-group label{display:block;font-size:10px;font-weight:700;color:var(--muted);margin-bottom:4px;}
-.absent-time-group input{width:100%;padding:8px 6px;border:2px solid var(--border);border-radius:8px;font-family:'DM Mono',monospace;font-size:14px;text-align:center;background:var(--bg);}
-.absent-time-group input:focus{outline:none;border-color:var(--amber);background:white;}
-.absent-overlay{padding:14px;background:#fffbf0;border-top:1px solid #ffe8a0;}
-.absent-label{font-size:12px;color:var(--amber);font-weight:700;margin-bottom:4px;}
-.absent-times-display{font-family:'DM Mono',monospace;font-size:13px;}
-
-/* BUTTONS */
-.btn-group{display:grid;grid-template-columns:1fr 1fr;gap:8px;margin-bottom:8px;}
-.btn-action{padding:13px;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:900;cursor:pointer;transition:all .15s;}
-.btn-action:active{transform:scale(.97);}
-.btn-complete{background:var(--green);color:white;grid-column:1/-1;padding:15px;font-size:15px;}
-.btn-complete:disabled{background:var(--border);color:var(--muted);cursor:not-allowed;transform:none;}
-.btn-absent{background:#fff3e0;color:var(--amber);border:2px solid var(--amber);}
-.btn-reset{background:var(--bg);color:var(--muted);border:2px solid var(--border);}
-
-.done-overlay{padding:14px;display:flex;align-items:center;gap:10px;background:#f0faf5;}
-.done-icon{font-size:24px;}
-.done-info{flex:1;}
-.done-label{font-size:12px;color:var(--green);font-weight:700;}
-.done-vals{font-family:'DM Mono',monospace;font-size:13px;margin-top:2px;}
-
-.memo-area{margin:0 14px 14px;}
-.memo-area label{display:block;font-size:10px;font-weight:700;letter-spacing:.08em;color:var(--muted);margin-bottom:5px;text-transform:uppercase;}
-.memo-area textarea{width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:var(--bg);resize:none;height:60px;}
-.memo-area textarea:focus{outline:none;border-color:var(--blue);background:white;}
-
-/* 車に戻るボタン */
-.return-footer{position:fixed;bottom:0;left:0;right:0;padding:12px 16px 28px;background:linear-gradient(to top,var(--bg) 70%,transparent);z-index:200;}
-.btn-return{width:100%;padding:16px;background:var(--ink);color:white;border:none;border-radius:14px;font-family:'Noto Sans JP',sans-serif;font-size:16px;font-weight:900;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:10px;box-shadow:0 4px 20px rgba(0,0,0,.2);transition:all .2s;}
-.btn-return:active{transform:scale(.98);}
-.btn-return.all-done{background:var(--green);}
-.return-sub{font-size:11px;font-weight:500;opacity:.65;}
-
-/* モーダル */
-.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.6);z-index:300;display:flex;align-items:flex-end;opacity:0;pointer-events:none;transition:opacity .2s;}
-.modal-overlay.show{opacity:1;pointer-events:all;}
-.modal-sheet{background:white;width:100%;border-radius:20px 20px 0 0;padding:24px 20px 40px;transform:translateY(100%);transition:transform .3s ease;}
-.modal-overlay.show .modal-sheet{transform:translateY(0);}
-.modal-handle{width:40px;height:4px;background:var(--border);border-radius:2px;margin:0 auto 20px;}
-.modal-title{font-size:20px;font-weight:900;text-align:center;margin-bottom:6px;}
-.modal-sub{font-size:13px;color:var(--muted);text-align:center;margin-bottom:20px;line-height:1.6;}
-.modal-stats{display:grid;grid-template-columns:repeat(3,1fr);gap:10px;margin-bottom:20px;}
-.modal-stat{background:var(--bg);border-radius:10px;padding:12px;text-align:center;}
-.modal-stat .val{font-family:'DM Mono',monospace;font-size:24px;font-weight:500;display:block;}
-.modal-stat .lbl{font-size:10px;color:var(--muted);margin-top:2px;}
-.modal-stat.green .val{color:var(--green);}
-.modal-stat.amber .val{color:var(--amber);}
-.modal-stat.muted .val{color:var(--muted);}
-.modal-warning{background:#fff8e8;border:1px solid #ffe0a0;border-radius:8px;padding:10px 14px;font-size:12px;color:#7a5a00;margin-bottom:16px;line-height:1.6;}
-.modal-btn-group{display:flex;flex-direction:column;gap:10px;}
-.btn-modal-confirm{padding:16px;border:none;border-radius:12px;font-family:'Noto Sans JP',sans-serif;font-size:15px;font-weight:900;cursor:pointer;background:var(--ink);color:white;transition:all .15s;}
-.btn-modal-confirm:active{transform:scale(.98);}
-.btn-modal-cancel{padding:14px;border:2px solid var(--border);border-radius:12px;background:none;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:700;color:var(--muted);cursor:pointer;}
-
-/* 送信中スピナー */
-.sending{display:inline-block;width:16px;height:16px;border:2px solid rgba(255,255,255,.4);border-top-color:white;border-radius:50%;animation:spin .6s linear infinite;vertical-align:middle;margin-right:6px;}
+.tip-box{
+  background:#fff8e8;border:1px solid #f0d090;border-radius:10px;
+  padding:12px 14px;font-size:12px;color:#7a5a00;line-height:1.7;
+  margin-bottom:20px;display:flex;gap:10px;align-items:flex-start;
+}
+.tip-box strong{color:#5a4500;}
 </style>
 </head>
 <body>
 
-<!-- ログイン画面 -->
-<div id="login-screen" style="padding:0 0 40px">
-  <div class="app-header" style="position:relative">
-    <div class="app-header-top">
-      <div class="app-title">📦 フリーペーパー作業</div>
-    </div>
-    <div style="font-size:11px;color:#888;margin-top:4px">すすきのフリーク</div>
-  </div>
-  <div style="max-width:400px;margin:40px auto 0;padding:0 20px">
-    <div style="font-size:22px;font-weight:900;margin-bottom:6px">おはようございます！</div>
-    <div style="font-size:13px;color:var(--muted);margin-bottom:32px;line-height:1.6">お名前を選んで作業を開始してください</div>
-    <label class="login-label">お名前</label>
-    <select class="login-select" id="worker-select">
-      <option value="">-- 選択してください --</option>
-    </select>
-    <label class="login-label" style="margin-top:8px">作業月</label>
-    <select class="login-select" id="month-select"></select>
-    <button class="btn-login" id="btn-login" onclick="startWork()" disabled>作業を開始する →</button>
-    <div id="login-error" class="error-box" style="display:none"></div>
-  </div>
+<div class="header">
+  <div class="app-icon">📦</div>
+  <div class="app-title">FreePaper Ops</div>
+  <div class="app-sub">フリーペーパー入れ替え作業管理</div>
 </div>
 
-<!-- ローディング画面 -->
-<div id="loading-screen" style="display:none">
-  <div class="app-header" style="position:relative">
-    <div class="app-header-top">
-      <div class="app-title">📦 フリーペーパー作業</div>
+<div class="container">
+
+  <div class="tip-box">
+    <span style="font-size:18px">💡</span>
+    <div>
+      <strong>初回はホーム画面に追加してください。</strong><br>
+      ブラウザの共有ボタン → 「ホーム画面に追加」で次回からアプリのように使えます。
     </div>
   </div>
-  <div class="loading-screen">
-    <div class="spinner"></div>
-    <div class="loading-text" id="loading-text">担当場所を読み込んでいます...</div>
-  </div>
-</div>
 
-<!-- 作業画面 -->
-<div id="work-screen" style="display:none">
-  <div class="app-header">
-    <div class="app-header-top">
-      <div class="app-title" id="work-title">📦 2026年5月号</div>
-      <div class="worker-name" id="work-worker">田中 さん</div>
-    </div>
-    <div class="progress-wrap">
-      <div class="progress-bar-bg"><div class="progress-bar-fill" id="prog-fill" style="width:0%"></div></div>
-      <div class="progress-text" id="prog-text">0 / 0 完了</div>
-    </div>
-  </div>
-  <div id="cards-container"></div>
-</div>
+  <!-- 現場での作業 -->
+  <div class="menu-section">
+    <div class="section-title">📍 現場での作業</div>
 
-<!-- 車に戻るボタン -->
-<div class="return-footer" id="return-footer" style="display:none">
-  <button class="btn-return" id="btn-return" onclick="showReturnModal()">
-    <span>🚐</span>
-    <span>車に戻る <span class="return-sub" id="return-sub">（読み込み中）</span></span>
-  </button>
-</div>
-
-<!-- 待機画面 -->
-<div id="waiting-screen" style="display:none">
-  <div class="app-header" style="position:relative">
-    <div class="app-header-top">
-      <div class="app-title">📦 フリーペーパー作業</div>
-      <div class="worker-name" id="waiting-worker-name"></div>
-    </div>
-  </div>
-  <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:20px;padding:24px;text-align:center;">
-    <div style="font-size:48px">🚐</div>
-    <div style="font-size:22px;font-weight:900">お疲れ様でした！</div>
-    <div style="font-size:14px;color:var(--muted);line-height:1.8">戻りを報告しました。<br>運転手が次のグループを割り当て中です...</div>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
-      <div class="spinner"></div>
-      <div style="font-size:13px;color:var(--muted)">割当を待っています</div>
-    </div>
-    <div style="font-size:12px;color:var(--muted);margin-top:16px">次のグループ: <strong id="waiting-group" style="font-family:'DM Mono',monospace;color:var(--ink)">待機中</strong></div>
-    <div id="driver-location-area" style="display:none;margin-top:8px;">
-      <a id="driver-location-link" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:12px 20px;background:var(--blue);color:white;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
-        📍 運転手の現在地を確認
-      </a>
-      <div id="driver-location-time" style="font-size:10px;color:var(--muted);margin-top:6px;"></div>
-    </div>
-  </div>
-</div>
-
-<!-- 確認モーダル -->
-<div class="modal-overlay" id="return-modal">
-  <div class="modal-sheet">
-    <div class="modal-handle"></div>
-    <div class="modal-title">🚐 車に戻りますか？</div>
-    <div class="modal-sub" id="modal-sub">作業状況を確認してください</div>
-    <div class="modal-stats">
-      <div class="modal-stat green"><span class="val" id="modal-done">0</span><div class="lbl">完了</div></div>
-      <div class="modal-stat amber"><span class="val" id="modal-absent">0</span><div class="lbl">不在</div></div>
-      <div class="modal-stat muted"><span class="val" id="modal-todo">0</span><div class="lbl">未着手</div></div>
-    </div>
-    <div class="modal-warning" id="modal-warning"></div>
-    <div class="modal-btn-group">
-      <button class="btn-modal-confirm" id="btn-modal-confirm" onclick="confirmReturn()">車に戻る・次のグループを受け取る</button>
-      <button class="btn-modal-cancel" onclick="closeModal()">キャンセル（作業を続ける）</button>
-    </div>
-  </div>
-</div>
-
-<script>
-// ===== kintone設定 =====
-const KINTONE_DOMAIN = 'white';
-const TOKEN_NABON = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
-const TOKEN_MASTER = 'STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg';
-const APP_NABON = 269;
-const APP_MASTER = 268;
-
-const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
-const BASE = `${PROXY}/kintone/v1`;
-const ASSIGN_RECORD_ID = 1; // 割当JSON保存用レコードID（作業月の最初のレコード）
-
-// ===== 今月の流動項目設定（メンバー管理画面で設定）=====
-let DYNAMIC_ITEMS = []; // kintoneから読み込む
-
-// ===== 作業者リスト（毎月更新）=====
-const WORKERS = ['田中','鈴木','山田','佐藤','高橋','小林','伊藤','渡辺'];
-
-// ===== 状態管理 =====
-let currentWorker = '';
-let currentMonth = '';
-let records = []; // kintoneから取得したレコード
-let doneCount = 0, absentCount = 0, todoCount = 0;
-
-// セッション保存・復元
-function saveSession() {
-  if (currentWorker && currentMonth) {
-    localStorage.setItem('fp_worker', currentWorker);
-    localStorage.setItem('fp_month', currentMonth);
-  }
-}
-function clearSession() {
-  localStorage.removeItem('fp_worker');
-  localStorage.removeItem('fp_month');
-}
-function loadSession() {
-  return {
-    worker: localStorage.getItem('fp_worker') || '',
-    month: localStorage.getItem('fp_month') || ''
-  };
-}
-
-// ===== URLパラメータチェック =====
-function getUrlParam(key) {
-  const params = new URLSearchParams(window.location.search);
-  return params.get(key);
-}
-
-// ===== 初期化 =====
-async function init() {
-  // URLパラメータに worker が含まれていたら自動ログイン
-  const workerParam = getUrlParam('worker');
-  if (workerParam) {
-    currentWorker = workerParam;
-    const now = new Date();
-    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
-    saveSession();
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('loading-screen').style.display = 'block';
-    startWorkDirect();
-    return;
-  }
-
-  // セッション復元（リロード対応）
-  const session = loadSession();
-  if (session.worker && session.month) {
-    currentWorker = session.worker;
-    currentMonth = session.month;
-    // セッション復元でも作業者セレクトを更新しておく（ログイン画面に戻った場合のため）
-    try {
-      const sessionState = await getAssignState();
-      const sessionMembers = sessionState.members && sessionState.members.length > 0 ? sessionState.members : WORKERS;
-      const wselSession = document.getElementById('worker-select');
-      sessionMembers.forEach(w => {
-        const o = document.createElement('option');
-        o.value = w; o.textContent = w + ' さん';
-        wselSession.appendChild(o);
-      });
-    } catch(e) {}
-    document.getElementById('login-screen').style.display = 'none';
-    document.getElementById('loading-screen').style.display = 'block';
-    startWorkDirect();
-    return;
-  }
-  // currentMonthを先に設定（来月号をデフォルト）
-  const nowTmp = new Date();
-  const nextTmp = new Date(nowTmp.getFullYear(), nowTmp.getMonth() + 1, 1);
-  currentMonth = `${nextTmp.getFullYear()}年${nextTmp.getMonth()+1}月号`;
-
-  // 作業者セレクト（kintoneの割当JSONから取得）
-  const wsel = document.getElementById('worker-select');
-  try {
-    const state = await getAssignState();
-    const memberList = state.members && state.members.length > 0 ? state.members : WORKERS;
-    memberList.forEach(w => {
-      const o = document.createElement('option');
-      o.value = w; o.textContent = w + ' さん';
-      wsel.appendChild(o);
-    });
-  } catch(e) {
-    // フォールバック: WORKERS定数を使用
-    WORKERS.forEach(w => {
-      const o = document.createElement('option');
-      o.value = w; o.textContent = w + ' さん';
-      wsel.appendChild(o);
-    });
-  }
-
-  // 作業月セレクト
-  const msel = document.getElementById('month-select');
-  const now = new Date();
-  for (let i = 0; i < 3; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const label = `${d.getFullYear()}年${d.getMonth()+1}月号`;
-    const o = document.createElement('option');
-    o.value = label; o.textContent = label;
-    if (i === 0) o.selected = true;
-    msel.appendChild(o);
-  }
-
-  wsel.addEventListener('change', checkLogin);
-  msel.addEventListener('change', checkLogin);
-}
-
-function initLoginScreen() {
-  // ログイン画面の初期化（月選択など）
-  const wsel = document.getElementById('worker-select');
-  const msel = document.getElementById('month-select');
-  if (currentWorker && wsel) {
-    // URLパラメータの名前を選択状態に
-    for (const opt of wsel.options) {
-      if (opt.value === currentWorker) { opt.selected = true; break; }
-    }
-  }
-  checkLogin();
-}
-
-function checkLogin() {
-  const w = document.getElementById('worker-select').value;
-  const m = document.getElementById('month-select').value;
-  document.getElementById('btn-login').disabled = !w || !m;
-}
-
-// ===== kintone API =====
-async function kintoneGet(appId, token, query, fields = []) {
-  const queryEncoded = encodeURIComponent(query);
-  let paramStr = `app=${appId}&query=${queryEncoded}&subdomain=${KINTONE_DOMAIN}`;
-  if (fields.length) paramStr += `&fields=${fields.map(encodeURIComponent).join(',')}`;
-  const res = await fetch(`${BASE}/records.json?${paramStr}`, {
-    headers: { 'X-Cybozu-API-Token': token }
-  });
-  if (!res.ok) {
-    const errText = await res.text();
-    throw new Error(`kintone APIエラー: ${res.status} - ${errText}`);
-  }
-  const data = await res.json();
-  return data.records;
-}
-
-async function kintoneUpdate(appId, token, id, fields) {
-  const res = await fetch(`${BASE}/record.json?subdomain=${KINTONE_DOMAIN}`, {
-    method: 'PUT',
-    headers: { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: appId, id, record: fields, subdomain: KINTONE_DOMAIN })
-  });
-  if (!res.ok) throw new Error(`更新エラー: ${res.status}`);
-  return await res.json();
-}
-
-// ===== 割当JSON操作 =====
-async function getAssignState() {
-  const records = await kintoneGet(APP_NABON, TOKEN_NABON,
-    `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-  if (!records.length) return { assignments: {}, returned: [], updatedAt: '' };
-  const raw = records[0]['文字列__複数行__0']?.value || '';
-  try { return JSON.parse(raw); } catch(e) { return { assignments: {}, returned: [], updatedAt: '' }; }
-}
-
-async function saveAssignState(state) {
-  const records = await kintoneGet(APP_NABON, TOKEN_NABON,
-    `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-  if (!records.length) throw new Error('割当レコードが見つかりません');
-  const recId = records[0]['$id'].value;
-  await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-    '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
-  });
-}
-
-// ===== 直接作業開始（URLパラメータから） =====
-async function startWorkDirect() {
-  try {
-    document.getElementById('loading-text').textContent = '担当場所を読み込んでいます...';
-    // 割当グループ・配布物設定を取得
-    const state = await getAssignState();
-    DYNAMIC_ITEMS = state.dynamicItems || [];
-    const assignedGroup = state.assignments?.[currentWorker];
-    let query;
-    if (assignedGroup) {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    } else {
-      // グループ未割当の場合は担当者名で絞り込み
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    }
-    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
-    if (records.length === 0) {
-      // データがなければ月選択画面を表示
-      document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('login-screen').style.display = 'block';
-      initLoginScreen();
-      return;
-    }
-    document.getElementById('loading-screen').style.display = 'none';
-    document.getElementById('work-screen').style.display = 'block';
-    document.getElementById('return-footer').style.display = 'block';
-    document.getElementById('work-title').textContent = `📦 ${currentMonth}`;
-    document.getElementById('work-worker').textContent = `${currentWorker} さん`;
-    renderCards();
-  } catch(e) {
-    document.getElementById('loading-screen').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'block';
-    document.getElementById('login-error').style.display = 'block';
-    document.getElementById('login-error').textContent = `⚠️ ${e.message}`;
-    initLoginScreen();
-  }
-}
-
-// ===== 作業開始 =====
-async function startWork() {
-  currentWorker = document.getElementById('worker-select').value;
-  currentMonth = document.getElementById('month-select').value;
-  saveSession();
-
-  document.getElementById('login-screen').style.display = 'none';
-  document.getElementById('loading-screen').style.display = 'block';
-  document.getElementById('login-error').style.display = 'none';
-
-  try {
-    document.getElementById('loading-text').textContent = '担当場所を読み込んでいます...';
-
-    // 割当グループを取得
-    const state = await getAssignState();
-    const assignedGroup = state.assignments?.[currentWorker];
-    let query;
-    if (assignedGroup) {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    } else {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    }
-    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
-
-    if (records.length === 0) {
-      throw new Error(`${currentMonth}の担当レコードが見つかりませんでした。\n運転手にグループの割当を依頼してください。`);
-    }
-
-    document.getElementById('loading-screen').style.display = 'none';
-    document.getElementById('work-screen').style.display = 'block';
-    document.getElementById('return-footer').style.display = 'block';
-
-    document.getElementById('work-title').textContent = `📦 ${currentMonth}`;
-    document.getElementById('work-worker').textContent = `${currentWorker} さん`;
-
-    renderCards();
-
-  } catch(e) {
-    document.getElementById('loading-screen').style.display = 'none';
-    document.getElementById('login-screen').style.display = 'block';
-    document.getElementById('login-error').style.display = 'block';
-    document.getElementById('login-error').textContent = `⚠️ ${e.message}`;
-  }
-}
-
-// ===== カード描画 =====
-function renderCards() {
-  doneCount = 0; absentCount = 0; todoCount = 0;
-
-  records.forEach(r => {
-    const s = r['ドロップダウン']?.value || '未着手';
-    if (s === '完了') doneCount++;
-    else if (s === '不在') absentCount++;
-    else todoCount++;
-  });
-
-  updateProgress();
-
-  // グループ別にまとめる
-  const groups = {};
-  records.forEach(r => {
-    const g = r['文字列__1行__0']?.value || r['文字列__1行__2']?.value || 'その他';
-    if (!groups[g]) groups[g] = [];
-    groups[g].push(r);
-  });
-
-  const container = document.getElementById('cards-container');
-  container.innerHTML = '';
-
-  updateDriverLocationBar();
-
-  Object.entries(groups).forEach(([groupName, recs]) => {
-    // グループヘッダー
-    const gh = document.createElement('div');
-    gh.className = 'group-header';
-    gh.innerHTML = `
-      <div class="group-badge">${recs[0]['ルート']?.value || ''}${recs[0]['ルート順']?.value || ''}</div>
-      <div class="group-name">${groupName}</div>
-      <div class="group-count">${recs.length}件</div>`;
-    container.appendChild(gh);
-
-    // 各店舗カード
-    recs.forEach(r => renderCard(r, container));
-  });
-}
-
-function renderCard(r, container) {
-  const recId = r['$id'].value;
-  const status = r['ドロップダウン']?.value || '未着手';
-  const shopName = r['文字列__1行__1']?.value || '';
-  const floor = r['文字列__1行__3']?.value || '';   // 階数
-  const genre = r['文字列__1行__2']?.value || '';   // ビル名
-  const closed = '' || '';
-  const location = r['文字列__1行__7']?.value || '';  // 設置場所説明
-  const comment = r['文字列__1行__9']?.value || '';   // コメント
-  const nabon = r['数値_2']?.value || '';
-  const absent1 = r['文字列__1行__11']?.value || '';
-  const absent2 = r['文字列__1行__12']?.value || '';
-  const absent3 = r['文字列__1行__13']?.value || '';
-  const nabonVal = r['数値']?.value || '';
-  const henkyakuVal = r['数値_0']?.value || '';
-
-  const card = document.createElement('div');
-  card.id = 'card-' + recId;
-  card.className = `shop-card ${status === '完了' ? 'status-done' : status === '不在' ? 'status-absent' : ''}`;
-
-  const pillClass = status === '完了' ? 'pill-done' : status === '不在' ? 'pill-absent' : 'pill-todo';
-  const pillText = status === '完了' ? '✓ 完了' : status === '不在' ? '不在' : '未着手';
-
-  let bodyHtml = '';
-
-  if (status === '完了') {
-    bodyHtml = `
-      <div class="done-overlay">
-        <div class="done-icon">✅</div>
-        <div class="done-info">
-          <div class="done-label">作業完了</div>
-          <div class="done-vals">納本 ${nabonVal}冊 ／ 返却 ${henkyakuVal}冊</div>
-        </div>
-        <button onclick="reopenCard('${recId}')" style="font-size:11px;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:white;cursor:pointer;color:#888">修正</button>
-      </div>`;
-  } else if (status === '不在') {
-    let absentText = '';
-    if (absent1) absentText += `① ${absent1} `;
-    if (absent2) absentText += `② ${absent2} `;
-    if (absent3) absentText += `③ ${absent3}`;
-    bodyHtml = `
-      <div class="absent-overlay">
-        <div class="absent-label">🚫 不在記録</div>
-        <div class="absent-times-display">${absentText || '記録なし'}</div>
+    <a class="menu-item worker" href="./作業者画面.html">
+      <div class="menu-icon">👤</div>
+      <div class="menu-info">
+        <div class="menu-name">作業者画面</div>
+        <div class="menu-desc">納本作業・不在記録・車に戻る報告</div>
       </div>
-      <div style="padding:0 14px 14px;display:flex;gap:8px">
-        <button onclick="reopenCard('${recId}')" style="flex:1;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
-      </div>`;
-  } else {
-    // 動的項目HTML
-    const dynamicHtml = DYNAMIC_ITEMS.length > 0 ? `
-      <div class="dynamic-section">
-        <div class="dynamic-section-title">今月の配布物・アンケート</div>
-        ${DYNAMIC_ITEMS.map(item => `
-          <div class="dynamic-item">
-            <div>
-              <div class="dynamic-label">${item.label}</div>
-              ${item.sublabel ? `<div class="dynamic-sublabel">${item.sublabel}</div>` : ''}
-            </div>
-            <div class="toggle-group" id="toggle-${recId}-${item.key}">
-              ${item.type === 'distribute' ? `
-                <button class="toggle-btn" onclick="toggleBtn(this,'ok')">配布済</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'ng')">未配布</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'ng')">対象外</button>
-              ` : `
-                <button class="toggle-btn" onclick="toggleBtn(this,'yes')">はい</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'no')">いいえ</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'later')">後日確認</button>
-              `}
-            </div>
-          </div>
-        `).join('')}
-      </div>` : '';
+      <div class="menu-arrow">›</div>
+    </a>
 
-    bodyHtml = `
-      ${location ? `<div class="shop-location">${location}</div>` : ''}
-      ${comment ? `<div class="shop-comment">${comment}</div>` : ''}
-      ${nabon ? `<div class="nabon-hint">通常納本数 <strong>${nabon}</strong> 冊</div>` : ''}
-      <div class="input-area" id="input-area-${recId}" style="display:none">
-        <div class="input-row">
-          <div class="input-group"><label>納本数</label><input type="number" id="nabon-${recId}" placeholder="0" min="0" inputmode="numeric" value="${nabonVal}"></div>
-          <div class="input-group"><label>返却数</label><input type="number" id="henkyaku-${recId}" placeholder="0" min="0" inputmode="numeric" value="${henkyakuVal}"></div>
-        </div>
-        <div class="btn-group">
-          <button class="btn-action btn-absent" onclick="markAbsent('${recId}')">🚫 不在</button>
-          <button class="btn-action btn-reset" onclick="resetInputCard('${recId}')">↩ リセット</button>
-        </div>
-        <button class="btn-action btn-complete" id="btn-done-${recId}" onclick="markDone('${recId}')">✓ 作業完了を送信</button>
+    <a class="menu-item driver" href="./運転手画面.html">
+      <div class="menu-icon">🚐</div>
+      <div class="menu-info">
+        <div class="menu-name">運転手画面</div>
+        <div class="menu-desc">進捗確認・グループ割当・現在地共有</div>
       </div>
-      ${dynamicHtml}
-      <div class="memo-area" id="memo-area-${recId}" style="display:none">
-        <label>メモ（次回訪問時間など）</label>
-        <textarea id="memo-${recId}" placeholder="例：17時以降に再訪">${r['文字列__複数行_']?.value || ''}</textarea>
+      <div class="menu-arrow">›</div>
+    </a>
+  </div>
+
+  <!-- 管理者向け -->
+  <div class="menu-section">
+    <div class="section-title">⚙️ 管理者向け</div>
+
+    <a class="menu-item member" href="./メンバー管理.html">
+      <div class="menu-icon">👥</div>
+      <div class="menu-info">
+        <div class="menu-name">メンバー管理</div>
+        <div class="menu-desc">作業者の登録・URL配布・配布物設定</div>
       </div>
-      <div id="tap-hint-${recId}" style="padding:10px 14px 14px">
-        <button onclick="openCard('${recId}')" style="width:100%;padding:11px;border:2px dashed var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif">タップして入力開始</button>
-      </div>`;
-  }
+      <div class="menu-arrow">›</div>
+    </a>
 
-  card.innerHTML = `
-    <div class="card-header">
-      <div class="card-header-left">
-        <div class="shop-name">${shopName}</div>
-        <div class="shop-meta">
-          ${genre ? `<span class="meta-chip genre">${genre}</span>` : ''}
-          ${floor ? `<span class="meta-chip floor">${floor}階</span>` : ''}
-          ${closed ? `<span class="meta-chip closed">定休：${closed}</span>` : ''}
-        </div>
+    <a class="menu-item report" href="./集計レポート.html">
+      <div class="menu-icon">📊</div>
+      <div class="menu-info">
+        <div class="menu-name">集計レポート</div>
+        <div class="menu-desc">サマリー・ルート別・不在一覧・消化分析</div>
       </div>
-      <div class="status-pill ${pillClass}" id="pill-${recId}">${pillText}</div>
-    </div>
-    ${bodyHtml}`;
+      <div class="menu-arrow">›</div>
+    </a>
+  </div>
 
-  container.appendChild(card);
-}
+  <!-- 月初準備 -->
+  <div class="menu-section">
+    <div class="section-title">🗓 月初準備（管理者のみ）</div>
 
-// ===== カード操作 =====
-function openCard(recId) {
-  document.getElementById('tap-hint-' + recId).style.display = 'none';
-  document.getElementById('input-area-' + recId).style.display = 'block';
-  document.getElementById('memo-area-' + recId).style.display = 'block';
-  const card = document.getElementById('card-' + recId);
-  card.classList.add('status-active');
-  const pill = document.getElementById('pill-' + recId);
-  pill.className = 'status-pill pill-active';
-  pill.textContent = '● 入力中';
-}
-
-async function markDone(recId) {
-  const nabon = document.getElementById('nabon-' + recId)?.value || '';
-  const henkyaku = document.getElementById('henkyaku-' + recId)?.value || '';
-  const memo = document.getElementById('memo-' + recId)?.value || '';
-  const btn = document.getElementById('btn-done-' + recId);
-
-  btn.disabled = true;
-  btn.innerHTML = '<span class="sending"></span>送信中...';
-
-  // 動的項目の値を収集
-  const dynamicFields = {};
-  DYNAMIC_ITEMS.forEach(item => {
-    const selected = document.querySelector(`#toggle-${recId}-${item.key} .toggle-btn[class*="sel-"]`);
-    if (selected) dynamicFields[item.key] = { value: selected.textContent.trim() };
-  });
-
-  try {
-    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-      'ドロップダウン': { value: '完了' },
-      '文字列__1行__10': { value: currentWorker },
-      '数値': { value: nabon },
-      '数値_0': { value: henkyaku },
-      '文字列__複数行_': { value: memo },
-      ...dynamicFields
-    });
-
-    // UI更新
-    const card = document.getElementById('card-' + recId);
-    card.className = 'shop-card status-done';
-    document.getElementById('pill-' + recId).className = 'status-pill pill-done';
-    document.getElementById('pill-' + recId).textContent = '✓ 完了';
-    card.querySelector('.input-area').outerHTML = `
-      <div class="done-overlay">
-        <div class="done-icon">✅</div>
-        <div class="done-info">
-          <div class="done-label">作業完了（送信済み）</div>
-          <div class="done-vals">納本 ${nabon}冊 ／ 返却 ${henkyaku}冊</div>
-        </div>
-        <button onclick="reopenCard('${recId}')" style="font-size:11px;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:white;cursor:pointer;color:#888">修正</button>
-      </div>`;
-    card.querySelectorAll('.dynamic-section,.memo-area').forEach(el => el.style.display = 'none');
-
-    // レコードのステータスを更新
-    const rec = records.find(r => r['$id'].value == recId);
-    if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; rec['数値_0'] = { value: henkyaku }; }
-
-    doneCount++; todoCount = Math.max(0, todoCount - 1);
-    updateProgress();
-
-  } catch(e) {
-    btn.disabled = false;
-    btn.textContent = '✓ 作業完了を送信';
-    alert(`送信エラー: ${e.message}`);
-  }
-}
-
-async function markAbsent(recId) {
-  const now = new Date();
-  const t = now.getHours().toString().padStart(2,'0') + ':' + now.getMinutes().toString().padStart(2,'0');
-
-  // 既存の不在時間を確認
-  const rec = records.find(r => r['$id'].value == recId);
-  const t1 = rec?.['不在時間1']?.value || '';
-  const t2 = rec?.['不在時間2']?.value || '';
-  let newT1 = t1, newT2 = t2, newT3 = '';
-  if (!t1) newT1 = t;
-  else if (!t2) newT2 = t;
-  else newT3 = t;
-
-  try {
-    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-      'ドロップダウン': { value: '不在' },
-      '文字列__1行__10': { value: currentWorker },
-      '文字列__1行__11': { value: newT1 },
-      '文字列__1行__12': { value: newT2 },
-      '文字列__1行__13': { value: newT3 },
-    });
-
-    // UI更新
-    const card = document.getElementById('card-' + recId);
-    card.className = 'shop-card status-absent';
-    document.getElementById('pill-' + recId).className = 'status-pill pill-absent';
-    document.getElementById('pill-' + recId).textContent = '不在';
-    ['input-area-', 'tap-hint-', 'memo-area-'].forEach(prefix => {
-      const el = document.getElementById(prefix + recId);
-      if (el) el.style.display = 'none';
-    });
-    const div = document.createElement('div');
-    let absentText = '';
-    if (newT1) absentText += `① ${newT1} `;
-    if (newT2) absentText += `② ${newT2} `;
-    if (newT3) absentText += `③ ${newT3}`;
-    div.innerHTML = `
-      <div class="absent-overlay">
-        <div class="absent-label">🚫 不在記録（送信済み）</div>
-        <div class="absent-times-display">${absentText}</div>
+    <a class="menu-item" href="./月次納本データ作成ツール.html">
+      <div class="menu-icon">📥</div>
+      <div class="menu-info">
+        <div class="menu-name">月次納本データ作成</div>
+        <div class="menu-desc">設置店マスタから月次レコードを一括作成</div>
       </div>
-      <div style="padding:0 14px 14px">
-        <button onclick="reopenCard('${recId}')" style="width:100%;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
-      </div>`;
-    card.appendChild(div);
+      <div class="menu-arrow">›</div>
+    </a>
 
-    if (rec) { rec['ドロップダウン'] = { value: '不在' }; rec['文字列__1行__11'] = { value: newT1 }; rec['文字列__1行__12'] = { value: newT2 }; rec['文字列__1行__13'] = { value: newT3 }; }
-    absentCount++; todoCount = Math.max(0, todoCount - 1);
-    updateProgress();
+    <a class="menu-item" href="./遅フラグ更新ツール.html">
+      <div class="menu-icon">🌙</div>
+      <div class="menu-info">
+        <div class="menu-name">遅フラグ更新</div>
+        <div class="menu-desc">遅い時間帯店舗のフラグを反映</div>
+      </div>
+      <div class="menu-arrow">›</div>
+    </a>
+  </div>
 
-  } catch(e) {
-    alert(`送信エラー: ${e.message}`);
-  }
-}
+  <div class="footer-note">
+    Ver 2.0 / 株式会社ホワイトカンパニー<br>
+    <strong>困ったときは管理者へ連絡してください</strong>
+  </div>
 
-function reopenCard(recId) {
-  // ステータスをリセットして再表示
-  const rec = records.find(r => r['$id'].value == recId);
-  if (rec) {
-    rec['ドロップダウン'] = { value: '未着手' };
-    if (rec['ドロップダウン'].value === '完了') doneCount--;
-    else if (rec['ドロップダウン'].value === '不在') absentCount--;
-    todoCount++;
-  }
-  renderCards();
-}
+</div>
 
-function resetInputCard(recId) {
-  document.getElementById('nabon-' + recId).value = '';
-  document.getElementById('henkyaku-' + recId).value = '';
-  document.getElementById('memo-' + recId).value = '';
-  document.querySelectorAll(`[id^="toggle-${recId}"] .toggle-btn`).forEach(b => b.className = 'toggle-btn');
-}
-
-function toggleBtn(btn, type) {
-  btn.closest('.toggle-group').querySelectorAll('.toggle-btn').forEach(b => b.className = 'toggle-btn');
-  btn.classList.add('sel-' + type);
-}
-
-// ===== 運転手位置情報バー更新 =====
-async function updateDriverLocationBar() {
-  try {
-    const state = await getAssignState();
-    const loc = state.driverLocation;
-    const bar = document.getElementById('driver-location-bar');
-    const link = document.getElementById('driver-location-bar-link');
-    const time = document.getElementById('driver-location-bar-time');
-    if (bar && link && loc) {
-      bar.style.display = 'block';
-      link.href = loc.url;
-      if (time && loc.updatedAt) {
-        const t = new Date(loc.updatedAt).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
-        time.textContent = `(${t}時点)`;
-      }
-    }
-  } catch(e) { console.error(e); }
-}
-
-// ===== 進捗 =====
-function updateProgress() {
-  const total = records.length;
-  const pct = total > 0 ? Math.round(doneCount / total * 100) : 0;
-  document.getElementById('prog-fill').style.width = pct + '%';
-  document.getElementById('prog-text').textContent = `${doneCount} / ${total} 完了`;
-  const allDone = (doneCount + absentCount) >= total;
-  document.getElementById('btn-return').classList.toggle('all-done', allDone);
-  document.getElementById('return-sub').textContent = allDone ? '（全件完了！）' : `（未完了 ${todoCount}件）`;
-}
-
-// ===== 車に戻る =====
-function showReturnModal() {
-  document.getElementById('modal-done').textContent = doneCount;
-  document.getElementById('modal-absent').textContent = absentCount;
-  document.getElementById('modal-todo').textContent = todoCount;
-  document.getElementById('waiting-worker-name').textContent = currentWorker + ' さん';
-  const w = document.getElementById('modal-warning');
-  const s = document.getElementById('modal-sub');
-  if (todoCount > 0) {
-    w.style.display = 'block';
-    w.textContent = `⚠️ 未着手の店舗が${todoCount}件あります。本当に戻りますか？`;
-    s.textContent = '作業状況を確認してください';
-  } else {
-    w.style.display = 'none';
-    s.textContent = '全件完了！次のグループに進みましょう 🎉';
-  }
-  document.getElementById('return-modal').classList.add('show');
-}
-
-function closeModal() {
-  document.getElementById('return-modal').classList.remove('show');
-}
-
-async function confirmReturn() {
-  const btn = document.getElementById('btn-modal-confirm');
-  btn.disabled = true;
-  // UIを即座に切替（ユーザーを待たせない）
-  closeModal();
-  showWaitingScreen();
-  // バックグラウンドで保存
-  reportReturn().catch(e => console.error('戻り報告エラー:', e));
-}
-
-async function reportReturn() {
-  // 1回のGETで取得してすぐPUT
-  const params = new URLSearchParams({
-    subdomain: 'white', app: APP_NABON,
-    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
-  });
-  const res = await fetch(`${PROXY}/kintone/v1/records.json?${params}`, {
-    headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
-  });
-  const data = await res.json();
-  if (!data.records?.length) throw new Error('レコードが見つかりません');
-  const recId = data.records[0]['$id'].value;
-  const raw = data.records[0]['文字列__複数行__0']?.value || '';
-  let state;
-  try { state = JSON.parse(raw); } catch(e) { state = { assignments:{}, returned:[], updatedAt:'' }; }
-
-  if (!state.returned) state.returned = [];
-  if (!state.returned.includes(currentWorker)) state.returned.push(currentWorker);
-  delete state.assignments[currentWorker];
-  state.updatedAt = new Date().toISOString();
-
-  await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
-    method: 'PUT',
-    headers: { 'X-Cybozu-API-Token': TOKEN_NABON, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: APP_NABON, id: recId, record: {
-      '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
-    }})
-  });
-}
-
-function showWaitingScreen() {
-  document.getElementById('work-screen').style.display = 'none';
-  document.getElementById('return-footer').style.display = 'none';
-  document.getElementById('waiting-screen').style.display = 'block';
-  // 割当をポーリング
-  pollAssignment();
-}
-
-let pollTimer = null;
-async function pollAssignment() {
-  try {
-    const state = await getAssignState();
-
-    // 運転手の位置情報を表示
-    if (state.driverLocation) {
-      const loc = state.driverLocation;
-      const locArea = document.getElementById('driver-location-area');
-      const locLink = document.getElementById('driver-location-link');
-      const locTime = document.getElementById('driver-location-time');
-      if (locArea && locLink) {
-        locArea.style.display = 'block';
-        locLink.href = loc.url;
-        if (locTime && loc.updatedAt) {
-          const t = new Date(loc.updatedAt).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
-          locTime.textContent = `${t} 時点の位置`;
-        }
-      }
-    }
-
-    const myGroup = state.assignments[currentWorker];
-    if (myGroup) {
-      clearTimeout(pollTimer);
-      document.getElementById('waiting-group').textContent = myGroup.toUpperCase();
-      document.getElementById('waiting-screen').style.display = 'none';
-      await loadGroup(myGroup);
-      return;
-    }
-  } catch(e) { console.error(e); }
-  pollTimer = setTimeout(pollAssignment, 5000);
-}
-
-async function loadGroup(groupCode) {
-  document.getElementById('loading-screen').style.display = 'block';
-  document.getElementById('loading-text').textContent = `グループ ${groupCode.toUpperCase()} を読み込み中...`;
-  try {
-    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${groupCode}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
-    doneCount = 0; absentCount = 0; todoCount = 0;
-    document.getElementById('loading-screen').style.display = 'none';
-    document.getElementById('work-screen').style.display = 'block';
-    document.getElementById('return-footer').style.display = 'block';
-    saveSession();
-    renderCards();
-  } catch(e) {
-    document.getElementById('loading-screen').style.display = 'none';
-    alert('読み込みエラー: ' + e.message);
-    document.getElementById('waiting-screen').style.display = 'block';
-    pollTimer = setTimeout(pollAssignment, 5000);
-  }
-}
-
-// ===== 起動 =====
-init();
-</script>
 </body>
 </html>
