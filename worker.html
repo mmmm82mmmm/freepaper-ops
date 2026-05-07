@@ -463,13 +463,17 @@ async function startWorkDirect() {
     const state = await getAssignState();
     DYNAMIC_ITEMS = state.dynamicItems || [];
     const assignedGroup = state.assignments?.[currentWorker];
-    let query;
-    if (assignedGroup) {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    } else {
-      // グループ未割当の場合は担当者名で絞り込み
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+
+    // グループ未割当の場合は待機画面を表示
+    if (!assignedGroup) {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('waiting-worker-name').textContent = currentWorker + ' さん';
+      document.getElementById('waiting-screen').style.display = 'block';
+      pollAssignment();
+      return;
     }
+
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
     if (records.length === 0) {
       // データがなければ月選択画面を表示
@@ -508,13 +512,19 @@ async function startWork() {
 
     // 割当グループを取得
     const state = await getAssignState();
+    DYNAMIC_ITEMS = state.dynamicItems || [];
     const assignedGroup = state.assignments?.[currentWorker];
-    let query;
-    if (assignedGroup) {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    } else {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+
+    // グループ未割当の場合は待機画面を表示
+    if (!assignedGroup) {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('waiting-worker-name').textContent = currentWorker + ' さん';
+      document.getElementById('waiting-screen').style.display = 'block';
+      pollAssignment();
+      return;
     }
+
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
     if (records.length === 0) {
