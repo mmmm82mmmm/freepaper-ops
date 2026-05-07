@@ -308,16 +308,37 @@ for (let i = -1; i <= 2; i++) {
 currentMonth = months[2];
 
 async function kintoneGet(query) {
-  const q = encodeURIComponent(query);
-  const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
-    headers: { 'X-Cybozu-API-Token': TOKEN }
-  });
-  if (!res.ok) {
-    const err = await res.json();
-    throw new Error(err.message || `APIエラー: ${res.status}`);
+  // limit/offsetが既に含まれている場合はそのまま単発実行
+  if (/limit\s+\d+/i.test(query)) {
+    const q = encodeURIComponent(query);
+    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || `APIエラー: ${res.status}`);
+    }
+    const data = await res.json();
+    return data.records;
   }
-  const data = await res.json();
-  return data.records;
+  // ページング対応で全件取得
+  let all = [], offset = 0;
+  while (true) {
+    const pagedQuery = `${query} limit 500 offset ${offset}`;
+    const q = encodeURIComponent(pagedQuery);
+    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || `APIエラー: ${res.status}`);
+    }
+    const data = await res.json();
+    all = all.concat(data.records);
+    if (data.records.length < 500) break;
+    offset += 500;
+  }
+  return all;
 }
 
 async function loadData() {
@@ -325,8 +346,8 @@ async function loadData() {
   btn.classList.add('spinning');
 
   try {
-    // 今月のデータを全件取得（500件ずつ）
-    const query = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    // 今月のデータを全件取得（自動ページング）
+    const query = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
     allRecords = await kintoneGet(query);
 
     document.getElementById('month-badge').textContent = currentMonth;

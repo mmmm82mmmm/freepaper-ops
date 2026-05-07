@@ -239,13 +239,20 @@ async function loadData() {
   document.getElementById('summary-content').style.display = 'none';
 
   try {
-    // 納本データ取得
-    const q = encodeURIComponent(`文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`);
-    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
-      headers: { 'X-Cybozu-API-Token': TOKEN }
-    });
-    const data = await res.json();
-    allRecords = data.records || [];
+    // 納本データを全件取得（500件ずつ）
+    allRecords = [];
+    let offset = 0;
+    while (true) {
+      const q = encodeURIComponent(`文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc limit 500 offset ${offset}`);
+      const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+        headers: { 'X-Cybozu-API-Token': TOKEN }
+      });
+      const data = await res.json();
+      const batch = data.records || [];
+      allRecords = allRecords.concat(batch);
+      if (batch.length < 500) break;
+      offset += 500;
+    }
 
     // 設置店マスタ全件取得（500件ずつ）
     if (masterRecords.length === 0) {
