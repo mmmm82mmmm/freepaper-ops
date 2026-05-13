@@ -593,12 +593,16 @@ function renderCard(r, container) {
   const recId = r['$id'].value;
   const status = r['ドロップダウン']?.value || '未着手';
   const shopName = r['文字列__1行__1']?.value || '';
-  const floor = r['文字列__1行__3']?.value || '';   // 階数
-  const genre = r['文字列__1行__2']?.value || '';   // ビル名
+  const building = r['文字列__1行__2']?.value || '';   // ビル名
+  const floor = r['文字列__1行__3']?.value || '';      // 階数
+  const genre = r['文字列__1行__6']?.value || '';      // ジャンル
+  const address = r['文字列__1行__8']?.value || '';    // 住所
   const closed = '' || '';
-  const location = r['文字列__1行__7']?.value || '';  // 設置場所説明
-  const comment = r['文字列__1行__9']?.value || '';   // コメント
-  const nabon = r['数値_2']?.value || '';
+  const location = r['文字列__1行__7']?.value || '';   // 設置場所説明
+  const comment = r['文字列__1行__9']?.value || '';    // コメント
+  const nabon = r['数値_2']?.value || '';              // 通常納本数
+  const mapCount = r['数値_3']?.value || '';           // MAP冊数
+  const rackChange = (r['チェックボックス_1']?.value || []).includes('交換'); // ラック交換
   const absent1 = r['文字列__1行__11']?.value || '';
   const absent2 = r['文字列__1行__12']?.value || '';
   const absent3 = r['文字列__1行__13']?.value || '';
@@ -691,10 +695,14 @@ function renderCard(r, container) {
   card.innerHTML = `
     <div class="card-header">
       <div class="card-header-left">
-        <div class="shop-name">${shopName}</div>
+        <div class="shop-name">${shopName}${rackChange ? ' <span style="color:#d42020;font-size:13px;font-weight:700;background:#ffebeb;padding:2px 6px;border-radius:4px;margin-left:4px;">🔧 ラック交換</span>' : ''}</div>
         <div class="shop-meta">
-          ${genre ? `<span class="meta-chip genre">${genre}</span>` : ''}
+          ${building ? `<span class="meta-chip" style="background:#f0eee8;color:#666;">${building}</span>` : ''}
           ${floor ? `<span class="meta-chip floor">${floor}階</span>` : ''}
+          ${genre ? `<span class="meta-chip genre">${genre}</span>` : ''}
+          ${address ? `<span class="meta-chip" style="background:#e8f0ff;color:#1a5cd4;">📍${address}</span>` : ''}
+          ${nabon ? `<span class="meta-chip" style="background:#e8f5e9;color:#1a8a4a;font-weight:700;">📦${nabon}冊</span>` : ''}
+          ${mapCount ? `<span class="meta-chip" style="background:#fff5e6;color:#c47a0a;font-weight:700;">🗺️ MAP${mapCount}冊</span>` : ''}
           ${closed ? `<span class="meta-chip closed">定休：${closed}</span>` : ''}
         </div>
       </div>
