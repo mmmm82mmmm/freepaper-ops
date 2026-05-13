@@ -857,10 +857,12 @@ async function updateDriverLocationBar() {
   try {
     const state = await getAssignState();
     const loc = state.driverLocation;
+    if (!loc) return;
+    // 作業画面ヘッダーのバー
     const bar = document.getElementById('driver-location-bar');
     const link = document.getElementById('driver-location-bar-link');
     const time = document.getElementById('driver-location-bar-time');
-    if (bar && link && loc) {
+    if (bar && link) {
       bar.style.display = 'block';
       link.href = loc.url;
       if (time && loc.updatedAt) {
@@ -868,15 +870,43 @@ async function updateDriverLocationBar() {
         time.textContent = `(${t}時点)`;
       }
     }
+    // 待機画面の表示
+    const area = document.getElementById('driver-location-area');
+    const linkArea = document.getElementById('driver-location-link');
+    const timeArea = document.getElementById('driver-location-time');
+    if (area && linkArea) {
+      area.style.display = 'block';
+      linkArea.href = loc.url;
+      if (timeArea && loc.updatedAt) {
+        const t = new Date(loc.updatedAt).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
+        timeArea.textContent = `${t} 時点の位置`;
+      }
+    }
+    // フローティングボタン（どの画面からも）
+    const floating = document.getElementById('floating-driver-location');
+    if (floating) {
+      floating.href = loc.url;
+      floating.style.display = 'flex';
+    }
   } catch(e) { console.error(e); }
 }
+
+// 起動時とポーリング時にバー更新
+setInterval(() => {
+  if (currentWorker && currentMonth) updateDriverLocationBar();
+}, 30000);
 
 // ===== 進捗 =====
 function updateProgress() {
   const total = records.length;
   const pct = total > 0 ? Math.round(doneCount / total * 100) : 0;
+  // 合計冊数を計算
+  let totalNabon = 0;
+  records.forEach(r => {
+    totalNabon += parseInt(r['数値_2']?.value || 0);
+  });
   document.getElementById('prog-fill').style.width = pct + '%';
-  document.getElementById('prog-text').textContent = `${doneCount} / ${total} 完了`;
+  document.getElementById('prog-text').textContent = `${doneCount} / ${total} 完了 ・ 📦合計${totalNabon}冊`;
   const allDone = (doneCount + absentCount) >= total;
   document.getElementById('btn-return').classList.toggle('all-done', allDone);
   document.getElementById('return-sub').textContent = allDone ? '（全件完了！）' : `（未完了 ${todoCount}件）`;
@@ -1009,5 +1039,10 @@ async function loadGroup(groupCode) {
 // ===== 起動 =====
 init();
 </script>
+<!-- 全画面共通の運転手位置情報フローティングボタン -->
+<a id="floating-driver-location" href="#" target="_blank" style="display:none;position:fixed;bottom:80px;right:16px;width:56px;height:56px;background:var(--blue);color:white;border-radius:50%;align-items:center;justify-content:center;text-decoration:none;font-size:24px;box-shadow:0 4px 12px rgba(0,0,0,0.25);z-index:1000;">
+  📍
+</a>
+
 </body>
 </html>

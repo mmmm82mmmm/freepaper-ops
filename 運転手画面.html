@@ -591,13 +591,24 @@ async function loadAssignData() {
     if (!assignState.routeCars) assignState.routeCars = {};
 
     // 戻ってきた作業者に自動割当
+    // ※ 自動割当前にallRecordsが最新であることを確認
     let autoAssigned = false;
     const returned = [...(assignState.returned || [])];
+    if (returned.length > 0) {
+      // 最新の完了状況を取得するためallRecordsを再取得
+      try {
+        const latestQuery = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
+        allRecords = await kintoneGet(latestQuery);
+      } catch(e) { console.error('再取得エラー:', e); }
+    }
+    // 二重割当を防ぐため、処理中に割当てたグループを記録
+    const justAssigned = new Set();
     for (const worker of returned) {
       if (!assignState.assignments[worker]) {
-        const group = autoAssign(worker);
+        const group = autoAssign(worker, justAssigned);
         if (group) {
           assignState.assignments[worker] = group;
+          justAssigned.add(group);
           assignState.returned = assignState.returned.filter(w => w !== worker);
           autoAssigned = true;
           console.log(`🤖 自動割当: ${worker} → ${group}`);
@@ -739,16 +750,22 @@ async function saveAssign() {
   if (!res.ok) throw new Error('保存失敗');
 }
 
-function autoAssign(workerName) {
+function autoAssign(workerName, justAssigned = new Set()) {
   // 作業者の車番号を取得
   const carNum = assignState.cars?.[workerName] || 0;
-  if (!carNum) return null;
+  if (!carNum) {
+    console.warn(`[autoAssign] ${workerName} に車番号が設定されていません`);
+    return null;
+  }
 
-  // 車に紐付いたルートを取得
+  // 車に紐付いたルートを取得（大文字小文字を吸収）
   const carRoutes = Object.entries(assignState.routeCars || {})
-    .filter(([r, c]) => c === carNum)
-    .map(([r]) => r);
-  if (!carRoutes.length) return null;
+    .filter(([r, c]) => parseInt(c) === parseInt(carNum))
+    .map(([r]) => r.toLowerCase());
+  if (!carRoutes.length) {
+    console.warn(`[autoAssign] ${carNum}号車にルートが紐付いていません`);
+    return null;
+  }
 
   // グループごとの完了状況を集計
   const groupCounts = {}, groupDone = {};
@@ -761,12 +778,15 @@ function autoAssign(workerName) {
     }
   });
 
-  // 既に割当済みのグループ
-  const assignedGroups = new Set(Object.values(assignState.assignments || {}));
+  // 既に割当済みのグループ（今回のループで割当てられたものも含む）
+  const assignedGroups = new Set([
+    ...Object.values(assignState.assignments || {}),
+    ...justAssigned
+  ]);
 
   // 対象ルートの未完了・未割当グループを取得
   const candidates = allGroups.filter(g => {
-    const route = getGroupRoute(g);
+    const route = getGroupRoute(g).toLowerCase();
     if (!carRoutes.includes(route)) return false;
     if (assignedGroups.has(g)) return false;
     const count = groupCounts[g] || 0;
@@ -774,24 +794,44 @@ function autoAssign(workerName) {
     return !(count > 0 && done >= count); // 未完了
   });
 
-  if (!candidates.length) return null;
+  if (!candidates.length) {
+    console.log(`[autoAssign] ${workerName}: 対象ルート(${carRoutes.join(',')})に未完了グループなし`);
+    return null;
+  }
 
-  // 最も番号が若いグループを返す（既にソート済み）
+  // 最も番号が若いグループを返す
   return candidates[0];
 }
 
 async function assignWorker(groupCode, workerName) {
-  // 既存の割当を外す
+  // 最新の状態を取得して上書き競合を防ぐ
+  try {
+    const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
+    if (recs.length) {
+      const raw = recs[0]['文字列__複数行__0']?.value || '';
+      try {
+        const latest = JSON.parse(raw);
+        // 最新の割当を反映
+        assignState.assignments = latest.assignments || {};
+        assignState.returned = latest.returned || [];
+      } catch(e) {}
+    }
+  } catch(e) { console.error('最新状態取得エラー:', e); }
+
+  // 既存の割当を外す（同じグループに別作業者が既に割り当てられていれば外す）
   Object.keys(assignState.assignments).forEach(w => {
     if (assignState.assignments[w] === groupCode) delete assignState.assignments[w];
   });
+  // 同じ作業者の別の割当も外す
   if (workerName) {
+    delete assignState.assignments[workerName];
     assignState.assignments[workerName] = groupCode;
     // returnedから外す
-    assignState.returned = assignState.returned.filter(w => w !== workerName);
+    assignState.returned = (assignState.returned || []).filter(w => w !== workerName);
   }
   assignState.updatedAt = new Date().toISOString();
   await saveAssign();
+  renderCars();
   renderAssign();
 }
 
