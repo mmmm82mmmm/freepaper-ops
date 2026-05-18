@@ -246,16 +246,22 @@ async function run() {
     if (currentMode === 'reset' && existingIds.length > 0) {
       log(`${existingIds.length}件を削除中...`);
       let deleted = 0;
-      for (let i = 0; i < existingIds.length; i += BATCH) {
-        const batch = existingIds.slice(i, i + BATCH);
-        const params = new URLSearchParams({ subdomain: 'white', app: APP_NOHON });
-        batch.forEach(id => params.append('ids[]', id));
-        const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+      const DELETE_BATCH = 100;
+      for (let i = 0; i < existingIds.length; i += DELETE_BATCH) {
+        const batch = existingIds.slice(i, i + DELETE_BATCH);
+        // DELETE: URLパラメータ方式（ids[]）
+        const params = new URLSearchParams({ subdomain: 'white' });
+        let url = `${PROXY()}/k/v1/records.json?${params}&app=${APP_NOHON}`;
+        batch.forEach(id => { url += `&ids[]=${id}`; });
+        const res = await fetch(url, {
           method: 'DELETE',
           headers: { 'X-Cybozu-API-Token': tokenNohon }
         });
-        const data = await res.json();
-        if (!res.ok) throw new Error(`削除失敗: ${JSON.stringify(data)}`);
+        const text = await res.text();
+        if (!res.ok) {
+          log(`削除エラー(${batch.length}件): ${text.slice(0,200)}`, 'error');
+          throw new Error(`削除失敗 (${batch.length}件目): ${text.slice(0,200)}`);
+        }
         deleted += batch.length;
         setProgress(Math.round(deleted / existingIds.length * 40));
         log(`${deleted} / ${existingIds.length}件 削除済み`);
