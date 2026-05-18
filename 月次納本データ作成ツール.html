@@ -249,13 +249,15 @@ async function run() {
       const DELETE_BATCH = 100;
       for (let i = 0; i < existingIds.length; i += DELETE_BATCH) {
         const batch = existingIds.slice(i, i + DELETE_BATCH);
-        // DELETE: URLパラメータ方式（ids[]）
+        // bodyで渡す（WorkerがURLパラメータのids[]を転送しないため）
         const params = new URLSearchParams({ subdomain: 'white' });
-        let url = `${PROXY()}/k/v1/records.json?${params}&app=${APP_NOHON}`;
-        batch.forEach(id => { url += `&ids[]=${id}`; });
-        const res = await fetch(url, {
+        const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
           method: 'DELETE',
-          headers: { 'X-Cybozu-API-Token': tokenNohon }
+          headers: {
+            'X-Cybozu-API-Token': tokenNohon,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ app: APP_NOHON, ids: batch })
         });
         const text = await res.text();
         if (!res.ok) {
