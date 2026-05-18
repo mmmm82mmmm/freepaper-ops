@@ -259,6 +259,15 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     </div>
   </div>
 
+  <!-- 不在再訪 -->
+  <div style="margin-bottom:16px">
+    <div class="section-title" style="display:flex;align-items:center;gap:8px;">
+      🔄 不在再訪
+      <span id="revisit-count" style="font-size:10px;color:var(--amber);font-weight:700;"></span>
+    </div>
+    <div id="revisit-list"></div>
+  </div>
+
   <!-- ルート↔車の紐付け設定 -->
   <div style="margin-bottom:16px">
     <div class="section-title">🗺️ ルート設定（どの車がどのルートを担当するか）</div>
@@ -293,7 +302,7 @@ const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab
 
 let allRecords = [];
 let currentMonth = '';
-let assignState = { cars: {}, routeCars: {}, assignments: {}, returned: [], updatedAt: '' };
+let assignState = { cars: {}, routeCars: {}, assignments: {}, returned: [], revisitMap: {}, updatedAt: '' };
 let allGroups = []; // 全グループコード一覧
 let workerList = []; // 作業者一覧
 
@@ -623,6 +632,7 @@ async function loadAssignData() {
     renderCars();
     renderRouteCars();
     renderAssign();
+    renderRevisit();
   } catch(e) { console.error('割当データ取得エラー:', e); }
 }
 
@@ -801,6 +811,114 @@ function autoAssign(workerName, justAssigned = new Set()) {
 
   // 最も番号が若いグループを返す
   return candidates[0];
+}
+
+// ===== 不在再訪機能 =====
+function renderRevisit() {
+  const el = document.getElementById('revisit-list');
+  const countEl = document.getElementById('revisit-count');
+  if (!el) return;
+
+  // 通常ルートで不在になった店舗を取得
+  const absentRecords = allRecords.filter(r => {
+    const status = r['ドロップダウン']?.value;
+    const isOsoi = (r['チェックボックス_0']?.value || []).length > 0;
+    return status === '不在' && !isOsoi;
+  });
+
+  // 既に再訪先に追加されているレコードを除外する
+  const revisitMap = assignState.revisitMap || {};
+  const alreadyAssigned = new Set();
+  Object.values(revisitMap).forEach(ids => {
+    (ids || []).forEach(id => alreadyAssigned.add(String(id)));
+  });
+
+  const pending = absentRecords.filter(r => !alreadyAssigned.has(r['$id'].value));
+
+  if (countEl) countEl.textContent = pending.length > 0 ? `${pending.length}件` : '';
+
+  if (pending.length === 0) {
+    el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;text-align:center;background:var(--card);border-radius:8px;">不在再訪対象なし</div>';
+    return;
+  }
+
+  // 各不在店舗ごとに、その遅ルートのグループ一覧を作成
+  el.innerHTML = pending.map(r => {
+    const recId = r['$id'].value;
+    const shop = r['文字列__1行__1']?.value || '';
+    const building = r['文字列__1行__2']?.value || '';
+    const floor = r['文字列__1行__3']?.value || '';
+    const address = r['文字列__1行__8']?.value || '';
+    const comment = r['文字列__1行__9']?.value || '';
+    const route = (r['文字列__1行__4']?.value || '').toLowerCase();
+    const groupCode = r['文字列__1行__0']?.value || '';
+
+    // 同じルートの遅グループを抽出
+    const osoiGroups = allGroups.filter(g => {
+      const gRoute = (g.replace(/[0-9]/g, '')).toLowerCase();
+      if (gRoute !== route) return false;
+      // そのグループが遅グループかどうか
+      const hasOsoi = allRecords.some(rr =>
+        rr['文字列__1行__0']?.value === g &&
+        (rr['チェックボックス_0']?.value || []).length > 0
+      );
+      return hasOsoi;
+    });
+
+    // 各遅グループに含まれる店舗一覧（ビル名・住所）
+    const groupButtons = osoiGroups.map(g => {
+      const shops = allRecords.filter(rr => rr['文字列__1行__0']?.value === g)
+        .map(rr => {
+          const s = rr['文字列__1行__1']?.value || '';
+          const b = rr['文字列__1行__2']?.value || '';
+          const a = rr['文字列__1行__8']?.value || '';
+          return `${b}${a ? ` (${a})` : ''}`;
+        })
+        .slice(0, 5)
+        .join('、');
+      return `
+        <div style="background:var(--bg);border-radius:6px;padding:8px 10px;margin-top:6px;display:flex;align-items:flex-start;gap:8px;">
+          <button onclick="addToRevisit('${g}', ${recId})" style="flex-shrink:0;padding:6px 10px;background:var(--blue);color:white;border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;">${g}に追加</button>
+          <div style="flex:1;font-size:10px;color:var(--muted);line-height:1.5;">
+            含む店舗: ${shops || '（なし）'}
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div style="background:var(--card);border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid var(--amber);">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+          <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:2px 6px;border-radius:4px;">${groupCode} 不在</span>
+          <span style="font-size:13px;font-weight:700;">${shop}</span>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
+        ${comment ? `<div style="font-size:10px;color:#7a5a00;background:#fff8e8;padding:3px 6px;border-radius:4px;margin-bottom:6px;">💬 ${comment}</div>` : ''}
+        <div style="font-size:10px;font-weight:700;color:var(--muted);margin-top:8px;">▼ 振り分け先を選択：</div>
+        ${groupButtons || '<div style="font-size:11px;color:var(--muted);padding:8px;">遅グループなし</div>'}
+      </div>`;
+  }).join('');
+}
+
+async function addToRevisit(groupCode, recordId) {
+  if (!assignState.revisitMap) assignState.revisitMap = {};
+  if (!assignState.revisitMap[groupCode]) assignState.revisitMap[groupCode] = [];
+  if (!assignState.revisitMap[groupCode].includes(String(recordId))) {
+    assignState.revisitMap[groupCode].push(String(recordId));
+  }
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  renderRevisit();
+  renderAssign();
+}
+
+async function removeFromRevisit(groupCode, recordId) {
+  if (!assignState.revisitMap?.[groupCode]) return;
+  assignState.revisitMap[groupCode] = assignState.revisitMap[groupCode].filter(id => String(id) !== String(recordId));
+  if (assignState.revisitMap[groupCode].length === 0) delete assignState.revisitMap[groupCode];
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  renderRevisit();
+  renderAssign();
 }
 
 async function assignWorker(groupCode, workerName) {

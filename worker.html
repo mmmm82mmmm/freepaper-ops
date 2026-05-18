@@ -475,8 +475,22 @@ async function startWorkDirect() {
 
     const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // 再訪レコードを取得（このグループに振り分けられた不在店舗）
+    const revisitIds = state.revisitMap?.[assignedGroup] || [];
+    if (revisitIds.length > 0) {
+      const idList = revisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idList}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+      try {
+        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+        // 再訪フラグを付ける
+        revisitRecords.forEach(r => { r._isRevisit = true; });
+        // 不在として記録されているがステータスをリセットして再作業できるように
+        records = records.concat(revisitRecords);
+      } catch(e) { console.error('再訪取得エラー:', e); }
+    }
+
     if (records.length === 0) {
-      // データがなければ月選択画面を表示
       document.getElementById('loading-screen').style.display = 'none';
       document.getElementById('login-screen').style.display = 'block';
       initLoginScreen();
@@ -526,6 +540,18 @@ async function startWork() {
 
     const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // 再訪レコードを取得
+    const revisitIds = state.revisitMap?.[assignedGroup] || [];
+    if (revisitIds.length > 0) {
+      const idList = revisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idList}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+      try {
+        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+        revisitRecords.forEach(r => { r._isRevisit = true; });
+        records = records.concat(revisitRecords);
+      } catch(e) { console.error('再訪取得エラー:', e); }
+    }
 
     if (records.length === 0) {
       throw new Error(`${currentMonth}の担当レコードが見つかりませんでした。\n運転手にグループの割当を依頼してください。`);
@@ -692,9 +718,11 @@ function renderCard(r, container) {
       </div>`;
   }
 
+  const isRevisit = r._isRevisit;
   card.innerHTML = `
     <div class="card-header">
       <div class="card-header-left">
+        ${isRevisit ? '<div style="background:#fff8e8;color:#7a5a00;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;display:inline-block;margin-bottom:4px;border-left:3px solid var(--amber);">🔄 再訪（前回不在）</div>' : ''}
         <div class="shop-name">${shopName}${rackChange ? ' <span style="color:#d42020;font-size:13px;font-weight:700;background:#ffebeb;padding:2px 6px;border-radius:4px;margin-left:4px;">🔧 ラック交換</span>' : ''}</div>
         <div class="shop-meta">
           ${building ? `<span class="meta-chip" style="background:#f0eee8;color:#666;">${building}</span>` : ''}
@@ -1030,6 +1058,20 @@ async function loadGroup(groupCode) {
   try {
     const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${groupCode}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // 再訪レコードを取得
+    const state = await getAssignState();
+    const revisitIds = state.revisitMap?.[groupCode] || [];
+    if (revisitIds.length > 0) {
+      const idList = revisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idList}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+      try {
+        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+        revisitRecords.forEach(r => { r._isRevisit = true; });
+        records = records.concat(revisitRecords);
+      } catch(e) { console.error('再訪取得エラー:', e); }
+    }
+
     doneCount = 0; absentCount = 0; todoCount = 0;
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';
