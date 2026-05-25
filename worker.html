@@ -410,6 +410,20 @@ function checkLogin() {
   document.getElementById('btn-login').disabled = !w || !m;
 }
 
+// ===== 定休日フィルタ =====
+function getDayName(d) {
+  return ['日','月','火','水','木','金','土'][parseInt(d)] || '';
+}
+
+function filterClosedToday(records, workDay) {
+  if (workDay === null || workDay === undefined || workDay === '') return records;
+  const day = getDayName(workDay);
+  return records.filter(r => {
+    const teikyu = r['チェックボックス_2']?.value || [];
+    return !teikyu.includes(day);
+  });
+}
+
 // ===== kintone API =====
 async function kintoneGet(appId, token, query, fields = []) {
   const queryEncoded = encodeURIComponent(query);
@@ -476,6 +490,9 @@ async function startWorkDirect() {
     const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
+    // 定休日フィルタ
+    records = filterClosedToday(records, state.workDay);
+
     // 再訪レコードを取得（このグループに振り分けられた不在店舗）
     const revisitIds = state.revisitMap?.[assignedGroup] || [];
     if (revisitIds.length > 0) {
@@ -540,6 +557,9 @@ async function startWork() {
 
     const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // 定休日フィルタ
+    records = filterClosedToday(records, state.workDay);
 
     // 再訪レコードを取得
     const revisitIds = state.revisitMap?.[assignedGroup] || [];
@@ -1059,8 +1079,9 @@ async function loadGroup(groupCode) {
     const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${groupCode}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
-    // 再訪レコードを取得
+    // 定休日フィルタ
     const state = await getAssignState();
+    records = filterClosedToday(records, state.workDay);
     const revisitIds = state.revisitMap?.[groupCode] || [];
     if (revisitIds.length > 0) {
       const idList = revisitIds.map(id => `"${id}"`).join(',');

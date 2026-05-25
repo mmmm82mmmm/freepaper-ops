@@ -142,7 +142,17 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <div class="app-header">
   <div class="app-header-top">
     <div class="app-title">🚐 運転手画面</div>
-    <div style="display:flex;align-items:center;gap:8px;">
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <select id="work-day-select" onchange="changeWorkDay(this.value)" style="font-size:11px;background:#c47a0a;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;">
+        <option value="">📅 作業日</option>
+        <option value="0">日曜日</option>
+        <option value="1">月曜日</option>
+        <option value="2">火曜日</option>
+        <option value="3">水曜日</option>
+        <option value="4">木曜日</option>
+        <option value="5">金曜日</option>
+        <option value="6">土曜日</option>
+      </select>
       <button id="location-btn" onclick="shareLocation()" style="font-size:11px;background:#1a5cd4;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;cursor:pointer;">📍 現在地を共有</button>
       <select id="month-badge" onchange="changeMonth(this.value)" style="font-size:11px;background:#333;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;"></select>
     </div>
@@ -794,14 +804,19 @@ function autoAssign(workerName, justAssigned = new Set()) {
     ...justAssigned
   ]);
 
-  // 対象ルートの未完了・未割当グループを取得
+  // 作業日取得
+  const workDay = document.getElementById('work-day-select')?.value || '';
+
+  // 対象ルートの未完了・未割当グループを取得（定休日除く）
   const candidates = allGroups.filter(g => {
     const route = getGroupRoute(g).toLowerCase();
     if (!carRoutes.includes(route)) return false;
     if (assignedGroups.has(g)) return false;
-    const count = groupCounts[g] || 0;
-    const done = groupDone[g] || 0;
-    return !(count > 0 && done >= count); // 未完了
+    // 定休日を除いた件数で判定
+    const grpRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g && !isClosedToday(r, workDay));
+    if (grpRecs.length === 0) return false; // 全店舗が定休日ならスキップ
+    const done = grpRecs.filter(r => ['完了','不在'].includes(r['ドロップダウン']?.value)).length;
+    return done < grpRecs.length;
   });
 
   if (!candidates.length) {
@@ -972,11 +987,19 @@ function renderAssign() {
     return;
   }
 
-  // グループごとの集計
-  const groupCounts = {}, groupDone = {}, groupNabon = {};
+  // 作業日を取得
+  const workDay = document.getElementById('work-day-select')?.value || '';
+
+  // グループごとの集計（定休日除外）
+  const groupCounts = {}, groupDone = {}, groupNabon = {}, groupClosed = {};
   allRecords.forEach(r => {
     const g = r['文字列__1行__0']?.value;
     if (!g) return;
+    const closed = isClosedToday(r, workDay);
+    if (closed) {
+      groupClosed[g] = (groupClosed[g] || 0) + 1;
+      return; // 定休日は集計から除外
+    }
     groupCounts[g] = (groupCounts[g] || 0) + 1;
     groupNabon[g] = (groupNabon[g] || 0) + (parseInt(r['数値_2']?.value) || 0);
     if (r['ドロップダウン']?.value === '完了' || r['ドロップダウン']?.value === '不在') {
@@ -1037,7 +1060,11 @@ function renderAssign() {
     }).join('');
 
     // 店舗一覧HTML（コメント付き）
-    const groupRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g);
+    const groupRecs = allRecords.filter(r => {
+      if (r['文字列__1行__0']?.value !== g) return false;
+      if (isClosedToday(r, workDay)) return false;
+      return true;
+    });
     const shopList = groupRecs.map(r => {
       const shop = r['文字列__1行__1']?.value || '';
       const building = r['文字列__1行__2']?.value || '';
@@ -1069,7 +1096,7 @@ function renderAssign() {
         <div class="assign-group-header" onclick="toggleGroupDetail('detail-${g}')" style="cursor:pointer;">
           <div class="assign-group-code">${g}</div>
           <div style="flex:1">
-            <div class="assign-group-info">${count}件 ${done > 0 ? `完了${done}/` : ''}📦<strong>${nabon}冊</strong></div>
+            <div class="assign-group-info">${count}件 ${done > 0 ? `完了${done}/` : ''}📦<strong>${nabon}冊</strong>${groupClosed[g] ? ` <span style="color:var(--amber);font-size:10px;">🚫定休${groupClosed[g]}件除外</span>` : ''}</div>
             <div style="margin-top:2px">${routeCarLabel}</div>
           </div>
           <div class="assign-group-worker">${assignedWorker ? `${carLabel}👤 ${assignedWorker}` : isDone ? '✅ 完了' : '未割当'}</div>
@@ -1094,6 +1121,27 @@ function renderAssign() {
     html += doneGroups.map(g => renderGroup(g, true)).join('');
   }
   assignEl.innerHTML = html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>';
+}
+
+// ===== 作業日変更 =====
+function getDayName(d) {
+  return ['日','月','火','水','木','金','土'][parseInt(d)] || '';
+}
+
+async function changeWorkDay(workDay) {
+  if (!assignState) return;
+  assignState.workDay = workDay === '' ? null : parseInt(workDay);
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  localStorage.setItem('fp_work_day', workDay);
+  renderAssign();
+  renderRevisit();
+}
+
+function isClosedToday(record, workDay) {
+  if (workDay === null || workDay === undefined || workDay === '') return false;
+  const teikyu = record['チェックボックス_2']?.value || [];
+  return teikyu.includes(getDayName(workDay));
 }
 
 // ===== 運転手位置情報共有 =====
