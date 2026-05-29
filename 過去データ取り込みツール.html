@@ -1,0 +1,689 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📂 過去データ取り込みツール - FreePaper Ops</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<style>
+* { box-sizing: border-box; margin: 0; padding: 0; }
+body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif; background: #f5f5f5; color: #333; padding: 12px; max-width: 900px; margin: 0 auto; }
+h1 { font-size: 1.3em; text-align: center; margin: 10px 0; }
+.card { background: #fff; border-radius: 10px; padding: 16px; margin: 10px 0; box-shadow: 0 1px 4px rgba(0,0,0,0.1); }
+.card h2 { font-size: 1.05em; margin-bottom: 10px; padding-bottom: 6px; border-bottom: 2px solid #eee; }
+label { font-weight: 600; display: block; margin: 6px 0 3px; font-size: 0.9em; }
+input[type="file"] { width: 100%; padding: 10px; border: 2px dashed #ccc; border-radius: 8px; background: #fafafa; cursor: pointer; }
+input[type="file"]:hover { border-color: #2196F3; background: #f0f7ff; }
+button { padding: 10px 20px; border: none; border-radius: 8px; font-weight: 700; font-size: 0.95em; cursor: pointer; transition: all 0.2s; }
+button:disabled { opacity: 0.4; cursor: not-allowed; }
+.btn-primary { background: #2196F3; color: #fff; }
+.btn-primary:hover:not(:disabled) { background: #1976D2; }
+.btn-danger { background: #f44336; color: #fff; }
+.btn-danger:hover:not(:disabled) { background: #d32f2f; }
+.btn-secondary { background: #78909C; color: #fff; }
+.btn-secondary:hover:not(:disabled) { background: #546E7A; }
+.btn-sm { padding: 5px 12px; font-size: 0.82em; }
+
+.summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr)); gap: 8px; margin: 10px 0; }
+.summary-item { background: #f0f7ff; border-radius: 8px; padding: 10px; text-align: center; }
+.summary-item .num { font-size: 1.5em; font-weight: 800; color: #1565C0; }
+.summary-item .lbl { font-size: 0.78em; color: #666; }
+
+.month-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 4px; max-height: 350px; overflow-y: auto; padding: 4px; margin: 8px 0; }
+.month-item { display: flex; align-items: center; gap: 6px; padding: 5px 8px; border-radius: 6px; font-size: 0.85em; background: #fafafa; border: 1px solid #eee; }
+.month-item:hover { background: #e3f2fd; }
+.month-item input { margin: 0; }
+.month-item .cnt { color: #888; font-size: 0.8em; margin-left: auto; }
+.month-item.exists { background: #fff3e0; border-color: #ffb74d; }
+
+.month-toolbar { display: flex; gap: 6px; flex-wrap: wrap; align-items: center; margin: 6px 0; }
+
+.progress-area { margin: 12px 0; }
+.progress-bar { width: 100%; height: 24px; background: #e0e0e0; border-radius: 12px; overflow: hidden; }
+.progress-fill { height: 100%; background: linear-gradient(90deg, #43A047, #66BB6A); transition: width 0.3s; border-radius: 12px; display: flex; align-items: center; justify-content: center; color: #fff; font-size: 0.75em; font-weight: 700; }
+.progress-text { font-size: 0.85em; color: #555; margin-top: 4px; text-align: center; }
+
+.log-area { background: #263238; color: #e0e0e0; border-radius: 8px; padding: 10px; max-height: 300px; overflow-y: auto; font-family: 'Consolas', monospace; font-size: 0.78em; line-height: 1.5; margin-top: 8px; }
+.log-area .ok { color: #81C784; }
+.log-area .err { color: #EF5350; }
+.log-area .warn { color: #FFB74D; }
+.log-area .info { color: #64B5F6; }
+
+.status-badge { display: inline-block; padding: 2px 8px; border-radius: 4px; font-size: 0.8em; font-weight: 600; }
+.status-badge.idle { background: #eee; color: #888; }
+.status-badge.running { background: #e3f2fd; color: #1565C0; }
+.status-badge.done { background: #e8f5e9; color: #2e7d32; }
+.status-badge.error { background: #ffebee; color: #c62828; }
+
+.warning-box { background: #fff3e0; border-left: 4px solid #ff9800; padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 0.88em; margin: 8px 0; }
+.info-box { background: #e3f2fd; border-left: 4px solid #2196F3; padding: 10px 14px; border-radius: 0 8px 8px 0; font-size: 0.88em; margin: 8px 0; }
+
+.actions-bar { display: flex; gap: 8px; flex-wrap: wrap; margin-top: 12px; align-items: center; }
+.spacer { flex: 1; }
+.back-link { display: inline-block; margin: 10px 0; color: #1565C0; text-decoration: none; font-size: 0.9em; }
+.back-link:hover { text-decoration: underline; }
+
+.delay-setting { display: flex; align-items: center; gap: 6px; font-size: 0.85em; }
+.delay-setting input { width: 60px; padding: 3px 6px; border: 1px solid #ccc; border-radius: 4px; }
+</style>
+</head>
+<body>
+
+<a href="index.html" class="back-link">← メニューに戻る</a>
+<h1>📂 過去データ取り込みツール</h1>
+
+<!-- STEP 1: File Upload -->
+<div class="card" id="step1">
+  <h2>① Excelファイル読み込み</h2>
+  <p style="font-size:0.85em;color:#666;margin-bottom:8px;">
+    「設置履歴と納本リスト」シートを含むExcelファイルを選択してください。
+  </p>
+  <input type="file" id="fileInput" accept=".xlsx,.xlsm,.xls" />
+  <div id="parseStatus" style="margin-top:8px;"></div>
+</div>
+
+<!-- STEP 2: Summary & Month Selection -->
+<div class="card" id="step2" style="display:none;">
+  <h2>② データ概要 &amp; 月選択</h2>
+  <div id="summaryArea" class="summary-grid"></div>
+
+  <div class="month-toolbar">
+    <button class="btn-sm btn-secondary" onclick="selectAllMonths(true)">全選択</button>
+    <button class="btn-sm btn-secondary" onclick="selectAllMonths(false)">全解除</button>
+    <button class="btn-sm btn-secondary" onclick="selectByYear()">年で選択</button>
+    <span style="font-size:0.82em;color:#888;" id="selectedCount"></span>
+    <span class="spacer"></span>
+    <button class="btn-sm btn-primary" onclick="checkExisting()">🔍 kintone既存チェック</button>
+  </div>
+  <div id="existingNote" class="info-box" style="display:none;"></div>
+  <div id="monthGrid" class="month-grid"></div>
+
+  <div class="warning-box" id="importWarning" style="display:none;"></div>
+
+  <div class="actions-bar">
+    <div class="delay-setting">
+      <label style="margin:0;">バッチ間隔:</label>
+      <input type="number" id="batchDelay" value="200" min="50" max="2000" step="50" /> ms
+    </div>
+    <span class="spacer"></span>
+    <button class="btn-primary" id="btnPreview" onclick="previewImport()">🔍 内容を確認</button>
+    <button class="btn-danger" id="btnImport" onclick="startImport()" disabled>▶ 取り込み実行</button>
+  </div>
+</div>
+
+<!-- STEP 3: Preview -->
+<div class="card" id="step3" style="display:none;">
+  <h2>③ プレビュー</h2>
+  <div id="previewArea" style="font-size:0.85em; max-height:300px; overflow-y:auto;"></div>
+</div>
+
+<!-- STEP 4: Progress -->
+<div class="card" id="step4" style="display:none;">
+  <h2>④ 取り込み実行中 <span id="statusBadge" class="status-badge idle">待機中</span></h2>
+  <div class="progress-area">
+    <div class="progress-bar"><div class="progress-fill" id="progressFill" style="width:0%">0%</div></div>
+    <div class="progress-text" id="progressText">-</div>
+  </div>
+  <div id="monthProgress" style="font-size:0.85em;margin:8px 0;"></div>
+  <div class="actions-bar">
+    <button class="btn-danger btn-sm" id="btnStop" onclick="stopImport()">⏹ 中断</button>
+    <span class="spacer"></span>
+    <span id="etaText" style="font-size:0.82em;color:#888;"></span>
+  </div>
+  <div class="log-area" id="logArea"></div>
+</div>
+
+<script>
+// ===== Config =====
+const PROXY_URL = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const APP_ID = 269;
+const API_TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const BATCH_SIZE = 100;
+
+// ===== State =====
+let parsedData = null;     // { stores: [], months: [], monthColumns: {} }
+let importRecords = [];     // flat array of kintone records to import
+let stopRequested = false;
+let existingMonths = new Set();
+
+// ===== Column indices (0-based) =====
+const COL = {
+  LIST_NO: 0,       // 一覧
+  DELIVERY_NO: 1,   // 配本 → ルート順
+  KINTONE_NO: 2,    // kintone番号
+  GENRE: 3,         // ジャンル
+  SHOP_NAME: 4,     // 店名
+  JOU: 5,           // 条
+  CHOME: 6,         // 丁目
+  ROUTE: 7,         // ルート
+  OCHI: 8,          // 遅
+  COL9: 9,          // 列2 (グループ番号的)
+  GROUP: 10,        // グループ (空)
+  BLDG: 11,         // ビル
+  FLOOR: 12,        // 階数
+  HOLIDAY: 13,      // 定休日
+  CONFIRM_DATE: 14, // 確認日
+  STATUS: 15,       // 設置
+  HOJUU: 16,        // 要補充
+  COMMENT: 17,      // コメント
+  MAP: 18,          // MAP
+  PLACE_DESC: 23,   // 設置場所
+  NORMAL_DEL: 28,   // 納本(自動) → 通常納本数
+};
+
+// ===== File Upload =====
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  const status = document.getElementById('parseStatus');
+  status.innerHTML = '<span style="color:#1565C0;">📖 読み込み中...</span>';
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const sheetName = wb.SheetNames.find(n => n.includes('設置履歴') || n.includes('納本リスト'));
+    if (!sheetName) throw new Error('「設置履歴と納本リスト」シートが見つかりません');
+    const ws = wb.Sheets[sheetName];
+    parseSheet(ws);
+    status.innerHTML = `<span class="ok" style="color:#2e7d32;">✅ 読み込み完了: ${sheetName}</span>`;
+    showStep2();
+  } catch (err) {
+    status.innerHTML = `<span style="color:#c62828;">❌ ${err.message}</span>`;
+    console.error(err);
+  }
+});
+
+function parseSheet(ws) {
+  const range = XLSX.utils.decode_range(ws['!ref']);
+  const getCell = (r, c) => {
+    const addr = XLSX.utils.encode_cell({ r, c });
+    const cell = ws[addr];
+    return cell ? cell.v : null;
+  };
+
+  // Parse headers (row index 2, 0-based)
+  const headers = [];
+  for (let c = 0; c <= range.e.c; c++) {
+    headers.push(getCell(2, c));
+  }
+
+  // Parse monthly columns
+  const monthColumns = {}; // { "2025年7月号": { delCol, retCol } }
+  for (let c = 0; c < headers.length; c++) {
+    const h = headers[c];
+    if (!h || typeof h !== 'string') continue;
+    if (!h.includes('月号')) continue;
+    const m = h.match(/^(\d{4})\.(\d{1,2})月号(返却|納本)$/);
+    if (!m) continue;
+    const [, year, month, type] = m;
+    const label = `${year}年${month}月号`;
+    if (!monthColumns[label]) monthColumns[label] = {};
+    if (type === '納本') monthColumns[label].delCol = c;
+    if (type === '返却') monthColumns[label].retCol = c;
+  }
+
+  // Parse store data (rows 3+ in 0-based, i.e. row 4+ in Excel)
+  const stores = [];
+  for (let r = 3; r <= range.e.r; r++) {
+    const shopName = getCell(r, COL.SHOP_NAME);
+    if (!shopName) continue;
+    const store = {};
+    for (const [key, col] of Object.entries(COL)) {
+      store[key] = getCell(r, col);
+    }
+    // Also store row index for monthly data access
+    store._row = r;
+    store._getCell = (c) => getCell(r, c);
+    stores.push(store);
+  }
+
+  // Sort months chronologically
+  const months = Object.keys(monthColumns).sort((a, b) => {
+    const pa = a.match(/(\d{4})年(\d{1,2})月号/);
+    const pb = b.match(/(\d{4})年(\d{1,2})月号/);
+    const ya = parseInt(pa[1]) * 100 + parseInt(pa[2]);
+    const yb = parseInt(pb[1]) * 100 + parseInt(pb[2]);
+    return yb - ya; // newest first
+  });
+
+  // Count records per month
+  for (const ml of months) {
+    const mc = monthColumns[ml];
+    let count = 0;
+    for (const s of stores) {
+      const delVal = mc.delCol != null ? s._getCell(mc.delCol) : null;
+      if (delVal != null) count++;
+    }
+    mc.recordCount = count;
+  }
+
+  parsedData = { stores, months, monthColumns, headers };
+}
+
+// ===== Step 2: Summary & Month Selection =====
+function showStep2() {
+  const { stores, months, monthColumns } = parsedData;
+  const totalRecords = months.reduce((sum, m) => sum + (monthColumns[m].recordCount || 0), 0);
+
+  document.getElementById('summaryArea').innerHTML = `
+    <div class="summary-item"><div class="num">${stores.length}</div><div class="lbl">店舗数</div></div>
+    <div class="summary-item"><div class="num">${months.length}</div><div class="lbl">月数</div></div>
+    <div class="summary-item"><div class="num">${totalRecords.toLocaleString()}</div><div class="lbl">最大レコード数</div></div>
+    <div class="summary-item"><div class="num">${months[0]?.replace('号','') || '-'}</div><div class="lbl">最新月</div></div>
+  `;
+
+  // Month grid
+  const grid = document.getElementById('monthGrid');
+  grid.innerHTML = months.map(m => {
+    const mc = monthColumns[m];
+    return `
+      <label class="month-item" data-month="${m}">
+        <input type="checkbox" checked value="${m}" onchange="updateSelectedCount()">
+        <span>${m}</span>
+        <span class="cnt">${mc.recordCount}件</span>
+      </label>`;
+  }).join('');
+
+  updateSelectedCount();
+  document.getElementById('step2').style.display = '';
+}
+
+function updateSelectedCount() {
+  const checks = document.querySelectorAll('#monthGrid input[type="checkbox"]');
+  const checked = [...checks].filter(c => c.checked);
+  const total = checked.reduce((s, c) => {
+    return s + (parsedData.monthColumns[c.value]?.recordCount || 0);
+  }, 0);
+  document.getElementById('selectedCount').textContent =
+    `${checked.length}ヶ月選択中（約${total.toLocaleString()}件）`;
+  document.getElementById('btnImport').disabled = checked.length === 0;
+  document.getElementById('btnPreview').disabled = checked.length === 0;
+}
+
+function selectAllMonths(on) {
+  document.querySelectorAll('#monthGrid input[type="checkbox"]').forEach(c => c.checked = on);
+  updateSelectedCount();
+}
+
+function selectByYear() {
+  const year = prompt('年を入力（例: 2024）');
+  if (!year) return;
+  document.querySelectorAll('#monthGrid input[type="checkbox"]').forEach(c => {
+    if (c.value.startsWith(year + '年')) c.checked = true;
+  });
+  updateSelectedCount();
+}
+
+// ===== Check existing months in kintone =====
+async function checkExisting() {
+  const note = document.getElementById('existingNote');
+  note.style.display = '';
+  note.innerHTML = '🔍 kintoneを確認中...';
+  existingMonths.clear();
+  try {
+    // Get distinct months from kintone
+    const query = 'order by $id asc limit 500';
+    const url = `${PROXY_URL}/k/v1/records.json?app=${APP_ID}&query=${encodeURIComponent(query)}&fields[0]=${encodeURIComponent('文字列__1行_')}`;
+    const resp = await fetch(url, {
+      headers: { 'X-Cybozu-API-Token': API_TOKEN }
+    });
+    if (!resp.ok) throw new Error(`HTTP ${resp.status}`);
+    const data = await resp.json();
+
+    const monthSet = new Set();
+    for (const r of data.records) {
+      const v = r['文字列__1行_']?.value;
+      if (v) monthSet.add(v);
+    }
+
+    // If more than 500, paginate
+    if (data.records.length === 500) {
+      let lastId = data.records[data.records.length - 1].$id.value;
+      while (true) {
+        const q2 = `$id > ${lastId} order by $id asc limit 500`;
+        const url2 = `${PROXY_URL}/k/v1/records.json?app=${APP_ID}&query=${encodeURIComponent(q2)}&fields[0]=${encodeURIComponent('文字列__1行_')}`;
+        const resp2 = await fetch(url2, { headers: { 'X-Cybozu-API-Token': API_TOKEN } });
+        const data2 = await resp2.json();
+        for (const r of data2.records) {
+          const v = r['文字列__1行_']?.value;
+          if (v) monthSet.add(v);
+        }
+        if (data2.records.length < 500) break;
+        lastId = data2.records[data2.records.length - 1].$id.value;
+      }
+    }
+
+    existingMonths = monthSet;
+    // Mark existing months in UI
+    document.querySelectorAll('#monthGrid .month-item').forEach(el => {
+      const m = el.dataset.month;
+      if (monthSet.has(m)) {
+        el.classList.add('exists');
+        el.querySelector('input').checked = false;
+      }
+    });
+    updateSelectedCount();
+
+    if (monthSet.size > 0) {
+      note.innerHTML = `⚠️ kintoneに既存データあり: <strong>${[...monthSet].sort().join(', ')}</strong><br>
+        <span style="font-size:0.85em;">既存月はチェックを外しました。重複取り込みしたい場合は手動でチェックを入れてください。</span>`;
+    } else {
+      note.innerHTML = '✅ kintoneに既存データなし。全月取り込み可能です。';
+    }
+  } catch (err) {
+    note.innerHTML = `❌ チェック失敗: ${err.message}`;
+  }
+}
+
+// ===== Build records for import =====
+function buildRecords(selectedMonths) {
+  const { stores, monthColumns } = parsedData;
+  const records = [];
+
+  for (const month of selectedMonths) {
+    const mc = monthColumns[month];
+    if (!mc) continue;
+
+    for (const store of stores) {
+      const delVal = mc.delCol != null ? store._getCell(mc.delCol) : null;
+      const retVal = mc.retCol != null ? store._getCell(mc.retCol) : null;
+
+      // Skip if no delivery data
+      if (delVal == null) continue;
+
+      const rec = {
+        '文字列__1行_':  { value: month },
+        '文字列__1行__1': { value: String(store.SHOP_NAME || '') },
+        '文字列__1行__2': { value: String(store.BLDG || '') },
+        '文字列__1行__3': { value: String(store.FLOOR || '') },
+        '文字列__1行__4': { value: String(store.ROUTE || '') },
+        '文字列__1行__5': { value: String(store.KINTONE_NO || '') },
+        '文字列__1行__6': { value: String(store.GENRE || '') },
+        '文字列__1行__7': { value: String(store.PLACE_DESC || '') },
+        '文字列__1行__9': { value: String(store.COMMENT || '') },
+        '数値':           { value: String(toNum(delVal)) },
+        '数値_1':         { value: String(toNum(store.DELIVERY_NO)) },
+        '数値_2':         { value: String(toNum(store.NORMAL_DEL)) },
+        'ドロップダウン':   { value: '完了' },
+      };
+
+      // 返却数: only include if column exists AND value is not null
+      if (retVal != null) {
+        rec['数値_0'] = { value: String(toNum(retVal)) };
+      }
+
+      // 住所 (条-丁目)
+      const jou = store.JOU;
+      const chome = store.CHOME;
+      if (jou != null || chome != null) {
+        rec['文字列__1行__8'] = { value: `${jou || ''}-${chome || ''}` };
+      }
+
+      // MAP冊数
+      if (store.MAP != null) {
+        const mapNum = toNum(store.MAP);
+        if (mapNum > 0) rec['数値_3'] = { value: String(mapNum) };
+      }
+
+      // 遅 checkbox
+      if (store.OCHI === '遅') {
+        rec['チェックボックス_0'] = { value: ['遅'] };
+      }
+
+      // 定休日 checkbox
+      const holidays = parseHoliday(store.HOLIDAY);
+      if (holidays.length > 0) {
+        rec['チェックボックス_2'] = { value: holidays };
+      }
+
+      // グループ: construct from route + col9 if available
+      if (store.ROUTE && store.COL9 != null) {
+        rec['文字列__1行__0'] = { value: store.ROUTE.toLowerCase() + String(store.COL9) };
+      }
+
+      records.push(rec);
+    }
+  }
+  return records;
+}
+
+function toNum(v) {
+  if (v == null || v === '' || v === '-') return 0;
+  const n = Number(v);
+  return isNaN(n) ? 0 : n;
+}
+
+function parseHoliday(val) {
+  if (!val || val === '無' || val === '無休' || val === '不定休' || val === '？') return [];
+  const dayMap = ['日','月','火','水','木','金','土'];
+  const result = [];
+  for (const d of dayMap) {
+    if (String(val).includes(d)) result.push(d);
+  }
+  return result;
+}
+
+// ===== Preview =====
+function previewImport() {
+  const selectedMonths = getSelectedMonths();
+  if (selectedMonths.length === 0) return;
+
+  importRecords = buildRecords(selectedMonths);
+  const area = document.getElementById('previewArea');
+
+  // Summary per month
+  const monthCounts = {};
+  for (const r of importRecords) {
+    const m = r['文字列__1行_'].value;
+    monthCounts[m] = (monthCounts[m] || 0) + 1;
+  }
+
+  let html = `<table style="width:100%;border-collapse:collapse;font-size:0.85em;">
+    <tr style="background:#f5f5f5;"><th style="text-align:left;padding:4px;">月</th><th style="text-align:right;padding:4px;">件数</th></tr>`;
+  for (const m of selectedMonths) {
+    html += `<tr><td style="padding:3px 4px;">${m}</td><td style="text-align:right;padding:3px 4px;">${(monthCounts[m] || 0).toLocaleString()}</td></tr>`;
+  }
+  html += `<tr style="font-weight:700;border-top:2px solid #333;"><td style="padding:4px;">合計</td><td style="text-align:right;padding:4px;">${importRecords.length.toLocaleString()} 件</td></tr></table>`;
+
+  // Sample records
+  html += `<h3 style="margin:12px 0 6px;font-size:0.95em;">サンプルレコード（先頭3件）</h3>`;
+  for (const r of importRecords.slice(0, 3)) {
+    html += `<pre style="background:#f9f9f9;padding:6px;border-radius:4px;font-size:0.8em;overflow-x:auto;margin:4px 0;">${JSON.stringify(r, null, 1)}</pre>`;
+  }
+
+  const batches = Math.ceil(importRecords.length / BATCH_SIZE);
+  const delay = parseInt(document.getElementById('batchDelay').value) || 200;
+  const estSec = Math.ceil(batches * (delay + 300) / 1000);
+  html += `<div class="info-box" style="margin-top:10px;">
+    📊 APIバッチ数: ${batches}回（${BATCH_SIZE}件/回）<br>
+    ⏱ 推定時間: 約${Math.ceil(estSec / 60)}分${estSec % 60}秒
+  </div>`;
+
+  area.innerHTML = html;
+  document.getElementById('step3').style.display = '';
+  document.getElementById('btnImport').disabled = false;
+
+  const warn = document.getElementById('importWarning');
+  if (importRecords.length > 50000) {
+    warn.style.display = '';
+    warn.innerHTML = `⚠️ 大量データ（${importRecords.length.toLocaleString()}件）の取り込みです。安定したネットワーク環境で実行してください。`;
+  } else {
+    warn.style.display = 'none';
+  }
+}
+
+// ===== Import Execution =====
+async function startImport() {
+  if (importRecords.length === 0) {
+    alert('プレビューを先に実行してください');
+    return;
+  }
+  if (!confirm(`${importRecords.length.toLocaleString()}件のレコードをkintoneに取り込みます。\n実行しますか？`)) return;
+
+  stopRequested = false;
+  document.getElementById('step4').style.display = '';
+  document.getElementById('btnImport').disabled = true;
+  document.getElementById('btnStop').disabled = false;
+  setBadge('running', '実行中');
+
+  const logArea = document.getElementById('logArea');
+  logArea.innerHTML = '';
+  const delay = parseInt(document.getElementById('batchDelay').value) || 200;
+
+  const batches = [];
+  for (let i = 0; i < importRecords.length; i += BATCH_SIZE) {
+    batches.push(importRecords.slice(i, i + BATCH_SIZE));
+  }
+
+  let done = 0;
+  let errors = 0;
+  let created = 0;
+  const startTime = Date.now();
+
+  // Track per-month progress
+  const monthDone = {};
+  const selectedMonths = getSelectedMonths();
+  for (const m of selectedMonths) monthDone[m] = { ok: 0, err: 0 };
+
+  for (let bi = 0; bi < batches.length; bi++) {
+    if (stopRequested) {
+      log('warn', `⏹ 中断しました（${done}/${batches.length}バッチ完了）`);
+      break;
+    }
+
+    const batch = batches[bi];
+    try {
+      const resp = await fetch(`${PROXY_URL}/k/v1/records.json`, {
+        method: 'POST',
+        headers: {
+          'X-Cybozu-API-Token': API_TOKEN,
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify({ app: APP_ID, records: batch })
+      });
+
+      if (!resp.ok) {
+        const errBody = await resp.text();
+        throw new Error(`HTTP ${resp.status}: ${errBody.substring(0, 200)}`);
+      }
+
+      const result = await resp.json();
+      created += result.ids.length;
+      done++;
+
+      // Track month
+      for (const r of batch) {
+        const m = r['文字列__1行_'].value;
+        if (monthDone[m]) monthDone[m].ok++;
+      }
+
+      if (done % 10 === 0 || done === batches.length) {
+        log('ok', `✅ バッチ ${done}/${batches.length} 完了 (累計 ${created.toLocaleString()} 件作成)`);
+      }
+    } catch (err) {
+      errors++;
+      done++;
+      for (const r of batch) {
+        const m = r['文字列__1行_'].value;
+        if (monthDone[m]) monthDone[m].err++;
+      }
+      log('err', `❌ バッチ ${done}: ${err.message}`);
+
+      // Retry once after longer delay
+      await sleep(1000);
+      try {
+        const resp2 = await fetch(`${PROXY_URL}/k/v1/records.json`, {
+          method: 'POST',
+          headers: {
+            'X-Cybozu-API-Token': API_TOKEN,
+            'Content-Type': 'application/json'
+          },
+          body: JSON.stringify({ app: APP_ID, records: batch })
+        });
+        if (resp2.ok) {
+          const result2 = await resp2.json();
+          created += result2.ids.length;
+          errors--;
+          for (const r of batch) {
+            const m = r['文字列__1行_'].value;
+            if (monthDone[m]) { monthDone[m].ok += 1; monthDone[m].err = Math.max(0, monthDone[m].err - 1); }
+          }
+          log('ok', `🔄 リトライ成功 (累計 ${created.toLocaleString()} 件)`);
+        }
+      } catch (e2) {
+        log('err', `🔄 リトライも失敗: ${e2.message}`);
+      }
+    }
+
+    // Update progress
+    const pct = Math.round((done / batches.length) * 100);
+    document.getElementById('progressFill').style.width = pct + '%';
+    document.getElementById('progressFill').textContent = pct + '%';
+
+    const elapsed = (Date.now() - startTime) / 1000;
+    const eta = done > 0 ? Math.round((elapsed / done) * (batches.length - done)) : 0;
+    document.getElementById('progressText').textContent =
+      `${done}/${batches.length} バッチ | ${created.toLocaleString()} 件作成 | エラー ${errors}`;
+    document.getElementById('etaText').textContent =
+      `経過 ${formatTime(elapsed)} | 残り約 ${formatTime(eta)}`;
+
+    // Month progress
+    updateMonthProgress(monthDone);
+
+    if (bi < batches.length - 1) await sleep(delay);
+  }
+
+  // Done
+  const totalTime = (Date.now() - startTime) / 1000;
+  setBadge(errors > 0 ? 'error' : 'done', errors > 0 ? '一部エラー' : '完了');
+  document.getElementById('btnStop').disabled = true;
+  document.getElementById('btnImport').disabled = false;
+  log('info', `\n===== 取り込み完了 =====`);
+  log('info', `作成: ${created.toLocaleString()} 件 / エラー: ${errors} バッチ / 所要時間: ${formatTime(totalTime)}`);
+}
+
+function stopImport() {
+  stopRequested = true;
+  document.getElementById('btnStop').disabled = true;
+}
+
+function updateMonthProgress(monthDone) {
+  const html = Object.entries(monthDone).map(([m, d]) => {
+    const total = d.ok + d.err;
+    if (total === 0) return '';
+    const icon = d.err > 0 ? '⚠️' : '✅';
+    return `<span style="display:inline-block;margin:2px 6px;font-size:0.82em;">${icon} ${m}: ${d.ok}件</span>`;
+  }).join('');
+  document.getElementById('monthProgress').innerHTML = html;
+}
+
+// ===== Helpers =====
+function getSelectedMonths() {
+  return [...document.querySelectorAll('#monthGrid input[type="checkbox"]:checked')].map(c => c.value);
+}
+
+function log(cls, msg) {
+  const area = document.getElementById('logArea');
+  area.innerHTML += `<div class="${cls}">${escapeHtml(msg)}</div>`;
+  area.scrollTop = area.scrollHeight;
+}
+
+function setBadge(cls, text) {
+  const b = document.getElementById('statusBadge');
+  b.className = 'status-badge ' + cls;
+  b.textContent = text;
+}
+
+function sleep(ms) { return new Promise(r => setTimeout(r, ms)); }
+
+function formatTime(sec) {
+  const m = Math.floor(sec / 60);
+  const s = Math.round(sec % 60);
+  return m > 0 ? `${m}分${s}秒` : `${s}秒`;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+</script>
+</body>
+</html>
