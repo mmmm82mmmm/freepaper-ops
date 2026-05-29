@@ -217,17 +217,61 @@ const DOMAIN = 'white';
 let allRecords = [];
 let currentMonth = '';
 
-// 月選択初期化
-function initMonthSel() {
+// 月選択初期化（過去データ対応：kintoneから利用可能な月を取得）
+async function initMonthSel() {
   const sel = document.getElementById('month-sel');
+
+  // まず基本の前後2ヶ月を追加
   const now = new Date();
+  const baseMonths = [];
   for (let i = -2; i <= 2; i++) {
     const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const label = `${d.getFullYear()}年${d.getMonth()+1}月号`;
-    const o = document.createElement('option');
-    o.value = label; o.textContent = label;
-    if (i === 1) { o.selected = true; currentMonth = label; }
-    sel.appendChild(o);
+    baseMonths.push(`${d.getFullYear()}年${d.getMonth()+1}月号`);
+  }
+  const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  currentMonth = `${nextMonth.getFullYear()}年${nextMonth.getMonth()+1}月号`;
+
+  // kintoneから利用可能な月一覧を取得
+  try {
+    const allMonths = new Set(baseMonths);
+    let lastId = 0;
+    while (true) {
+      const q = encodeURIComponent(`$id > ${lastId} order by $id asc limit 500`);
+      const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&fields[0]=${encodeURIComponent('文字列__1行_')}&subdomain=${DOMAIN}`, {
+        headers: { 'X-Cybozu-API-Token': TOKEN }
+      });
+      const data = await res.json();
+      const recs = data.records || [];
+      recs.forEach(r => {
+        const v = r['文字列__1行_']?.value;
+        if (v) allMonths.add(v);
+        lastId = Math.max(lastId, parseInt(r.$id?.value || 0));
+      });
+      if (recs.length < 500) break;
+    }
+
+    // 月を新しい順にソート
+    const sorted = [...allMonths].sort((a, b) => {
+      const pa = a.match(/(\d{4})年(\d{1,2})月号/);
+      const pb = b.match(/(\d{4})年(\d{1,2})月号/);
+      if (!pa || !pb) return 0;
+      return (parseInt(pb[1]) * 100 + parseInt(pb[2])) - (parseInt(pa[1]) * 100 + parseInt(pa[2]));
+    });
+
+    sorted.forEach(label => {
+      const o = document.createElement('option');
+      o.value = label; o.textContent = label;
+      if (label === currentMonth) o.selected = true;
+      sel.appendChild(o);
+    });
+  } catch(e) {
+    // フォールバック：基本の5ヶ月だけ
+    baseMonths.forEach((label, i) => {
+      const o = document.createElement('option');
+      o.value = label; o.textContent = label;
+      if (label === currentMonth) o.selected = true;
+      sel.appendChild(o);
+    });
   }
 }
 
@@ -507,26 +551,39 @@ function renderShouka() {
     if (kno) masterIndex[kno] = m;
   });
 
-  // 住所別集計
+  // 住所別集計（納本データ管理の住所フィールドを優先、なければマスタ参照）
   const addrMap = {};
   allRecords.forEach(r => {
-    const setchiId = getVal(r,'ルックアップ') || '';
-    const master = masterIndex[setchiId] || {};
-    const jo = master['文字列__1行__7']?.value || '?';
-    const chome = master['文字列__1行__8']?.value || '?';
-    const addr = (jo === '100' && chome === '100') ? 'エリア外' : `${jo}条${chome}丁目`;
+    let addr = '不明';
+    const addrDirect = getVal(r,'文字列__1行__8'); // "条-丁目" 形式
+    if (addrDirect && addrDirect !== '-') {
+      const parts = addrDirect.split('-');
+      const jo = parts[0] || '?';
+      const chome = parts[1] || '?';
+      addr = (jo === '100' && chome === '100') ? 'エリア外' : `${jo}条${chome}丁目`;
+    } else {
+      // マスタから参照
+      const setchiId = getVal(r,'文字列__1行__5');
+      const master = masterIndex[setchiId] || {};
+      const jo = master['文字列__1行__7']?.value || '?';
+      const chome = master['文字列__1行__8']?.value || '?';
+      addr = (jo === '100' && chome === '100') ? 'エリア外' : `${jo}条${chome}丁目`;
+    }
     if (!addrMap[addr]) addrMap[addr] = { nabon:0, henkyaku:0, count:0 };
     addrMap[addr].nabon += getNum(r,'数値_2');
     addrMap[addr].henkyaku += getNum(r,'数値_0');
     addrMap[addr].count++;
   });
 
-  // ジャンル別集計
+  // ジャンル別集計（納本データ管理のジャンルフィールドを優先、なければマスタ参照）
   const genreMap = {};
   allRecords.forEach(r => {
-    const setchiId = getVal(r,'ルックアップ') || '';
-    const master = masterIndex[setchiId] || {};
-    const genre = master['文字列__1行__1']?.value || '不明';
+    let genre = getVal(r,'文字列__1行__6'); // 直接フィールド
+    if (!genre) {
+      const setchiId = getVal(r,'文字列__1行__5');
+      const master = masterIndex[setchiId] || {};
+      genre = master['文字列__1行__1']?.value || '不明';
+    }
     if (!genreMap[genre]) genreMap[genre] = { nabon:0, henkyaku:0, count:0 };
     genreMap[genre].nabon += getNum(r,'数値_2');
     genreMap[genre].henkyaku += getNum(r,'数値_0');
@@ -774,8 +831,7 @@ function exportCSV() {
   URL.revokeObjectURL(url);
 }
 
-initMonthSel();
-loadData();
+initMonthSel().then(() => loadData());
 </script>
 </body>
 </html>
