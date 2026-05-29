@@ -88,6 +88,13 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 /* EXPORT BTN */
 .export-btn{width:100%;padding:13px;background:var(--ink);color:white;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:900;cursor:pointer;margin-top:14px;}
 .export-btn:active{transform:scale(.98);}
+
+/* SUB TABS */
+.sub-tabs{display:flex;gap:0;background:var(--bg);border-radius:10px;padding:3px;margin:12px 0 0;}
+.sub-tab{flex:1;padding:9px 6px;text-align:center;font-size:11px;font-weight:700;color:var(--muted);cursor:pointer;border-radius:8px;transition:all .2s;}
+.sub-tab.active{background:var(--card);color:var(--ink);box-shadow:0 1px 3px rgba(0,0,0,.1);}
+.sub-panel{display:none;}
+.sub-panel.active{display:block;}
 </style>
 </head>
 <body>
@@ -645,65 +652,78 @@ function renderShouka() {
       </div>
     </div>
 
+    <!-- サブタブ -->
+    <div class="sub-tabs">
+      <div class="sub-tab active" onclick="switchShoukaTab('addr',this)">📍 住所別</div>
+      <div class="sub-tab" onclick="switchShoukaTab('genre',this)">🏷️ ジャンル別</div>
+      <div class="sub-tab" onclick="switchShoukaTab('shop',this)">🏪 店舗別</div>
+    </div>
+
     <!-- 住所別 -->
-    <div class="section">
-      <div class="section-title">住所別 消化率</div>
-      <div style="overflow-x:auto">
-        <table class="data-table">
-          <thead><tr>
-            <th>住所</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
-          </tr></thead>
-          <tbody>${addrRows.map(d => `<tr>
-            <td><strong>${d.addr}</strong></td>
-            <td class="mono">${d.count}</td>
-            <td class="mono">${d.nabon.toLocaleString()}</td>
-            <td class="mono">${d.henkyaku.toLocaleString()}</td>
-            <td class="mono">${d.shouka.toLocaleString()}</td>
-            <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
-          </tr>`).join('')}</tbody>
-        </table>
+    <div class="sub-panel active" id="shouka-addr">
+      <div class="section" style="margin-top:10px">
+        <div class="section-title">住所別 消化率<span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:8px">${addrRows.length}エリア</span></div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr>
+              <th>住所</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+            </tr></thead>
+            <tbody>${addrRows.map(d => `<tr>
+              <td><strong>${d.addr}</strong></td>
+              <td class="mono">${d.count}</td>
+              <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono">${d.henkyaku.toLocaleString()}</td>
+              <td class="mono">${d.shouka.toLocaleString()}</td>
+              <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
       </div>
     </div>
 
     <!-- ジャンル別 -->
-    <div class="section">
-      <div class="section-title">ジャンル別 消化率</div>
-      <div style="overflow-x:auto">
-        <table class="data-table">
-          <thead><tr>
-            <th>ジャンル</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
-          </tr></thead>
-          <tbody>${genreRows.map(d => `<tr>
-            <td><strong>${d.genre}</strong></td>
-            <td class="mono">${d.count}</td>
-            <td class="mono">${d.nabon.toLocaleString()}</td>
-            <td class="mono">${d.henkyaku.toLocaleString()}</td>
-            <td class="mono">${d.shouka.toLocaleString()}</td>
-            <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
-          </tr>`).join('')}</tbody>
-        </table>
+    <div class="sub-panel" id="shouka-genre">
+      <div class="section" style="margin-top:10px">
+        <div class="section-title">ジャンル別 消化率<span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:8px">${genreRows.length}ジャンル</span></div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr>
+              <th>ジャンル</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+            </tr></thead>
+            <tbody>${genreRows.map(d => `<tr>
+              <td><strong>${d.genre}</strong></td>
+              <td class="mono">${d.count}</td>
+              <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono">${d.henkyaku.toLocaleString()}</td>
+              <td class="mono">${d.shouka.toLocaleString()}</td>
+              <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
       </div>
     </div>
 
-    <!-- 店舗別（消化率低い順） -->
-    <div class="section">
-      <div class="section-title">
-        店舗別 消化率
-        <span style="font-size:10px;font-weight:400;color:var(--muted)">消化率低い順（納本数見直し候補）</span>
-      </div>
-      <div style="overflow-x:auto">
-        <table class="data-table">
-          <thead><tr>
-            <th>店名</th><th>通常納本</th><th>返却</th><th>持去</th><th>消化率</th>
-          </tr></thead>
-          <tbody>${shopRows.map(d => `<tr>
-            <td><strong>${d.name}</strong></td>
-            <td class="mono">${d.nabon}</td>
-            <td class="mono">${d.henkyaku}</td>
-            <td class="mono">${d.shouka}</td>
-            <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
-          </tr>`).join('')}</tbody>
-        </table>
+    <!-- 店舗別 -->
+    <div class="sub-panel" id="shouka-shop">
+      <div class="section" style="margin-top:10px">
+        <div class="section-title">
+          店舗別 消化率
+          <span style="font-size:10px;font-weight:400;color:var(--muted)">消化率低い順（納本数見直し候補）</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr>
+              <th>店名</th><th>通常納本</th><th>返却</th><th>持去</th><th>消化率</th>
+            </tr></thead>
+            <tbody>${shopRows.map(d => `<tr>
+              <td><strong>${d.name}</strong></td>
+              <td class="mono">${d.nabon}</td>
+              <td class="mono">${d.henkyaku}</td>
+              <td class="mono">${d.shouka}</td>
+              <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
       </div>
     </div>
   `;
@@ -788,6 +808,13 @@ function renderAbsent() {
     </div>`;
 
   document.getElementById('absent-content').innerHTML = html;
+}
+
+function switchShoukaTab(id, el) {
+  document.querySelectorAll('#shouka-content .sub-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#shouka-content .sub-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('shouka-' + id).classList.add('active');
 }
 
 function switchTab(tab, el) {
