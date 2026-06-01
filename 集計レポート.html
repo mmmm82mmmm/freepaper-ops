@@ -19,8 +19,9 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .app-title{font-size:15px;font-weight:900;}
 .month-sel{font-size:11px;background:#333;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;}
 
-.tabs{display:flex;border-top:1px solid #333;}
-.tab{flex:1;padding:11px;text-align:center;font-size:12px;font-weight:700;color:#888;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;}
+.tabs{display:flex;border-top:1px solid #333;overflow-x:auto;-webkit-overflow-scrolling:touch;scrollbar-width:none;}
+.tabs::-webkit-scrollbar{display:none;}
+.tab{flex:0 0 auto;padding:11px 10px;text-align:center;font-size:11px;font-weight:700;color:#888;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;white-space:nowrap;}
 .tab.active{color:white;border-bottom-color:var(--amber);}
 
 .container{padding:16px;max-width:700px;margin:0 auto;}
@@ -110,6 +111,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div class="tab" onclick="switchTab('worker', this)">👤 作業者別</div>
     <div class="tab" onclick="switchTab('absent', this)">🚫 不在一覧</div>
     <div class="tab" onclick="switchTab('detail', this)">📋 明細</div>
+    <div class="tab" onclick="switchTab('prevmon', this)">📊 前月号消化</div>
     <div class="tab" onclick="switchTab('shouka', this)">🔥 消化分析</div>
   </div>
 </div>
@@ -209,6 +211,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div id="absent-content"></div>
 </div>
 
+<!-- 前月号消化 -->
+<div class="screen container" id="screen-prevmon">
+  <div id="prevmon-content"></div>
+</div>
+
 <!-- 消化分析 -->
 <div class="screen container" id="screen-shouka">
   <div id="shouka-content"></div>
@@ -223,6 +230,17 @@ const DOMAIN = 'white';
 
 let allRecords = [];
 let currentMonth = '';
+let prevMonthRecords = [];
+let prevMonthLabel = '';
+
+// 前月のラベルを取得
+function getPrevMonth(month) {
+  const m = month.match(/(\d{4})年(\d{1,2})月号/);
+  if (!m) return '';
+  let y = parseInt(m[1]), mo = parseInt(m[2]) - 1;
+  if (mo <= 0) { mo += 12; y--; }
+  return `${y}年${mo}月号`;
+}
 
 // 月選択初期化（過去データ対応：kintoneから利用可能な月を取得）
 async function initMonthSel() {
@@ -321,11 +339,30 @@ async function loadData() {
       }
     }
 
+    // 前月号データ取得（前月号消化タブ用）
+    prevMonthLabel = getPrevMonth(currentMonth);
+    prevMonthRecords = [];
+    if (prevMonthLabel) {
+      let offset = 0;
+      while (true) {
+        const pq = encodeURIComponent(`文字列__1行_ = "${prevMonthLabel}" order by 文字列__1行__4 asc, 数値_1 asc limit 500 offset ${offset}`);
+        const pres = await fetch(`${BASE}/records.json?app=${APP}&query=${pq}&subdomain=${DOMAIN}`, {
+          headers: { 'X-Cybozu-API-Token': TOKEN }
+        });
+        const pdata = await pres.json();
+        const batch = pdata.records || [];
+        prevMonthRecords = prevMonthRecords.concat(batch);
+        if (batch.length < 500) break;
+        offset += 500;
+      }
+    }
+
     renderSummary();
     renderRouteTable();
     renderWorkerTable();
     renderAbsent();
     renderDetailTable();
+    renderPrevMonth();
     renderShouka();
 
   } catch(e) {
@@ -539,6 +576,259 @@ function renderDetailTable() {
       <td><span class="${badgeClass}">${status}</span></td>
     </tr>`;
   }).join('');
+}
+
+function renderPrevMonth() {
+  const content = document.getElementById('prevmon-content');
+
+  if (!prevMonthLabel || prevMonthRecords.length === 0) {
+    content.innerHTML = `
+      <div style="text-align:center;padding:60px 20px;color:var(--muted);">
+        <div style="font-size:40px;margin-bottom:12px">📭</div>
+        <div style="font-size:14px;font-weight:700">前月号（${prevMonthLabel || '不明'}）のデータがありません</div>
+      </div>`;
+    return;
+  }
+
+  // 前月号の納本数を店舗IDでインデックス化
+  const prevIndex = {};
+  prevMonthRecords.forEach(r => {
+    const sid = getVal(r,'文字列__1行__5');
+    if (sid) prevIndex[sid] = r;
+  });
+
+  // 当月レコードの返却数 = 前月号の返却数
+  // 前月レコードの納本数 = 前月号の納本数
+  const storeData = [];
+  allRecords.forEach(r => {
+    const sid = getVal(r,'文字列__1行__5');
+    const henkyaku = getNum(r,'数値_0');  // 当月で回収した前月号の返却数
+    const prev = prevIndex[sid];
+    const prevNabon = prev ? getNum(prev,'数値') : 0;  // 前月号の納本数
+    if (prevNabon <= 0) return;  // 前月に納本がない店舗はスキップ
+
+    const shouka = prevNabon - henkyaku;
+    const rate = Math.round(shouka / prevNabon * 100);
+    storeData.push({
+      sid,
+      name: getVal(r,'文字列__1行__1'),
+      route: getVal(r,'文字列__1行__4'),
+      bldg: getVal(r,'文字列__1行__2'),
+      addr: getVal(r,'文字列__1行__8'),
+      genre: getVal(r,'文字列__1行__6'),
+      isOsoi: (r['チェックボックス_0']?.value || []).length > 0,
+      prevNabon,
+      henkyaku,
+      shouka,
+      rate,
+    });
+  });
+
+  if (storeData.length === 0) {
+    content.innerHTML = `
+      <div style="text-align:center;padding:60px 20px;color:var(--muted);">
+        <div style="font-size:40px;margin-bottom:12px">📭</div>
+        <div style="font-size:14px;font-weight:700">前月号との突合データがありません</div>
+        <div style="font-size:12px;margin-top:8px;">当月レコードに返却数が入っているか確認してください</div>
+      </div>`;
+    return;
+  }
+
+  // 全体集計
+  const totalPrevNabon = storeData.reduce((s,d) => s + d.prevNabon, 0);
+  const totalHenkyaku = storeData.reduce((s,d) => s + d.henkyaku, 0);
+  const totalShouka = totalPrevNabon - totalHenkyaku;
+  const overallRate = totalPrevNabon > 0 ? Math.round(totalShouka / totalPrevNabon * 100) : 0;
+
+  const rateColor = rate => rate >= 80 ? 'var(--green)' : rate >= 50 ? 'var(--amber)' : 'var(--red)';
+
+  // ルート別集計
+  const routeMap = {};
+  storeData.forEach(d => {
+    const key = d.isOsoi ? d.route + '遅' : d.route;
+    if (!routeMap[key]) routeMap[key] = { nabon:0, henkyaku:0, count:0 };
+    routeMap[key].nabon += d.prevNabon;
+    routeMap[key].henkyaku += d.henkyaku;
+    routeMap[key].count++;
+  });
+  const routeRows = Object.entries(routeMap)
+    .map(([route, d]) => ({ route, ...d, shouka: d.nabon - d.henkyaku, rate: d.nabon > 0 ? Math.round((d.nabon - d.henkyaku)/d.nabon*100) : 0 }))
+    .sort((a,b) => { const la = a.route.replace('遅',''), lb = b.route.replace('遅',''); return la !== lb ? la.localeCompare(lb) : (a.route.includes('遅') ? 1 : -1); });
+
+  // 住所別集計
+  const addrMap = {};
+  storeData.forEach(d => {
+    let addr = '不明';
+    if (d.addr && d.addr !== '-') {
+      const parts = d.addr.split('-');
+      addr = (parts[0] === '100' && parts[1] === '100') ? 'エリア外' : `${parts[0]||'?'}条${parts[1]||'?'}丁目`;
+    }
+    if (!addrMap[addr]) addrMap[addr] = { nabon:0, henkyaku:0, count:0 };
+    addrMap[addr].nabon += d.prevNabon;
+    addrMap[addr].henkyaku += d.henkyaku;
+    addrMap[addr].count++;
+  });
+  const addrRows = Object.entries(addrMap)
+    .map(([addr, d]) => ({ addr, ...d, shouka: d.nabon - d.henkyaku, rate: d.nabon > 0 ? Math.round((d.nabon - d.henkyaku)/d.nabon*100) : 0 }))
+    .sort((a,b) => b.rate - a.rate);
+
+  // ジャンル別集計
+  const genreMap = {};
+  storeData.forEach(d => {
+    const genre = d.genre || '不明';
+    if (!genreMap[genre]) genreMap[genre] = { nabon:0, henkyaku:0, count:0 };
+    genreMap[genre].nabon += d.prevNabon;
+    genreMap[genre].henkyaku += d.henkyaku;
+    genreMap[genre].count++;
+  });
+  const genreRows = Object.entries(genreMap)
+    .map(([genre, d]) => ({ genre, ...d, shouka: d.nabon - d.henkyaku, rate: d.nabon > 0 ? Math.round((d.nabon - d.henkyaku)/d.nabon*100) : 0 }))
+    .sort((a,b) => b.rate - a.rate);
+
+  // 店舗別（消化率低い順）
+  const shopRows = [...storeData].sort((a,b) => a.rate - b.rate);
+
+  content.innerHTML = `
+    <!-- ヘッダー -->
+    <div style="margin-top:16px;margin-bottom:12px;">
+      <div style="font-size:13px;font-weight:900;color:var(--muted);letter-spacing:.06em;">
+        📊 ${prevMonthLabel} の実績消化分析
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:4px;">
+        ${prevMonthLabel}の納本数 vs ${currentMonth}で回収した返却数（${storeData.length}店舗突合）
+      </div>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpi-grid">
+      <div class="kpi-card blue">
+        <div class="kpi-label">${prevMonthLabel} 納本数</div>
+        <div class="kpi-val">${totalPrevNabon.toLocaleString()}</div>
+        <div class="kpi-sub">冊</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">${currentMonth} 返却数</div>
+        <div class="kpi-val">${totalHenkyaku.toLocaleString()}</div>
+        <div class="kpi-sub">冊</div>
+      </div>
+      <div class="kpi-card green">
+        <div class="kpi-label">持去数</div>
+        <div class="kpi-val">${totalShouka.toLocaleString()}</div>
+        <div class="kpi-sub">冊</div>
+      </div>
+      <div class="kpi-card ${overallRate >= 70 ? 'green' : 'red'}">
+        <div class="kpi-label">消化率</div>
+        <div class="kpi-val">${overallRate}%</div>
+        <div class="kpi-sub">実績ベース</div>
+      </div>
+    </div>
+
+    <!-- サブタブ -->
+    <div class="sub-tabs">
+      <div class="sub-tab active" onclick="switchPrevTab('route',this)">🗺️ ルート</div>
+      <div class="sub-tab" onclick="switchPrevTab('addr',this)">📍 住所</div>
+      <div class="sub-tab" onclick="switchPrevTab('genre',this)">🏷️ ジャンル</div>
+      <div class="sub-tab" onclick="switchPrevTab('shop',this)">🏪 店舗</div>
+    </div>
+
+    <!-- ルート別 -->
+    <div class="sub-panel active" id="prev-route">
+      <div class="section" style="margin-top:10px">
+        <div class="section-title">ルート別 前月号消化率</div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr>
+              <th>ルート</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+            </tr></thead>
+            <tbody>${routeRows.map(d => `<tr${d.route.includes('遅') ? ' style="background:#fffbf0"' : ''}>
+              <td><strong>${d.route}</strong></td>
+              <td class="mono">${d.count}</td>
+              <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono">${d.henkyaku.toLocaleString()}</td>
+              <td class="mono">${d.shouka.toLocaleString()}</td>
+              <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 住所別 -->
+    <div class="sub-panel" id="prev-addr">
+      <div class="section" style="margin-top:10px">
+        <div class="section-title">住所別 前月号消化率<span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:8px">${addrRows.length}エリア</span></div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr>
+              <th>住所</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+            </tr></thead>
+            <tbody>${addrRows.map(d => `<tr>
+              <td><strong>${d.addr}</strong></td>
+              <td class="mono">${d.count}</td>
+              <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono">${d.henkyaku.toLocaleString()}</td>
+              <td class="mono">${d.shouka.toLocaleString()}</td>
+              <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- ジャンル別 -->
+    <div class="sub-panel" id="prev-genre">
+      <div class="section" style="margin-top:10px">
+        <div class="section-title">ジャンル別 前月号消化率<span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:8px">${genreRows.length}ジャンル</span></div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr>
+              <th>ジャンル</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+            </tr></thead>
+            <tbody>${genreRows.map(d => `<tr>
+              <td><strong>${d.genre}</strong></td>
+              <td class="mono">${d.count}</td>
+              <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono">${d.henkyaku.toLocaleString()}</td>
+              <td class="mono">${d.shouka.toLocaleString()}</td>
+              <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+
+    <!-- 店舗別 -->
+    <div class="sub-panel" id="prev-shop">
+      <div class="section" style="margin-top:10px">
+        <div class="section-title">
+          店舗別 前月号消化率
+          <span style="font-size:10px;font-weight:400;color:var(--muted)">消化率低い順</span>
+        </div>
+        <div style="overflow-x:auto">
+          <table class="data-table">
+            <thead><tr>
+              <th>ルート</th><th>店名</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+            </tr></thead>
+            <tbody>${shopRows.map(d => `<tr>
+              <td class="mono">${d.route}${d.isOsoi ? '<span style="color:var(--amber);font-size:10px;">遅</span>' : ''}</td>
+              <td><strong>${d.name}</strong>${d.bldg ? `<div style="font-size:10px;color:var(--muted)">${d.bldg}</div>` : ''}</td>
+              <td class="mono">${d.prevNabon}</td>
+              <td class="mono">${d.henkyaku}</td>
+              <td class="mono">${d.shouka}</td>
+              <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
+            </tr>`).join('')}</tbody>
+          </table>
+        </div>
+      </div>
+    </div>
+  `;
+}
+
+function switchPrevTab(id, el) {
+  document.querySelectorAll('#prevmon-content .sub-tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('#prevmon-content .sub-panel').forEach(p => p.classList.remove('active'));
+  el.classList.add('active');
+  document.getElementById('prev-' + id).classList.add('active');
 }
 
 function renderShouka() {
