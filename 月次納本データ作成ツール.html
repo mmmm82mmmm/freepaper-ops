@@ -76,8 +76,10 @@
   </div>
   <div class="field">
     <label>作業月</label>
-    <input type="text" id="workMonth" value="2026年6月号" />
+    <input type="text" id="workMonth" value="2026年7月号" />
     <p class="note">※ 設置店マスタの稼働中レコードからこの作業月でレコードを作成します</p>
+    <p class="note">📈 通常納本数≤11冊 &amp; 2・3ヶ月前の戻り率≤30% の店舗は自動で+3冊（上限11冊）<br>
+    ※ 直前月は戻り未回収のためスキップ（例: 7月号→5月号+4月号で判定）</p>
   </div>
 
 
@@ -99,6 +101,42 @@ const APP_NOHON  = 269;
 let currentMode = 'add';
 let masterRecords = [];
 let existingIds = [];
+let pastDataIndex = {}; // { storeId: { totalNabon, totalHenkyaku } }
+
+// 作業月から判定対象の2ヶ月を取得
+// 例: 7月号 → 5月号, 4月号（6月号は戻り未回収のためスキップ）
+function getPrev2Months(workMonth) {
+  const m = workMonth.match(/(\d{4})年(\d{1,2})月号/);
+  if (!m) return [];
+  const y = parseInt(m[1]), mo = parseInt(m[2]);
+  const result = [];
+  for (let i = 2; i <= 3; i++) {
+    let py = y, pm = mo - i;
+    while (pm <= 0) { pm += 12; py--; }
+    result.push(`${py}年${pm}月号`);
+  }
+  return result;
+}
+
+// +3冊ロジック判定
+function calcDelivery(master, pastData) {
+  const normalDel = parseFloat(master['数値_4']?.value) || 0;
+
+  // 対象外: 通常納本数 > 11
+  if (normalDel > 11 || normalDel <= 0) return normalDel;
+
+  // 過去2ヶ月データがない場合はスキップ
+  if (!pastData || pastData.monthCount < 2) return normalDel;
+
+  // 合算戻り率 = 返却合計 ÷ 納本合計
+  if (pastData.totalNabon <= 0) return normalDel;
+  const returnRate = pastData.totalHenkyaku / pastData.totalNabon;
+
+  if (returnRate <= 0.30) {
+    return Math.min(normalDel + 3, 11);
+  }
+  return normalDel;
+}
 
 function setMode(mode) {
   currentMode = mode;
@@ -146,16 +184,20 @@ function buildRecord(master, workMonth) {
   const jou = master['文字列__1行__7']?.value || '';   // 条
   const chome = master['文字列__1行__8']?.value || ''; // 丁目
   const address = (jou && chome) ? `${jou}-${chome}` : (jou || chome || '');
+  const storeId = master['文字列__1行__0']?.value || '';
+  const pastData = pastDataIndex[storeId] || null;
+  const delivery = calcDelivery(master, pastData);
 
   return {
     文字列__1行_:    { value: workMonth },                                    // 作業月
-    文字列__1行__5:  { value: master['文字列__1行__0']?.value || '' },         // 設置場所ID（kintone番号）
+    文字列__1行__5:  { value: storeId },                                      // 設置場所ID（kintone番号）
     文字列__1行__1:  { value: master['文字列__1行__2']?.value || '' },         // 店名
     文字列__1行__2:  { value: master['文字列__1行__3']?.value || '' },         // ビル名
     文字列__1行__3:  { value: master['文字列__1行__4']?.value || '' },         // 階数
     文字列__1行__4:  { value: master['ドロップダウン_0']?.value || '' },       // ルート
     文字列__1行__6:  { value: master['文字列__1行__1']?.value || '' },         // ジャンル
     文字列__1行__8:  { value: address },                                       // 住所（条-丁目）
+    数値:            { value: String(delivery) },                              // 納本数（+3冊ロジック適用済み）
     数値_1:          { value: parseFloat(master['数値_2']?.value) || 0 },     // ルート順
     数値_2:          { value: master['数値_4']?.value || '' },                // 通常納本数
     数値_3:          { value: master['数値_3']?.value || '' },                // MAP冊数
@@ -185,6 +227,40 @@ async function preview() {
     masterRecords = await getAll(APP_MASTER, tokenMaster, 'ドロップダウン in ("稼働中") order by レコード番号 asc');
     const withGroup = masterRecords.filter(r => r['文字列__1行__11']?.value).length;
     log(`設置店マスタ: ${masterRecords.length}件（グループ設定済み: ${withGroup}件）`, 'success');
+
+    setProgress(30);
+
+    // 過去2ヶ月データ取得（+3冊ロジック用）
+    const prev2 = getPrev2Months(workMonth);
+    pastDataIndex = {};
+    if (prev2.length === 2) {
+      log(`+3冊判定用：${prev2.join(' + ')} のデータを取得中（直前月は戻り未回収のためスキップ）...`);
+      for (const pm of prev2) {
+        const pastRecords = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${pm}" and ドロップダウン in ("完了")`);
+        log(`  ${pm}: ${pastRecords.length}件（完了分）`, 'info');
+        for (const r of pastRecords) {
+          const sid = r['文字列__1行__5']?.value || '';
+          if (!sid) continue;
+          if (!pastDataIndex[sid]) pastDataIndex[sid] = { totalNabon: 0, totalHenkyaku: 0, monthCount: 0 };
+          pastDataIndex[sid].totalNabon += parseFloat(r['数値']?.value) || 0;
+          pastDataIndex[sid].totalHenkyaku += parseFloat(r['数値_0']?.value) || 0;
+          pastDataIndex[sid].monthCount++;
+        }
+      }
+      // +3冊の適用件数をプレビュー
+      let boostedCount = 0;
+      for (const m of masterRecords) {
+        const normalDel = parseFloat(m['数値_4']?.value) || 0;
+        const sid = m['文字列__1行__0']?.value || '';
+        const pd = pastDataIndex[sid];
+        if (normalDel > 0 && normalDel <= 11 && pd && pd.monthCount >= 2 && pd.totalNabon > 0) {
+          if (pd.totalHenkyaku / pd.totalNabon <= 0.30) boostedCount++;
+        }
+      }
+      log(`📈 +3冊ロジック適用: ${boostedCount}件（通常≤11冊 & 2ヶ月戻り率≤30%）`, boostedCount > 0 ? 'success' : 'info');
+    } else {
+      log('⚠️ 過去2ヶ月の月ラベルを解析できないため+3冊ロジックはスキップ', 'warn');
+    }
 
     setProgress(50);
 
@@ -270,7 +346,20 @@ async function run() {
     }
 
     setProgress(100);
+    // +3冊の適用件数を集計
+    let boostedInRun = 0;
+    for (const m of masterRecords) {
+      const normalDel = parseFloat(m['数値_4']?.value) || 0;
+      const sid = m['文字列__1行__0']?.value || '';
+      const pd = pastDataIndex[sid];
+      if (normalDel > 0 && normalDel <= 11 && pd && pd.monthCount >= 2 && pd.totalNabon > 0) {
+        if (pd.totalHenkyaku / pd.totalNabon <= 0.30) boostedInRun++;
+      }
+    }
     log(`✅ 完了！${created}件の${workMonth}レコードを作成しました`, 'success');
+    if (boostedInRun > 0) {
+      log(`📈 うち${boostedInRun}件に+3冊ロジック適用（通常納本数+3、上限11冊）`, 'success');
+    }
     if (currentMode === 'add') {
       log(`💡 続けて遅フラグ更新ツールを実行してください`, 'warn');
     }
