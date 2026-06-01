@@ -242,62 +242,30 @@ function getPrevMonth(month) {
   return `${y}年${mo}月号`;
 }
 
-// 月選択初期化（過去データ対応：kintoneから利用可能な月を取得）
+// 月選択初期化（2020年12月〜現在+2ヶ月をプログラム生成）
 async function initMonthSel() {
   const sel = document.getElementById('month-sel');
-
-  // まず基本の前後2ヶ月を追加
   const now = new Date();
-  const baseMonths = [];
-  for (let i = -2; i <= 2; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    baseMonths.push(`${d.getFullYear()}年${d.getMonth()+1}月号`);
+  const endY = now.getFullYear(), endM = now.getMonth() + 3; // 2ヶ月先まで
+  const startY = 2020, startM = 12;
+
+  const months = [];
+  let y = endY, m = endM;
+  while (y > startY || (y === startY && m >= startM)) {
+    if (m <= 0) { m += 12; y--; continue; }
+    months.push(`${y}年${m}月号`);
+    m--;
   }
+
   const nextMonth = new Date(now.getFullYear(), now.getMonth() + 1, 1);
   currentMonth = `${nextMonth.getFullYear()}年${nextMonth.getMonth()+1}月号`;
 
-  // kintoneから利用可能な月一覧を取得
-  try {
-    const allMonths = new Set(baseMonths);
-    let lastId = 0;
-    while (true) {
-      const q = encodeURIComponent(`$id > ${lastId} order by $id asc limit 500`);
-      const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&fields[0]=${encodeURIComponent('文字列__1行_')}&subdomain=${DOMAIN}`, {
-        headers: { 'X-Cybozu-API-Token': TOKEN }
-      });
-      const data = await res.json();
-      const recs = data.records || [];
-      recs.forEach(r => {
-        const v = r['文字列__1行_']?.value;
-        if (v) allMonths.add(v);
-        lastId = Math.max(lastId, parseInt(r.$id?.value || 0));
-      });
-      if (recs.length < 500) break;
-    }
-
-    // 月を新しい順にソート
-    const sorted = [...allMonths].sort((a, b) => {
-      const pa = a.match(/(\d{4})年(\d{1,2})月号/);
-      const pb = b.match(/(\d{4})年(\d{1,2})月号/);
-      if (!pa || !pb) return 0;
-      return (parseInt(pb[1]) * 100 + parseInt(pb[2])) - (parseInt(pa[1]) * 100 + parseInt(pa[2]));
-    });
-
-    sorted.forEach(label => {
-      const o = document.createElement('option');
-      o.value = label; o.textContent = label;
-      if (label === currentMonth) o.selected = true;
-      sel.appendChild(o);
-    });
-  } catch(e) {
-    // フォールバック：基本の5ヶ月だけ
-    baseMonths.forEach((label, i) => {
-      const o = document.createElement('option');
-      o.value = label; o.textContent = label;
-      if (label === currentMonth) o.selected = true;
-      sel.appendChild(o);
-    });
-  }
+  months.forEach(label => {
+    const o = document.createElement('option');
+    o.value = label; o.textContent = label;
+    if (label === currentMonth) o.selected = true;
+    sel.appendChild(o);
+  });
 }
 
 let masterRecords = [];
