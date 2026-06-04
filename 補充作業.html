@@ -225,20 +225,32 @@ let currentSearch = '';
 let selectedStore = null;
 
 // ===== Helpers =====
+// 「今月号」= 現在ラックに入っている号
+// 18日以降は新号納本が始まっているので翌月の号がラックに入る
 function calcDefaultMonth() {
-  // 翌月号を返す（月初の作業を想定）
   const d = new Date();
-  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
-  return `${next.getFullYear()}年${next.getMonth() + 1}月号`;
+  const day = d.getDate();
+  let y = d.getFullYear(), m = d.getMonth() + 1;
+  if (day >= 18) {
+    m += 1;
+    if (m > 12) { m = 1; y += 1; }
+  }
+  return `${y}年${m}月号`;
 }
 
 function buildMonthOptions() {
-  // 今月号〜+3ヶ月先までを選択肢に
+  // 今月号を基準に -1〜+2ヶ月の4ヶ月分
+  const defMonth = calcDefaultMonth();
+  const mm = defMonth.match(/(\d{4})年(\d{1,2})月号/);
+  const baseY = parseInt(mm[1]), baseM = parseInt(mm[2]);
+  const labels = { '-1':'前', '0':'今', '1':'翌', '2':'翌々' };
   const opts = [];
-  const d = new Date();
-  for (let i = 0; i <= 3; i++) {
-    const m = new Date(d.getFullYear(), d.getMonth() + i, 1);
-    opts.push(`${m.getFullYear()}年${m.getMonth() + 1}月号`);
+  for (let i = -1; i <= 2; i++) {
+    let y = baseY, m = baseM + i;
+    while (m <= 0) { m += 12; y--; }
+    while (m > 12) { m -= 12; y++; }
+    const value = `${y}年${m}月号`;
+    opts.push({ value, display: `${value}（${labels[i]}）` });
   }
   return opts;
 }
@@ -246,11 +258,11 @@ function buildMonthOptions() {
 function initMonthSelect() {
   const sel = document.getElementById('month-select');
   const defaultMonth = calcDefaultMonth();
-  buildMonthOptions().forEach(label => {
+  buildMonthOptions().forEach(opt => {
     const o = document.createElement('option');
-    o.value = label;
-    o.textContent = label;
-    if (label === defaultMonth) o.selected = true;
+    o.value = opt.value;
+    o.textContent = opt.display;
+    if (opt.value === defaultMonth) o.selected = true;
     sel.appendChild(o);
   });
   currentMonth = defaultMonth;
