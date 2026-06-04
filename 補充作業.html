@@ -1,0 +1,597 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>🔄 補充作業 - FreePaper Ops</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f0e8;--card:#fff;--ink:#1a1a1a;--muted:#888;--border:#e0dbd0;--green:#1a8a4a;--amber:#c47a0a;--blue:#1a5cd4;--red:#d42020;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;}
+.mono{font-family:'DM Mono',monospace;}
+
+/* Header */
+.header{background:var(--ink);color:#fff;padding:14px 16px;display:flex;align-items:center;gap:12px;position:sticky;top:0;z-index:100;}
+.back{color:#fff;text-decoration:none;font-size:20px;}
+.title{font-size:16px;font-weight:900;flex:1;}
+.month-badge{background:rgba(255,255,255,.12);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;}
+
+/* Worker */
+.worker-bar{background:var(--card);padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);}
+.worker-bar label{font-size:11px;color:var(--muted);font-weight:700;}
+.worker-bar input{flex:1;border:1px solid var(--border);border-radius:6px;padding:6px 10px;font-size:13px;font-family:inherit;}
+.worker-bar input:focus{outline:none;border-color:var(--blue);}
+
+/* KPI Bar */
+.kpi-row{display:grid;grid-template-columns:repeat(3,1fr);gap:6px;padding:10px 12px;background:var(--card);border-bottom:1px solid var(--border);}
+.kpi-mini{text-align:center;padding:6px 4px;}
+.kpi-mini .lbl{font-size:10px;color:var(--muted);font-weight:700;}
+.kpi-mini .val{font-size:18px;font-weight:900;margin-top:2px;}
+.kpi-mini.red .val{color:var(--red);}
+.kpi-mini.green .val{color:var(--green);}
+.kpi-mini.blue .val{color:var(--blue);}
+
+/* Filter Tabs */
+.filter-tabs{display:flex;gap:0;background:var(--card);padding:8px 12px;border-bottom:1px solid var(--border);}
+.filter-tab{flex:1;padding:9px;text-align:center;font-size:12px;font-weight:700;color:var(--muted);cursor:pointer;border-radius:8px;background:#f0ede5;margin:0 3px;}
+.filter-tab.active{background:var(--ink);color:#fff;}
+.filter-tab .badge{display:inline-block;background:rgba(255,255,255,.25);padding:1px 6px;border-radius:8px;font-size:10px;margin-left:4px;}
+.filter-tab:not(.active) .badge{background:#fff;color:var(--red);}
+
+/* Search */
+.search-bar{padding:10px 12px;background:var(--card);border-bottom:1px solid var(--border);}
+.search-bar input{width:100%;border:1px solid var(--border);border-radius:8px;padding:9px 12px;font-size:13px;font-family:inherit;background:#fafaf6;}
+.search-bar input:focus{outline:none;border-color:var(--blue);background:#fff;}
+
+/* Store List */
+.store-list{padding:10px 12px 80px;}
+.store-card{background:var(--card);border-radius:10px;padding:12px 14px;margin-bottom:8px;cursor:pointer;border:1px solid var(--border);transition:transform .1s;}
+.store-card:active{transform:scale(.99);}
+.store-card.required{border-left:4px solid var(--red);}
+.store-card.refilled{border-left:4px solid var(--green);}
+.store-row{display:flex;align-items:center;gap:8px;}
+.store-name{font-size:14px;font-weight:900;flex:1;}
+.store-meta{font-size:11px;color:var(--muted);margin-top:4px;display:flex;gap:8px;flex-wrap:wrap;}
+.store-meta .tag{background:#f0ede5;padding:2px 6px;border-radius:4px;font-weight:700;}
+.store-meta .tag.route{background:var(--blue);color:#fff;}
+.store-meta .tag.required{background:var(--red);color:#fff;}
+.store-meta .tag.refill{background:var(--green);color:#fff;}
+.store-stats{display:flex;gap:12px;margin-top:6px;font-size:11px;}
+.store-stats .stat{color:var(--muted);}
+.store-stats .stat strong{color:var(--ink);font-weight:900;font-size:13px;margin-right:2px;}
+
+/* Empty State */
+.empty-state{text-align:center;padding:60px 20px;color:var(--muted);}
+.empty-state .icon{font-size:48px;margin-bottom:12px;}
+.empty-state .msg{font-size:13px;}
+
+/* Loading */
+.loading{text-align:center;padding:80px 20px;color:var(--muted);}
+.spinner{width:28px;height:28px;border:3px solid var(--border);border-top-color:var(--blue);border-radius:50%;animation:spin .8s linear infinite;margin:0 auto 12px;}
+@keyframes spin{to{transform:rotate(360deg);}}
+
+/* Modal */
+.modal-overlay{position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:200;display:none;align-items:flex-end;justify-content:center;}
+.modal-overlay.active{display:flex;}
+.modal{background:var(--card);border-radius:16px 16px 0 0;width:100%;max-width:600px;max-height:90vh;overflow-y:auto;animation:slideUp .25s;}
+@keyframes slideUp{from{transform:translateY(100%);}to{transform:translateY(0);}}
+.modal-header{padding:16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;position:sticky;top:0;background:var(--card);z-index:1;}
+.modal-close{background:none;border:none;font-size:24px;color:var(--muted);cursor:pointer;width:32px;height:32px;}
+.modal-title{font-size:16px;font-weight:900;flex:1;}
+.modal-body{padding:16px;}
+.modal-store-info{background:#f9f6ec;border-radius:8px;padding:10px 12px;margin-bottom:14px;font-size:12px;}
+.modal-store-info .name{font-size:14px;font-weight:900;margin-bottom:4px;}
+.modal-store-info .meta{color:var(--muted);}
+
+.form-group{margin-bottom:14px;}
+.form-group label{display:block;font-size:11px;font-weight:700;color:var(--muted);margin-bottom:5px;letter-spacing:.04em;}
+.form-group input,.form-group textarea{width:100%;border:2px solid var(--border);border-radius:8px;padding:10px 12px;font-size:14px;font-family:inherit;background:#fff;}
+.form-group input:focus,.form-group textarea:focus{outline:none;border-color:var(--blue);}
+.form-group input[type="number"]{font-family:'DM Mono',monospace;font-size:18px;font-weight:700;}
+
+.btn-primary{width:100%;background:var(--ink);color:#fff;border:none;border-radius:10px;padding:14px;font-size:15px;font-weight:900;cursor:pointer;font-family:inherit;}
+.btn-primary:active{transform:scale(.99);}
+.btn-primary:disabled{background:var(--muted);}
+
+/* Past refills */
+.past-refills{margin-top:18px;border-top:1px solid var(--border);padding-top:14px;}
+.past-refills h3{font-size:12px;font-weight:900;color:var(--muted);letter-spacing:.06em;margin-bottom:8px;}
+.past-refill-item{background:#f9f6ec;border-radius:6px;padding:8px 10px;margin-bottom:6px;font-size:12px;display:flex;justify-content:space-between;gap:6px;}
+.past-refill-item .date{font-weight:700;}
+.past-refill-item .count{color:var(--green);font-weight:900;}
+.past-refill-item .by{color:var(--muted);font-size:10px;}
+.past-refill-item .note{color:#666;font-style:italic;font-size:11px;}
+
+/* Toast */
+.toast{position:fixed;top:64px;left:50%;transform:translateX(-50%);background:var(--green);color:#fff;padding:12px 20px;border-radius:8px;font-size:13px;font-weight:700;z-index:300;animation:fadeIn .3s;}
+.toast.error{background:var(--red);}
+@keyframes fadeIn{from{opacity:0;transform:translate(-50%,-10px);}to{opacity:1;transform:translateX(-50%);}}
+
+/* Error banner */
+.error-banner{background:#ffe9e9;border:1px solid var(--red);color:var(--red);padding:10px 14px;margin:10px 12px;border-radius:8px;font-size:12px;display:none;}
+.error-banner.show{display:block;}
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a class="back" href="index.html">←</a>
+  <div class="title">🔄 補充作業</div>
+  <div class="month-badge" id="month-badge">-</div>
+</div>
+
+<div class="worker-bar">
+  <label>作業者:</label>
+  <input type="text" id="worker-input" placeholder="お名前を入力" />
+</div>
+
+<div class="kpi-row">
+  <div class="kpi-mini red">
+    <div class="lbl">要補充店舗</div>
+    <div class="val" id="kpi-required">-</div>
+  </div>
+  <div class="kpi-mini blue">
+    <div class="lbl">本日補充</div>
+    <div class="val" id="kpi-today">-</div>
+  </div>
+  <div class="kpi-mini green">
+    <div class="lbl">今月補充計</div>
+    <div class="val" id="kpi-total">-</div>
+  </div>
+</div>
+
+<div class="filter-tabs">
+  <div class="filter-tab active" data-filter="required">要補充 <span class="badge" id="badge-required">0</span></div>
+  <div class="filter-tab" data-filter="all">全店舗</div>
+</div>
+
+<div class="search-bar">
+  <input type="search" id="search-input" placeholder="店名・ビル・住所で検索" />
+</div>
+
+<div class="error-banner" id="error-banner"></div>
+
+<div id="content">
+  <div class="loading">
+    <div class="spinner"></div>
+    <div>読み込み中...</div>
+  </div>
+</div>
+
+<!-- Refill Modal -->
+<div class="modal-overlay" id="modal-overlay">
+  <div class="modal">
+    <div class="modal-header">
+      <button class="modal-close" onclick="closeModal()">×</button>
+      <div class="modal-title">補充を記録</div>
+    </div>
+    <div class="modal-body">
+      <div class="modal-store-info">
+        <div class="name" id="modal-store-name">-</div>
+        <div class="meta" id="modal-store-meta">-</div>
+      </div>
+
+      <div class="form-group">
+        <label>補充日</label>
+        <input type="date" id="form-date" />
+      </div>
+
+      <div class="form-group">
+        <label>補充冊数</label>
+        <input type="number" id="form-count" min="1" max="100" inputmode="numeric" />
+      </div>
+
+      <div class="form-group">
+        <label>備考（任意）</label>
+        <input type="text" id="form-note" placeholder="例: スタンド追加、ラック交換など" />
+      </div>
+
+      <button class="btn-primary" id="btn-submit" onclick="submitRefill()">▶ 補充を記録する</button>
+
+      <div class="past-refills" id="past-refills" style="display:none;">
+        <h3>📋 今月の補充履歴</h3>
+        <div id="past-refills-list"></div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<script>
+// ===== Config =====
+const PROXY_URL = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const APP_NOHON  = 269;
+const APP_MASTER = 268;
+const TOKEN_NOHON  = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const TOKEN_MASTER = 'STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg';
+
+// Field codes
+const F_TABLE   = 'テーブル_0';
+const F_DATE    = '日付';
+const F_COUNT   = '数値_4';
+const F_WORKER  = '文字列__1行__14';
+const F_NOTE    = '文字列__1行__16';
+
+// ===== State =====
+let workerName = '';
+let currentMonth = '';
+let masterRequiredIds = new Set(); // 要補充の kintone番号 set
+let monthRecords = [];              // current month's 納本データ records
+let storeMap = {};                  // kintone番号 → record
+let currentFilter = 'required';
+let currentSearch = '';
+let selectedStore = null;
+
+// ===== Helpers =====
+function calcCurrentMonth() {
+  // 翌月号を返す（月初の作業を想定）
+  const d = new Date();
+  const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
+  return `${next.getFullYear()}年${next.getMonth() + 1}月号`;
+}
+
+function getURLParam(key) {
+  const m = window.location.search.match(new RegExp(`[?&]${key}=([^&]*)`));
+  return m ? decodeURIComponent(m[1]) : '';
+}
+
+function getVal(r, code) { return r[code]?.value || ''; }
+function getNum(r, code) { return parseFloat(r[code]?.value) || 0; }
+
+function showError(msg) {
+  const el = document.getElementById('error-banner');
+  el.textContent = '⚠️ ' + msg;
+  el.classList.add('show');
+}
+
+function showToast(msg, isError = false) {
+  const existing = document.querySelector('.toast');
+  if (existing) existing.remove();
+  const t = document.createElement('div');
+  t.className = 'toast' + (isError ? ' error' : '');
+  t.textContent = msg;
+  document.body.appendChild(t);
+  setTimeout(() => t.remove(), 2500);
+}
+
+function todayISO() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// ===== Worker Name =====
+function initWorker() {
+  workerName = getURLParam('worker') || localStorage.getItem('refillWorker') || '';
+  const input = document.getElementById('worker-input');
+  input.value = workerName;
+  input.addEventListener('change', e => {
+    workerName = e.target.value.trim();
+    localStorage.setItem('refillWorker', workerName);
+  });
+}
+
+// ===== Data Fetching =====
+async function fetchData() {
+  try {
+    currentMonth = calcCurrentMonth();
+    document.getElementById('month-badge').textContent = currentMonth;
+
+    // 1. 設置店マスタから 要補充 フラグ付き店舗を取得
+    let offset = 0;
+    masterRequiredIds = new Set();
+    while (true) {
+      const q = encodeURIComponent(`チェックボックス_2 in ("要補充") limit 500 offset ${offset}`);
+      const res = await fetch(`${PROXY_URL}/k/v1/records.json?app=${APP_MASTER}&query=${q}`, {
+        headers: { 'X-Cybozu-API-Token': TOKEN_MASTER }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(`マスタ取得失敗: ${JSON.stringify(data)}`);
+      for (const r of data.records) {
+        const kno = getVal(r, '文字列__1行__0');
+        if (kno) masterRequiredIds.add(kno);
+      }
+      if (data.records.length < 500) break;
+      offset += 500;
+    }
+
+    // 2. 現在月の納本データ管理レコードを全件取得
+    offset = 0;
+    monthRecords = [];
+    while (true) {
+      const q = encodeURIComponent(`文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc limit 500 offset ${offset}`);
+      const res = await fetch(`${PROXY_URL}/k/v1/records.json?app=${APP_NOHON}&query=${q}`, {
+        headers: { 'X-Cybozu-API-Token': TOKEN_NOHON }
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(`月次データ取得失敗: ${JSON.stringify(data)}`);
+      monthRecords = monthRecords.concat(data.records);
+      if (data.records.length < 500) break;
+      offset += 500;
+    }
+
+    // 3. storeMap 構築 (kintone番号 → record)
+    storeMap = {};
+    for (const r of monthRecords) {
+      const sid = getVal(r, '文字列__1行__5');
+      if (sid) storeMap[sid] = r;
+    }
+
+    if (monthRecords.length === 0) {
+      showError(`${currentMonth}のレコードが見つかりません。月次データ作成ツールで作成してください。`);
+    }
+
+    render();
+  } catch (e) {
+    document.getElementById('content').innerHTML = `
+      <div class="empty-state">
+        <div class="icon">⚠️</div>
+        <div class="msg">読み込み失敗<br><span style="font-size:11px">${e.message}</span></div>
+      </div>`;
+  }
+}
+
+// ===== Render =====
+function render() {
+  updateKPI();
+  updateBadges();
+  renderList();
+}
+
+function updateKPI() {
+  document.getElementById('kpi-required').textContent = masterRequiredIds.size;
+
+  // 本日補充済 + 今月補充計
+  const today = todayISO();
+  let todayCount = 0, monthCount = 0;
+  for (const r of monthRecords) {
+    const table = r[F_TABLE]?.value || [];
+    for (const row of table) {
+      const cnt = parseFloat(row.value[F_COUNT]?.value) || 0;
+      monthCount += cnt;
+      if (row.value[F_DATE]?.value === today) todayCount += cnt;
+    }
+  }
+  document.getElementById('kpi-today').textContent = todayCount;
+  document.getElementById('kpi-total').textContent = monthCount.toLocaleString();
+}
+
+function updateBadges() {
+  document.getElementById('badge-required').textContent = masterRequiredIds.size;
+}
+
+function renderList() {
+  const content = document.getElementById('content');
+
+  // フィルタ
+  let list;
+  if (currentFilter === 'required') {
+    list = monthRecords.filter(r => masterRequiredIds.has(getVal(r,'文字列__1行__5')));
+  } else {
+    list = [...monthRecords];
+  }
+
+  // 検索
+  if (currentSearch) {
+    const s = currentSearch.toLowerCase();
+    list = list.filter(r => {
+      const name  = getVal(r,'文字列__1行__1').toLowerCase();
+      const bldg  = getVal(r,'文字列__1行__2').toLowerCase();
+      const addr  = getVal(r,'文字列__1行__8').toLowerCase();
+      const route = getVal(r,'文字列__1行__4').toLowerCase();
+      return name.includes(s) || bldg.includes(s) || addr.includes(s) || route.includes(s);
+    });
+  }
+
+  // 並び替え：要補充→補充済→その他
+  list.sort((a, b) => {
+    const ar = masterRequiredIds.has(getVal(a,'文字列__1行__5')) ? 0 : 1;
+    const br = masterRequiredIds.has(getVal(b,'文字列__1行__5')) ? 0 : 1;
+    if (ar !== br) return ar - br;
+    return getVal(a,'文字列__1行__4').localeCompare(getVal(b,'文字列__1行__4'));
+  });
+
+  if (list.length === 0) {
+    content.innerHTML = `
+      <div class="empty-state">
+        <div class="icon">${currentFilter === 'required' ? '✅' : '🔍'}</div>
+        <div class="msg">${currentFilter === 'required' ? '要補充店舗はありません' : '該当店舗なし'}</div>
+      </div>`;
+    return;
+  }
+
+  content.innerHTML = '<div class="store-list">' + list.map(r => {
+    const sid       = getVal(r,'文字列__1行__5');
+    const name      = getVal(r,'文字列__1行__1') || '(名称未設定)';
+    const route     = getVal(r,'文字列__1行__4');
+    const bldg      = getVal(r,'文字列__1行__2');
+    const floor     = getVal(r,'文字列__1行__3');
+    const addr      = getVal(r,'文字列__1行__8');
+    const normalDel = getNum(r,'数値_2');
+    const delivered = getNum(r,'数値');
+    const isRequired = masterRequiredIds.has(sid);
+
+    const table = r[F_TABLE]?.value || [];
+    const refillCount = table.reduce((s, row) => s + (parseFloat(row.value[F_COUNT]?.value) || 0), 0);
+    const refillTimes = table.length;
+    const isRefilled = refillTimes > 0;
+
+    const addrFmt = addr && addr !== '-' ? (() => {
+      const p = addr.split('-');
+      return (p[0] === '100' && p[1] === '100') ? 'エリア外' : `${p[0]||'?'}条${p[1]||'?'}丁目`;
+    })() : '';
+
+    return `
+      <div class="store-card ${isRequired ? 'required' : ''} ${isRefilled ? 'refilled' : ''}" onclick="openModal('${sid}')">
+        <div class="store-row">
+          <div class="store-name">${name}</div>
+        </div>
+        <div class="store-meta">
+          ${route ? `<span class="tag route">${route}</span>` : ''}
+          ${isRequired ? '<span class="tag required">要補充</span>' : ''}
+          ${isRefilled ? `<span class="tag refill">補充${refillTimes}回</span>` : ''}
+          ${addrFmt ? `<span>${addrFmt}</span>` : ''}
+          ${bldg ? `<span>${bldg}${floor ? ' '+floor+'F' : ''}</span>` : ''}
+        </div>
+        <div class="store-stats">
+          <span class="stat"><strong>${delivered || normalDel}</strong>納本</span>
+          ${refillCount > 0 ? `<span class="stat"><strong style="color:var(--green)">+${refillCount}</strong>補充済</span>` : ''}
+        </div>
+      </div>`;
+  }).join('') + '</div>';
+}
+
+// ===== Filter / Search =====
+document.querySelectorAll('.filter-tab').forEach(tab => {
+  tab.addEventListener('click', () => {
+    document.querySelectorAll('.filter-tab').forEach(t => t.classList.remove('active'));
+    tab.classList.add('active');
+    currentFilter = tab.dataset.filter;
+    renderList();
+  });
+});
+
+document.getElementById('search-input').addEventListener('input', e => {
+  currentSearch = e.target.value.trim();
+  renderList();
+});
+
+// ===== Modal =====
+function openModal(sid) {
+  const r = storeMap[sid];
+  if (!r) return;
+  selectedStore = r;
+
+  const name  = getVal(r,'文字列__1行__1') || '(名称未設定)';
+  const route = getVal(r,'文字列__1行__4');
+  const bldg  = getVal(r,'文字列__1行__2');
+  const floor = getVal(r,'文字列__1行__3');
+  const addr  = getVal(r,'文字列__1行__8');
+  const normalDel = getNum(r,'数値_2');
+
+  document.getElementById('modal-store-name').textContent = name;
+  document.getElementById('modal-store-meta').textContent =
+    `${route}ルート / 通常納本${normalDel}冊${bldg ? ' / '+bldg : ''}${floor ? ' '+floor+'F' : ''}`;
+
+  // フォーム初期化
+  document.getElementById('form-date').value = todayISO();
+  document.getElementById('form-count').value = '';
+  document.getElementById('form-note').value = '';
+
+  // 過去履歴
+  const table = r[F_TABLE]?.value || [];
+  const pastEl = document.getElementById('past-refills');
+  const pastListEl = document.getElementById('past-refills-list');
+  if (table.length > 0) {
+    pastEl.style.display = '';
+    pastListEl.innerHTML = table
+      .sort((a,b) => (b.value[F_DATE]?.value || '').localeCompare(a.value[F_DATE]?.value || ''))
+      .map(row => {
+        const d = row.value[F_DATE]?.value || '-';
+        const c = row.value[F_COUNT]?.value || '0';
+        const w = row.value[F_WORKER]?.value || '';
+        const n = row.value[F_NOTE]?.value || '';
+        return `<div class="past-refill-item">
+          <span class="date">${d}</span>
+          <span class="count">+${c}冊</span>
+          <span class="by">${w}</span>
+          ${n ? `<span class="note">${n}</span>` : ''}
+        </div>`;
+      }).join('');
+  } else {
+    pastEl.style.display = 'none';
+  }
+
+  document.getElementById('modal-overlay').classList.add('active');
+  setTimeout(() => document.getElementById('form-count').focus(), 200);
+}
+
+function closeModal() {
+  document.getElementById('modal-overlay').classList.remove('active');
+  selectedStore = null;
+}
+
+document.getElementById('modal-overlay').addEventListener('click', e => {
+  if (e.target.id === 'modal-overlay') closeModal();
+});
+
+// ===== Submit =====
+async function submitRefill() {
+  if (!selectedStore) return;
+
+  // 入力値検証
+  workerName = document.getElementById('worker-input').value.trim();
+  if (!workerName) {
+    showToast('作業者名を入力してください', true);
+    document.getElementById('worker-input').focus();
+    return;
+  }
+  localStorage.setItem('refillWorker', workerName);
+
+  const date = document.getElementById('form-date').value;
+  const count = parseInt(document.getElementById('form-count').value);
+  const note = document.getElementById('form-note').value.trim();
+
+  if (!date) { showToast('補充日を入力してください', true); return; }
+  if (!count || count <= 0) { showToast('補充冊数を入力してください', true); return; }
+
+  const btn = document.getElementById('btn-submit');
+  btn.disabled = true;
+  btn.textContent = '送信中...';
+
+  try {
+    // 最新のサブテーブル値を取得（他端末との衝突防止）
+    const recordId = selectedStore.$id.value;
+    const getRes = await fetch(`${PROXY_URL}/k/v1/record.json?app=${APP_NOHON}&id=${recordId}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN_NOHON }
+    });
+    const getData = await getRes.json();
+    if (!getRes.ok) throw new Error(`レコード取得失敗: ${JSON.stringify(getData)}`);
+
+    const currentTable = getData.record[F_TABLE]?.value || [];
+    const newRow = {
+      value: {
+        [F_DATE]:   { value: date },
+        [F_COUNT]:  { value: String(count) },
+        [F_WORKER]: { value: workerName },
+        [F_NOTE]:   { value: note }
+      }
+    };
+
+    const putRes = await fetch(`${PROXY_URL}/k/v1/record.json`, {
+      method: 'PUT',
+      headers: { 'X-Cybozu-API-Token': TOKEN_NOHON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app: APP_NOHON,
+        id: recordId,
+        record: {
+          [F_TABLE]: { value: [...currentTable, newRow] }
+        }
+      })
+    });
+    const putText = await putRes.text();
+    if (!putRes.ok) throw new Error(`更新失敗: HTTP ${putRes.status}: ${putText.substring(0,200)}`);
+
+    showToast(`✅ ${count}冊の補充を記録しました`);
+    closeModal();
+
+    // ローカル状態を更新（fetch直す代わりに）
+    selectedStore[F_TABLE] = { value: [...currentTable, newRow] };
+    storeMap[getVal(selectedStore,'文字列__1行__5')] = selectedStore;
+    const idx = monthRecords.findIndex(r => r.$id.value === recordId);
+    if (idx >= 0) monthRecords[idx][F_TABLE] = { value: [...currentTable, newRow] };
+    render();
+  } catch (e) {
+    showToast(e.message, true);
+    console.error(e);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '▶ 補充を記録する';
+  }
+}
+
+// ===== Init =====
+initWorker();
+fetchData();
+</script>
+</body>
+</html>

@@ -344,6 +344,15 @@ async function loadData() {
 function getVal(r, key) { return r[key]?.value || ''; }
 function getNum(r, key) { return parseFloat(r[key]?.value) || 0; }
 
+// 補充冊数合計（サブテーブル）
+function getRefillTotal(r) {
+  const table = r['テーブル_0']?.value || [];
+  return table.reduce((s, row) => s + (parseFloat(row.value?.['数値_4']?.value) || 0), 0);
+}
+function getRefillCount(r) {
+  return (r['テーブル_0']?.value || []).length;
+}
+
 function renderSummary() {
   const done = allRecords.filter(r => getVal(r,'ドロップダウン') === '完了');
   const absent = allRecords.filter(r => getVal(r,'ドロップダウン') === '不在');
@@ -351,10 +360,14 @@ function renderSummary() {
   const total = allRecords.length;
 
   const totalNabon = done.reduce((s,r) => s + getNum(r,'数値'), 0);
+  const totalRefill = done.reduce((s,r) => s + getRefillTotal(r), 0);
   const totalHenkyaku = done.reduce((s,r) => s + getNum(r,'数値_0'), 0);
-  const zanbu = totalNabon > 0 ? Math.round(totalHenkyaku / totalNabon * 100) : 0;
+  const totalSupply = totalNabon + totalRefill;
+  const zanbu = totalSupply > 0 ? Math.round(totalHenkyaku / totalSupply * 100) : 0;
 
   document.getElementById('kpi-nabon').textContent = totalNabon.toLocaleString();
+  const nabonSub = document.querySelector('#kpi-nabon').parentElement.querySelector('.kpi-sub');
+  nabonSub.innerHTML = totalRefill > 0 ? `冊 <span style="color:var(--green);font-weight:700;font-size:11px">+${totalRefill}補充</span>` : '冊';
   document.getElementById('kpi-henkyaku').textContent = totalHenkyaku.toLocaleString();
   document.getElementById('kpi-zanbu').textContent = zanbu;
   document.getElementById('kpi-done').textContent = done.length;
@@ -446,9 +459,14 @@ function renderRouteTable() {
   const routeMap = {};
   allRecords.forEach(r => {
     const route = getRouteKey(r);
-    if (!routeMap[route]) routeMap[route] = { done:0, absent:0, todo:0, nabon:0, henkyaku:0 };
+    if (!routeMap[route]) routeMap[route] = { done:0, absent:0, todo:0, nabon:0, refill:0, henkyaku:0 };
     const s = getVal(r,'ドロップダウン');
-    if (s === '完了') { routeMap[route].done++; routeMap[route].nabon += getNum(r,'数値'); routeMap[route].henkyaku += getNum(r,'数値_0'); }
+    if (s === '完了') {
+      routeMap[route].done++;
+      routeMap[route].nabon += getNum(r,'数値');
+      routeMap[route].refill += getRefillTotal(r);
+      routeMap[route].henkyaku += getNum(r,'数値_0');
+    }
     else if (s === '不在') routeMap[route].absent++;
     else routeMap[route].todo++;
   });
@@ -472,6 +490,7 @@ function renderRouteTable() {
       <td class="mono" style="color:var(--amber)">${d.absent}</td>
       <td class="mono" style="color:var(--muted)">${d.todo}</td>
       <td class="mono">${d.nabon.toLocaleString()}</td>
+      <td class="mono" style="color:var(--green)">${d.refill > 0 ? '+'+d.refill : '-'}</td>
       <td class="mono">${d.henkyaku.toLocaleString()}</td>
       <td class="mono">${pct}%</td>
     </tr>`;
@@ -482,7 +501,7 @@ function renderRouteTable() {
       <div class="section-title">ルート別集計（遅分離）</div>
       <table class="data-table">
         <thead><tr>
-          <th>ルート</th><th>総件数</th><th>完了</th><th>不在</th><th>未着手</th><th>納本</th><th>返却</th><th>完了率</th>
+          <th>ルート</th><th>総件数</th><th>完了</th><th>不在</th><th>未着手</th><th>納本</th><th>補充</th><th>返却</th><th>完了率</th>
         </tr></thead>
         <tbody>${rows}</tbody>
       </table>
@@ -566,17 +585,19 @@ function renderPrevMonth() {
   });
 
   // 当月レコードの返却数 = 前月号の返却数
-  // 前月レコードの納本数 = 前月号の納本数
+  // 前月レコードの納本数 + 補充 = 前月号の供給量
   const storeData = [];
   allRecords.forEach(r => {
     const sid = getVal(r,'文字列__1行__5');
     const henkyaku = getNum(r,'数値_0');  // 当月で回収した前月号の返却数
     const prev = prevIndex[sid];
     const prevNabon = prev ? getNum(prev,'数値') : 0;  // 前月号の納本数
+    const prevRefill = prev ? getRefillTotal(prev) : 0;  // 前月号の補充冊数
     if (prevNabon <= 0) return;  // 前月に納本がない店舗はスキップ
 
-    const shouka = prevNabon - henkyaku;
-    const rate = Math.round(shouka / prevNabon * 100);
+    const supply = prevNabon + prevRefill;
+    const shouka = supply - henkyaku;
+    const rate = supply > 0 ? Math.round(shouka / supply * 100) : 0;
     storeData.push({
       sid,
       name: getVal(r,'文字列__1行__1'),
@@ -586,6 +607,7 @@ function renderPrevMonth() {
       genre: getVal(r,'文字列__1行__6'),
       isOsoi: (r['チェックボックス_0']?.value || []).length > 0,
       prevNabon,
+      prevRefill,
       henkyaku,
       shouka,
       rate,
@@ -604,9 +626,11 @@ function renderPrevMonth() {
 
   // 全体集計
   const totalPrevNabon = storeData.reduce((s,d) => s + d.prevNabon, 0);
+  const totalPrevRefill = storeData.reduce((s,d) => s + d.prevRefill, 0);
   const totalHenkyaku = storeData.reduce((s,d) => s + d.henkyaku, 0);
-  const totalShouka = totalPrevNabon - totalHenkyaku;
-  const overallRate = totalPrevNabon > 0 ? Math.round(totalShouka / totalPrevNabon * 100) : 0;
+  const totalSupply = totalPrevNabon + totalPrevRefill;
+  const totalShouka = totalSupply - totalHenkyaku;
+  const overallRate = totalSupply > 0 ? Math.round(totalShouka / totalSupply * 100) : 0;
 
   const rateColor = rate => rate >= 80 ? 'var(--green)' : rate >= 50 ? 'var(--amber)' : 'var(--red)';
 
@@ -614,13 +638,17 @@ function renderPrevMonth() {
   const routeMap = {};
   storeData.forEach(d => {
     const key = d.isOsoi ? d.route + '遅' : d.route;
-    if (!routeMap[key]) routeMap[key] = { nabon:0, henkyaku:0, count:0 };
+    if (!routeMap[key]) routeMap[key] = { nabon:0, refill:0, henkyaku:0, count:0 };
     routeMap[key].nabon += d.prevNabon;
+    routeMap[key].refill += d.prevRefill;
     routeMap[key].henkyaku += d.henkyaku;
     routeMap[key].count++;
   });
   const routeRows = Object.entries(routeMap)
-    .map(([route, d]) => ({ route, ...d, shouka: d.nabon - d.henkyaku, rate: d.nabon > 0 ? Math.round((d.nabon - d.henkyaku)/d.nabon*100) : 0 }))
+    .map(([route, d]) => {
+      const supply = d.nabon + d.refill;
+      return { route, ...d, shouka: supply - d.henkyaku, rate: supply > 0 ? Math.round((supply - d.henkyaku)/supply*100) : 0 };
+    })
     .sort((a,b) => { const la = a.route.replace('遅',''), lb = b.route.replace('遅',''); return la !== lb ? la.localeCompare(lb) : (a.route.includes('遅') ? 1 : -1); });
 
   // 住所別集計
@@ -631,26 +659,34 @@ function renderPrevMonth() {
       const parts = d.addr.split('-');
       addr = (parts[0] === '100' && parts[1] === '100') ? 'エリア外' : `${parts[0]||'?'}条${parts[1]||'?'}丁目`;
     }
-    if (!addrMap[addr]) addrMap[addr] = { nabon:0, henkyaku:0, count:0 };
+    if (!addrMap[addr]) addrMap[addr] = { nabon:0, refill:0, henkyaku:0, count:0 };
     addrMap[addr].nabon += d.prevNabon;
+    addrMap[addr].refill += d.prevRefill;
     addrMap[addr].henkyaku += d.henkyaku;
     addrMap[addr].count++;
   });
   const addrRows = Object.entries(addrMap)
-    .map(([addr, d]) => ({ addr, ...d, shouka: d.nabon - d.henkyaku, rate: d.nabon > 0 ? Math.round((d.nabon - d.henkyaku)/d.nabon*100) : 0 }))
+    .map(([addr, d]) => {
+      const supply = d.nabon + d.refill;
+      return { addr, ...d, shouka: supply - d.henkyaku, rate: supply > 0 ? Math.round((supply - d.henkyaku)/supply*100) : 0 };
+    })
     .sort((a,b) => b.rate - a.rate);
 
   // ジャンル別集計
   const genreMap = {};
   storeData.forEach(d => {
     const genre = d.genre || '不明';
-    if (!genreMap[genre]) genreMap[genre] = { nabon:0, henkyaku:0, count:0 };
+    if (!genreMap[genre]) genreMap[genre] = { nabon:0, refill:0, henkyaku:0, count:0 };
     genreMap[genre].nabon += d.prevNabon;
+    genreMap[genre].refill += d.prevRefill;
     genreMap[genre].henkyaku += d.henkyaku;
     genreMap[genre].count++;
   });
   const genreRows = Object.entries(genreMap)
-    .map(([genre, d]) => ({ genre, ...d, shouka: d.nabon - d.henkyaku, rate: d.nabon > 0 ? Math.round((d.nabon - d.henkyaku)/d.nabon*100) : 0 }))
+    .map(([genre, d]) => {
+      const supply = d.nabon + d.refill;
+      return { genre, ...d, shouka: supply - d.henkyaku, rate: supply > 0 ? Math.round((supply - d.henkyaku)/supply*100) : 0 };
+    })
     .sort((a,b) => b.rate - a.rate);
 
   // 店舗別（消化率低い順）
@@ -672,7 +708,7 @@ function renderPrevMonth() {
       <div class="kpi-card blue">
         <div class="kpi-label">${prevMonthLabel} 納本数</div>
         <div class="kpi-val">${totalPrevNabon.toLocaleString()}</div>
-        <div class="kpi-sub">冊</div>
+        <div class="kpi-sub">${totalPrevRefill > 0 ? `+ <span style="color:var(--green);font-weight:700">${totalPrevRefill}補充</span>` : '冊'}</div>
       </div>
       <div class="kpi-card amber">
         <div class="kpi-label">${currentMonth} 返却数</div>
@@ -687,7 +723,7 @@ function renderPrevMonth() {
       <div class="kpi-card ${overallRate >= 70 ? 'green' : 'red'}">
         <div class="kpi-label">消化率</div>
         <div class="kpi-val">${overallRate}%</div>
-        <div class="kpi-sub">実績ベース</div>
+        <div class="kpi-sub">${totalPrevRefill > 0 ? '(納本+補充)基準' : '実績ベース'}</div>
       </div>
     </div>
 
@@ -706,12 +742,13 @@ function renderPrevMonth() {
         <div style="overflow-x:auto">
           <table class="data-table">
             <thead><tr>
-              <th>ルート</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+              <th>ルート</th><th>件数</th><th>納本</th><th>補充</th><th>返却</th><th>持去</th><th>消化率</th>
             </tr></thead>
             <tbody>${routeRows.map(d => `<tr${d.route.includes('遅') ? ' style="background:#fffbf0"' : ''}>
               <td><strong>${d.route}</strong></td>
               <td class="mono">${d.count}</td>
               <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono" style="color:var(--green)">${d.refill > 0 ? '+'+d.refill : '-'}</td>
               <td class="mono">${d.henkyaku.toLocaleString()}</td>
               <td class="mono">${d.shouka.toLocaleString()}</td>
               <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
@@ -728,12 +765,13 @@ function renderPrevMonth() {
         <div style="overflow-x:auto">
           <table class="data-table">
             <thead><tr>
-              <th>住所</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+              <th>住所</th><th>件数</th><th>納本</th><th>補充</th><th>返却</th><th>持去</th><th>消化率</th>
             </tr></thead>
             <tbody>${addrRows.map(d => `<tr>
               <td><strong>${d.addr}</strong></td>
               <td class="mono">${d.count}</td>
               <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono" style="color:var(--green)">${d.refill > 0 ? '+'+d.refill : '-'}</td>
               <td class="mono">${d.henkyaku.toLocaleString()}</td>
               <td class="mono">${d.shouka.toLocaleString()}</td>
               <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
@@ -750,12 +788,13 @@ function renderPrevMonth() {
         <div style="overflow-x:auto">
           <table class="data-table">
             <thead><tr>
-              <th>ジャンル</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+              <th>ジャンル</th><th>件数</th><th>納本</th><th>補充</th><th>返却</th><th>持去</th><th>消化率</th>
             </tr></thead>
             <tbody>${genreRows.map(d => `<tr>
               <td><strong>${d.genre}</strong></td>
               <td class="mono">${d.count}</td>
               <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono" style="color:var(--green)">${d.refill > 0 ? '+'+d.refill : '-'}</td>
               <td class="mono">${d.henkyaku.toLocaleString()}</td>
               <td class="mono">${d.shouka.toLocaleString()}</td>
               <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
@@ -775,12 +814,13 @@ function renderPrevMonth() {
         <div style="overflow-x:auto">
           <table class="data-table">
             <thead><tr>
-              <th>ルート</th><th>店名</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+              <th>ルート</th><th>店名</th><th>納本</th><th>補充</th><th>返却</th><th>持去</th><th>消化率</th>
             </tr></thead>
             <tbody>${shopRows.map(d => `<tr>
               <td class="mono">${d.route}${d.isOsoi ? '<span style="color:var(--amber);font-size:10px;">遅</span>' : ''}</td>
               <td><strong>${d.name}</strong>${d.bldg ? `<div style="font-size:10px;color:var(--muted)">${d.bldg}</div>` : ''}</td>
               <td class="mono">${d.prevNabon}</td>
+              <td class="mono" style="color:var(--green)">${d.prevRefill > 0 ? '+'+d.prevRefill : '-'}</td>
               <td class="mono">${d.henkyaku}</td>
               <td class="mono">${d.shouka}</td>
               <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
@@ -800,14 +840,16 @@ function switchPrevTab(id, el) {
 }
 
 function renderShouka() {
-  // 通常納本数＝先月納本数として消化率を計算
+  // 供給 = 通常納本数 + 補充、消化率 = (供給 - 返却) / 供給
   const records = allRecords.filter(r => getNum(r,'数値_2') > 0 || getNum(r,'数値_0') > 0);
 
   // 全体サマリー
   const totalNabon = allRecords.reduce((s,r) => s + getNum(r,'数値_2'), 0); // 通常納本数
+  const totalRefill = allRecords.reduce((s,r) => s + getRefillTotal(r), 0); // 補充冊数
   const totalHenkyaku = allRecords.reduce((s,r) => s + getNum(r,'数値_0'), 0); // 返却数
-  const totalShouka = totalNabon - totalHenkyaku;
-  const shoukaRate = totalNabon > 0 ? Math.round(totalShouka / totalNabon * 100) : 0;
+  const totalSupply = totalNabon + totalRefill;
+  const totalShouka = totalSupply - totalHenkyaku;
+  const shoukaRate = totalSupply > 0 ? Math.round(totalShouka / totalSupply * 100) : 0;
 
   // マスタデータをkintone番号でインデックス化
   const masterIndex = {};
@@ -834,8 +876,9 @@ function renderShouka() {
       const chome = master['文字列__1行__8']?.value || '?';
       addr = (jo === '100' && chome === '100') ? 'エリア外' : `${jo}条${chome}丁目`;
     }
-    if (!addrMap[addr]) addrMap[addr] = { nabon:0, henkyaku:0, count:0 };
+    if (!addrMap[addr]) addrMap[addr] = { nabon:0, refill:0, henkyaku:0, count:0 };
     addrMap[addr].nabon += getNum(r,'数値_2');
+    addrMap[addr].refill += getRefillTotal(r);
     addrMap[addr].henkyaku += getNum(r,'数値_0');
     addrMap[addr].count++;
   });
@@ -849,8 +892,9 @@ function renderShouka() {
       const master = masterIndex[setchiId] || {};
       genre = master['文字列__1行__1']?.value || '不明';
     }
-    if (!genreMap[genre]) genreMap[genre] = { nabon:0, henkyaku:0, count:0 };
+    if (!genreMap[genre]) genreMap[genre] = { nabon:0, refill:0, henkyaku:0, count:0 };
     genreMap[genre].nabon += getNum(r,'数値_2');
+    genreMap[genre].refill += getRefillTotal(r);
     genreMap[genre].henkyaku += getNum(r,'数値_0');
     genreMap[genre].count++;
   });
@@ -860,25 +904,29 @@ function renderShouka() {
     .filter(r => getNum(r,'数値_2') > 0)
     .map(r => {
       const nabon = getNum(r,'数値_2');
+      const refill = getRefillTotal(r);
       const henkyaku = getNum(r,'数値_0');
-      const shouka = nabon - henkyaku;
-      const rate = Math.round(shouka / nabon * 100);
-      return { name: getVal(r,'文字列__1行__1'), nabon, henkyaku, shouka, rate };
+      const supply = nabon + refill;
+      const shouka = supply - henkyaku;
+      const rate = supply > 0 ? Math.round(shouka / supply * 100) : 0;
+      return { name: getVal(r,'文字列__1行__1'), nabon, refill, henkyaku, shouka, rate };
     })
     .sort((a,b) => a.rate - b.rate); // 消化率の低い順
 
   const addrRows = Object.entries(addrMap)
     .map(([addr, d]) => {
-      const shouka = d.nabon - d.henkyaku;
-      const rate = d.nabon > 0 ? Math.round(shouka / d.nabon * 100) : 0;
+      const supply = d.nabon + d.refill;
+      const shouka = supply - d.henkyaku;
+      const rate = supply > 0 ? Math.round(shouka / supply * 100) : 0;
       return { addr, ...d, shouka, rate };
     })
     .sort((a,b) => b.rate - a.rate);
 
   const genreRows = Object.entries(genreMap)
     .map(([genre, d]) => {
-      const shouka = d.nabon - d.henkyaku;
-      const rate = d.nabon > 0 ? Math.round(shouka / d.nabon * 100) : 0;
+      const supply = d.nabon + d.refill;
+      const shouka = supply - d.henkyaku;
+      const rate = supply > 0 ? Math.round(shouka / supply * 100) : 0;
       return { genre, ...d, shouka, rate };
     })
     .sort((a,b) => b.rate - a.rate);
@@ -891,7 +939,7 @@ function renderShouka() {
       <div class="kpi-card blue">
         <div class="kpi-label">通常納本数合計</div>
         <div class="kpi-val">${totalNabon.toLocaleString()}</div>
-        <div class="kpi-sub">冊</div>
+        <div class="kpi-sub">${totalRefill > 0 ? `+ <span style="color:var(--green);font-weight:700">${totalRefill}補充</span>` : '冊'}</div>
       </div>
       <div class="kpi-card amber">
         <div class="kpi-label">返却数合計</div>
@@ -906,7 +954,7 @@ function renderShouka() {
       <div class="kpi-card ${shoukaRate >= 70 ? 'green' : 'red'}">
         <div class="kpi-label">消化率</div>
         <div class="kpi-val">${shoukaRate}%</div>
-        <div class="kpi-sub">持去率</div>
+        <div class="kpi-sub">${totalRefill > 0 ? '(納本+補充)基準' : '持去率'}</div>
       </div>
     </div>
 
@@ -924,12 +972,13 @@ function renderShouka() {
         <div style="overflow-x:auto">
           <table class="data-table">
             <thead><tr>
-              <th>住所</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+              <th>住所</th><th>件数</th><th>納本</th><th>補充</th><th>返却</th><th>持去</th><th>消化率</th>
             </tr></thead>
             <tbody>${addrRows.map(d => `<tr>
               <td><strong>${d.addr}</strong></td>
               <td class="mono">${d.count}</td>
               <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono" style="color:var(--green)">${d.refill > 0 ? '+'+d.refill : '-'}</td>
               <td class="mono">${d.henkyaku.toLocaleString()}</td>
               <td class="mono">${d.shouka.toLocaleString()}</td>
               <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
@@ -946,12 +995,13 @@ function renderShouka() {
         <div style="overflow-x:auto">
           <table class="data-table">
             <thead><tr>
-              <th>ジャンル</th><th>件数</th><th>納本</th><th>返却</th><th>持去</th><th>消化率</th>
+              <th>ジャンル</th><th>件数</th><th>納本</th><th>補充</th><th>返却</th><th>持去</th><th>消化率</th>
             </tr></thead>
             <tbody>${genreRows.map(d => `<tr>
               <td><strong>${d.genre}</strong></td>
               <td class="mono">${d.count}</td>
               <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono" style="color:var(--green)">${d.refill > 0 ? '+'+d.refill : '-'}</td>
               <td class="mono">${d.henkyaku.toLocaleString()}</td>
               <td class="mono">${d.shouka.toLocaleString()}</td>
               <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
@@ -971,11 +1021,12 @@ function renderShouka() {
         <div style="overflow-x:auto">
           <table class="data-table">
             <thead><tr>
-              <th>店名</th><th>通常納本</th><th>返却</th><th>持去</th><th>消化率</th>
+              <th>店名</th><th>通常納本</th><th>補充</th><th>返却</th><th>持去</th><th>消化率</th>
             </tr></thead>
             <tbody>${shopRows.map(d => `<tr>
               <td><strong>${d.name}</strong></td>
               <td class="mono">${d.nabon}</td>
+              <td class="mono" style="color:var(--green)">${d.refill > 0 ? '+'+d.refill : '-'}</td>
               <td class="mono">${d.henkyaku}</td>
               <td class="mono">${d.shouka}</td>
               <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
