@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>新店舗追加ツール - FreePaper Ops</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; align-items: flex-start; justify-content: center; padding: 20px; }
+  .top-bar { width: 100%; max-width: 560px; margin: 0 auto 12px; }
+  .top-bar a { color: #7a8099; text-decoration: none; font-size: 13px; }
+  .top-bar a:hover { color: #e94560; }
+  .container { background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 32px; width: 100%; max-width: 560px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  h1 { font-size: 18px; font-weight: 700; color: #e94560; margin-bottom: 6px; letter-spacing: 0.05em; }
+  .subtitle { font-size: 12px; color: #7a8099; margin-bottom: 28px; }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 12px; color: #7a8099; margin-bottom: 6px; }
+  input, select { width: 100%; background: #0f3460; border: 1px solid #1a4a7a; border-radius: 6px; padding: 10px 14px; color: #e0e0e0; font-size: 13px; font-family: monospace; outline: none; transition: border-color 0.2s; }
+  input:focus, select:focus { border-color: #e94560; }
+  select option { background: #0f3460; }
+  .btn { width: 100%; padding: 13px; background: #e94560; border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 700; cursor: pointer; letter-spacing: 0.05em; transition: background 0.2s; margin-top: 8px; }
+  .btn:hover { background: #c73652; }
+  .btn:disabled { background: #444; cursor: not-allowed; }
+  .btn.safe { background: #0f3460; margin-top: 0; }
+  .btn.safe:hover { background: #1a4a7a; }
+  .info-box { background: #0a2a40; border: 1px solid #1a5cd4; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #7ecfff; margin-bottom: 18px; line-height: 1.8; }
+  .log { margin-top: 24px; background: #0a0a1a; border-radius: 8px; padding: 16px; font-size: 12px; font-family: monospace; min-height: 100px; max-height: 320px; overflow-y: auto; line-height: 1.8; display: none; }
+  .log.visible { display: block; }
+  .log-info { color: #7ecfff; }
+  .log-success { color: #4ecca3; }
+  .log-error { color: #e94560; }
+  .log-warn { color: #f6c90e; }
+  .progress-bar { width: 100%; height: 4px; background: #0f3460; border-radius: 2px; margin-top: 16px; display: none; overflow: hidden; }
+  .progress-bar.visible { display: block; }
+  .progress-fill { height: 100%; background: #e94560; border-radius: 2px; width: 0%; transition: width 0.3s; }
+  .step-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .step-btns .btn { margin-top: 0; }
+  .note { font-size: 11px; color: #556; margin-top: 6px; line-height: 1.6; }
+  .candidate-list { background: #0a0a1a; border-radius: 6px; padding: 10px 12px; margin-top: 8px; max-height: 240px; overflow-y: auto; font-size: 11px; font-family: monospace; line-height: 1.7; display: none; }
+  .candidate-list.visible { display: block; }
+  .candidate-item { color: #4ecca3; }
+</style>
+</head>
+<body>
+<div>
+  <div class="top-bar"><a href="./index.html">← TOPに戻る</a></div>
+  <div class="container">
+    <h1>新店舗追加ツール</h1>
+    <p class="subtitle">指定月号にまだないマスタ店舗だけを追加します</p>
+
+    <div class="info-box">
+      💡 月次レコード作成後に追加された新店舗を、既存月号レコードに追加するためのツールです。<br>
+      設置店マスタ（稼働中）の中で、指定月号にまだレコードがない店舗だけを抽出して作成します。
+    </div>
+
+    <div class="field">
+      <label>PROXY URL</label>
+      <input type="text" id="proxyUrl" value="https://kintone-proxy.mmmm82mmmm.workers.dev" />
+    </div>
+    <div class="field">
+      <label>APIトークン：設置店マスタ（App ID: 268）</label>
+      <input type="text" id="tokenMaster" value="STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg" />
+    </div>
+    <div class="field">
+      <label>APIトークン：納本データ管理（App ID: 269）</label>
+      <input type="text" id="tokenNohon" value="jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF" />
+    </div>
+    <div class="field">
+      <label>対象月号</label>
+      <select id="monthSelect"></select>
+      <p class="note">📅 通常は配本中・次回配本予定の月号を選択（デフォルトは翌月号）</p>
+      <p class="note">📈 通常納本数≤11冊 &amp; 2・3ヶ月前の戻り率≤30% の店舗は +3冊（上限11冊）</p>
+      <p class="note">🔄 1・4・7・10月号以外は「MAP月のみ」店舗を除外</p>
+    </div>
+
+    <div class="step-btns">
+      <button class="btn safe" id="previewBtn" onclick="preview()">🔍 追加対象を確認</button>
+      <button class="btn" id="runBtn" onclick="run()" disabled>▶ 実行</button>
+    </div>
+
+    <div class="candidate-list" id="candidateList"></div>
+    <div class="progress-bar" id="progressBar">
+      <div class="progress-fill" id="progressFill"></div>
+    </div>
+    <div class="log" id="log"></div>
+  </div>
+</div>
+
+<script>
+const PROXY = () => document.getElementById('proxyUrl').value.trim().replace(/\/$/, '');
+const APP_MASTER = 268;
+const APP_NOHON  = 269;
+let candidateMasters = [];
+let pastDataIndex = {};
+
+// 月選択初期化（デフォルト = 翌カレンダー月）
+function initMonthSelect() {
+  const sel = document.getElementById('monthSelect');
+  const d = new Date();
+  const baseY = d.getFullYear(), baseM = d.getMonth() + 1; // 翌月
+  const labels = { '0':'今月', '1':'翌月', '2':'翌々月', '3':'3ヶ月先' };
+  for (let i = -1; i <= 3; i++) {
+    let y = baseY, m = baseM + i;
+    while (m <= 0) { m += 12; y--; }
+    while (m > 12) { m -= 12; y++; }
+    const val = `${y}年${m}月号`;
+    const o = document.createElement('option');
+    o.value = val;
+    const rel = i === -1 ? '当月' : labels[i] || '';
+    o.textContent = rel ? `${val}（${rel}）` : val;
+    if (i === 1) o.selected = true; // 翌月号がデフォルト
+    sel.appendChild(o);
+  }
+}
+
+// ヘルパー関数
+function getPrev2Months(workMonth) {
+  const m = workMonth.match(/(\d{4})年(\d{1,2})月号/);
+  if (!m) return [];
+  const y = parseInt(m[1]), mo = parseInt(m[2]);
+  const result = [];
+  for (let i = 2; i <= 3; i++) {
+    let py = y, pm = mo - i;
+    while (pm <= 0) { pm += 12; py--; }
+    result.push(`${py}年${pm}月号`);
+  }
+  return result;
+}
+
+function isMapMonth(workMonth) {
+  const m = workMonth.match(/(\d{4})年(\d{1,2})月号/);
+  if (!m) return false;
+  return [1, 4, 7, 10].includes(parseInt(m[2]));
+}
+
+function calcDelivery(master, pastData) {
+  const normalDel = parseFloat(master['数値_4']?.value) || 0;
+  if (normalDel > 11 || normalDel <= 0) return normalDel;
+  if (!pastData || pastData.monthCount < 2) return normalDel;
+  if (pastData.totalNabon <= 0) return normalDel;
+  const returnRate = pastData.totalHenkyaku / pastData.totalNabon;
+  if (returnRate <= 0.30) return Math.min(normalDel + 3, 11);
+  return normalDel;
+}
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = `log-${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString('ja-JP')}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progressBar').classList.add('visible');
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+async function getAll(appId, token, query) {
+  let all = [], offset = 0;
+  while (true) {
+    const res = await fetch(`${PROXY()}/k/v1/records.json?app=${appId}&query=${encodeURIComponent(`${query} limit 500 offset ${offset}`)}`, {
+      headers: { 'X-Cybozu-API-Token': token }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`取得失敗: ${JSON.stringify(data)}`);
+    all = all.concat(data.records);
+    if (data.records.length < 500) break;
+    offset += 500;
+  }
+  return all;
+}
+
+function buildRecord(master, workMonth) {
+  const jou = master['文字列__1行__7']?.value || '';
+  const chome = master['文字列__1行__8']?.value || '';
+  const address = (jou && chome) ? `${jou}-${chome}` : (jou || chome || '');
+  const storeId = master['文字列__1行__0']?.value || '';
+  const pastData = pastDataIndex[storeId] || null;
+  const delivery = calcDelivery(master, pastData);
+
+  return {
+    文字列__1行_:    { value: workMonth },
+    文字列__1行__5:  { value: storeId },
+    文字列__1行__1:  { value: master['文字列__1行__2']?.value || '' },
+    文字列__1行__2:  { value: master['文字列__1行__3']?.value || '' },
+    文字列__1行__3:  { value: master['文字列__1行__4']?.value || '' },
+    文字列__1行__4:  { value: master['ドロップダウン_0']?.value || '' },
+    文字列__1行__6:  { value: master['文字列__1行__1']?.value || '' },
+    文字列__1行__8:  { value: address },
+    数値:            { value: String(delivery) },
+    数値_1:          { value: parseFloat(master['数値_2']?.value) || 0 },
+    数値_2:          { value: master['数値_4']?.value || '' },
+    数値_3:          { value: master['数値_3']?.value || '' },
+    チェックボックス_0: { value: master['チェックボックス']?.value || [] },
+    チェックボックス_1: { value: master['チェックボックス_0']?.value || [] },
+    チェックボックス_2: { value: master['チェックボックス_1']?.value || [] },
+    文字列__1行__0:  { value: master['文字列__1行__11']?.value || '' },
+    文字列__1行__7:  { value: master['文字列__1行__9']?.value || '' },
+    文字列__1行__9:  { value: master['文字列__複数行__0']?.value || '' },
+  };
+}
+
+async function preview() {
+  const tokenMaster = document.getElementById('tokenMaster').value.trim();
+  const tokenNohon  = document.getElementById('tokenNohon').value.trim();
+  const workMonth   = document.getElementById('monthSelect').value;
+
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('candidateList').classList.remove('visible');
+  document.getElementById('previewBtn').disabled = true;
+  document.getElementById('runBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    // 1. マスタ取得（稼働中）
+    log('設置店マスタ（稼働中）を取得中...');
+    const masters = await getAll(APP_MASTER, tokenMaster, 'ドロップダウン in ("稼働中") order by レコード番号 asc');
+    log(`マスタ: ${masters.length}件`, 'success');
+
+    // 2. 対象月号の既存レコード（kintone番号のみ）
+    log(`「${workMonth}」の既存レコードを取得中...`);
+    const existing = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${workMonth}"`);
+    const existingIds = new Set(existing.map(r => r['文字列__1行__5']?.value || '').filter(Boolean));
+    log(`既存レコード: ${existing.length}件`, 'success');
+
+    setProgress(30);
+
+    // 3. MAP月フィルタ
+    let masterTarget = masters;
+    const isMap = isMapMonth(workMonth);
+    if (!isMap) {
+      const before = masterTarget.length;
+      masterTarget = masterTarget.filter(r => r['ドロップダウン_1']?.value !== 'MAP月のみ');
+      const filtered = before - masterTarget.length;
+      if (filtered > 0) log(`📅 ${workMonth}はMAP月外 → MAP月のみ店舗 ${filtered}件を除外`, 'warn');
+    } else {
+      log(`📅 ${workMonth}はMAP月（1・4・7・10月）→ MAP月のみ店舗も対象`, 'info');
+    }
+
+    // 4. マスタにあるが既存月号にない店舗を抽出
+    candidateMasters = masterTarget.filter(r => {
+      const kno = r['文字列__1行__0']?.value || '';
+      return kno && !existingIds.has(kno);
+    });
+
+    // マスタにkintone番号がない店舗（念のため）
+    const noKnoCount = masterTarget.filter(r => !r['文字列__1行__0']?.value).length;
+    if (noKnoCount > 0) log(`⚠️ kintone番号未設定のマスタ ${noKnoCount}件はスキップ`, 'warn');
+
+    setProgress(50);
+
+    // 5. +3冊判定用 過去データ取得
+    pastDataIndex = {};
+    const prev2 = getPrev2Months(workMonth);
+    if (prev2.length === 2) {
+      log(`+3冊判定用：${prev2.join(' + ')} のデータを取得中...`);
+      for (const pm of prev2) {
+        const pastRecords = await getAll(APP_NOHON, tokenNohon, `文字列__1行_ = "${pm}" and ドロップダウン in ("完了")`);
+        for (const r of pastRecords) {
+          const sid = r['文字列__1行__5']?.value || '';
+          if (!sid) continue;
+          if (!pastDataIndex[sid]) pastDataIndex[sid] = { totalNabon: 0, totalHenkyaku: 0, monthCount: 0 };
+          pastDataIndex[sid].totalNabon += parseFloat(r['数値']?.value) || 0;
+          pastDataIndex[sid].totalHenkyaku += parseFloat(r['数値_0']?.value) || 0;
+          pastDataIndex[sid].monthCount++;
+        }
+      }
+    }
+
+    setProgress(80);
+
+    if (candidateMasters.length === 0) {
+      log('✅ 追加対象なし。すべての稼働中店舗が既に登録されています。', 'success');
+      document.getElementById('runBtn').textContent = '▶ 実行';
+      setProgress(100);
+      document.getElementById('previewBtn').disabled = false;
+      return;
+    }
+
+    // 候補表示
+    const candHtml = candidateMasters.slice(0, 50).map(m => {
+      const name = m['文字列__1行__2']?.value || '';
+      const kno  = m['文字列__1行__0']?.value || '';
+      const route = m['ドロップダウン_0']?.value || '';
+      const group = m['文字列__1行__11']?.value || '';
+      return `<div class="candidate-item">+ [${kno}] ${name} (${route}${group}ルート)</div>`;
+    }).join('');
+    const overflow = candidateMasters.length > 50 ? `<div class="log-warn">... 他 ${candidateMasters.length - 50}件</div>` : '';
+    document.getElementById('candidateList').innerHTML = candHtml + overflow;
+    document.getElementById('candidateList').classList.add('visible');
+
+    // +3冊適用数を予測
+    let boosted = 0;
+    for (const m of candidateMasters) {
+      const normalDel = parseFloat(m['数値_4']?.value) || 0;
+      const sid = m['文字列__1行__0']?.value || '';
+      const pd = pastDataIndex[sid];
+      if (normalDel > 0 && normalDel <= 11 && pd && pd.monthCount >= 2 && pd.totalNabon > 0) {
+        if (pd.totalHenkyaku / pd.totalNabon <= 0.30) boosted++;
+      }
+    }
+    log(`📌 追加対象: ${candidateMasters.length}件（うち+3冊適用 ${boosted}件）`, 'success');
+    log('--- 確認できたら「▶ 実行」を押してください ---', 'warn');
+
+    setProgress(100);
+    document.getElementById('runBtn').textContent = `▶ ${candidateMasters.length}件を追加`;
+    document.getElementById('runBtn').disabled = false;
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+    console.error(e);
+  }
+  document.getElementById('previewBtn').disabled = false;
+}
+
+async function run() {
+  const tokenNohon = document.getElementById('tokenNohon').value.trim();
+  const workMonth  = document.getElementById('monthSelect').value;
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('previewBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    const BATCH = 100;
+    let created = 0;
+    log(`${candidateMasters.length}件を作成中...`);
+    for (let i = 0; i < candidateMasters.length; i += BATCH) {
+      const batch = candidateMasters.slice(i, i + BATCH);
+      const records = batch.map(m => buildRecord(m, workMonth));
+      const res = await fetch(`${PROXY()}/k/v1/records.json`, {
+        method: 'POST',
+        headers: { 'X-Cybozu-API-Token': tokenNohon, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: APP_NOHON, records })
+      });
+      const text = await res.text();
+      if (!res.ok) throw new Error(`作成失敗: HTTP ${res.status}: ${text.substring(0,300)}`);
+      created += batch.length;
+      setProgress(Math.round(created / candidateMasters.length * 100));
+      log(`${created} / ${candidateMasters.length}件 作成済み`);
+    }
+    log(`✅ 完了！${created}件の${workMonth}レコードを追加しました`, 'success');
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+    console.error(e);
+  }
+  document.getElementById('previewBtn').disabled = false;
+}
+
+initMonthSelect();
+</script>
+</body>
+</html>
