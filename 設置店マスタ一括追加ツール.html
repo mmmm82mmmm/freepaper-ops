@@ -231,7 +231,40 @@ async function run() {
   try {
     const BATCH = 100;
     let created = 0;
-    for (let i = 0; i < masterRecords.length; i += BATCH) {
+
+    // まず1件だけで疎通確認
+    log('🔍 1件で疎通確認中...', 'info');
+    const testRecord = masterRecords[0];
+    const testParams = new URLSearchParams({ subdomain: 'white' });
+    let testRes;
+    try {
+      testRes = await fetch(`${PROXY()}/k/v1/records.json?${testParams}`, {
+        method: 'POST',
+        headers: { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: APP_MASTER, records: [testRecord] })
+      });
+    } catch (fetchErr) {
+      log(`❌ fetch失敗: ${fetchErr.message}`, 'error');
+      log(`URL: ${PROXY()}/k/v1/records.json?${testParams}`, 'error');
+      log('考えられる原因: ①Workerプロキシ未稼働 ②CORS問題 ③ネットワーク', 'warn');
+      throw fetchErr;
+    }
+    const testText = await testRes.text();
+    if (!testRes.ok) {
+      log(`❌ HTTP ${testRes.status}: ${testText.substring(0, 500)}`, 'error');
+      if (testRes.status === 401 || testRes.status === 403) {
+        log('💡 トークンにレコード追加権限がない可能性があります', 'warn');
+      } else if (testRes.status === 400) {
+        log('💡 フィールド構成エラー（ドロップダウン_1が存在しない・選択肢に値がないなど）', 'warn');
+      }
+      throw new Error(`疎通テスト失敗: ${testRes.status}`);
+    }
+    log(`✅ 疎通OK：1件目作成成功`, 'success');
+    created = 1;
+    setProgress(Math.round(created / masterRecords.length * 100));
+
+    // 残り（インデックス1以降）をバッチ処理
+    for (let i = 1; i < masterRecords.length; i += BATCH) {
       const batch = masterRecords.slice(i, i + BATCH);
       const params = new URLSearchParams({ subdomain: 'white' });
       const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
@@ -239,12 +272,16 @@ async function run() {
         headers: { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ app: APP_MASTER, records: batch })
       });
-      const data = await res.json();
-      if (!res.ok) throw new Error(`作成失敗(${i+1}〜${i+batch.length}件目): ${JSON.stringify(data)}`);
+      const text = await res.text();
+      if (!res.ok) {
+        log(`❌ ${i+1}〜${i+batch.length}件目: HTTP ${res.status}: ${text.substring(0, 300)}`, 'error');
+        throw new Error(`作成失敗`);
+      }
       created += batch.length;
       setProgress(Math.round(created / masterRecords.length * 100));
       log(`${created} / ${masterRecords.length}件 作成済み`);
     }
+
     log(`✅ 完了！${created}件の設置店マスタを追加しました`, 'success');
   } catch(e) {
     log(`エラー: ${e.message}`, 'error');
