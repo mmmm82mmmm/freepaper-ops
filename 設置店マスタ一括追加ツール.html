@@ -1,0 +1,257 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設置店マスタ一括追加ツール</title>
+<style>
+  * { box-sizing: border-box; margin: 0; padding: 0; }
+  body { font-family: 'Hiragino Kaku Gothic ProN', Meiryo, sans-serif; background: #1a1a2e; color: #e0e0e0; min-height: 100vh; display: flex; align-items: center; justify-content: center; padding: 20px; }
+  .container { background: #16213e; border: 1px solid #0f3460; border-radius: 12px; padding: 32px; width: 100%; max-width: 600px; box-shadow: 0 8px 32px rgba(0,0,0,0.4); }
+  h1 { font-size: 18px; font-weight: 700; color: #e94560; margin-bottom: 6px; }
+  .subtitle { font-size: 12px; color: #7a8099; margin-bottom: 28px; }
+  .field { margin-bottom: 18px; }
+  label { display: block; font-size: 12px; color: #7a8099; margin-bottom: 6px; }
+  input[type="text"], input[type="file"] { width: 100%; background: #0f3460; border: 1px solid #1a4a7a; border-radius: 6px; padding: 10px 14px; color: #e0e0e0; font-size: 13px; font-family: monospace; outline: none; }
+  input[type="text"]:focus { border-color: #e94560; }
+  input[type="file"] { padding: 8px 14px; cursor: pointer; }
+  .btn { width: 100%; padding: 13px; background: #e94560; border: none; border-radius: 8px; color: white; font-size: 14px; font-weight: 700; cursor: pointer; margin-top: 8px; }
+  .btn:hover { background: #c73652; }
+  .btn:disabled { background: #444; cursor: not-allowed; }
+  .btn.safe { background: #0f3460; margin-top: 0; }
+  .btn.safe:hover { background: #1a4a7a; }
+  .step-btns { display: flex; gap: 8px; margin-top: 8px; }
+  .step-btns .btn { margin-top: 0; }
+  .warning-box { background: #2a1a0a; border: 1px solid #e94560; border-radius: 8px; padding: 12px 16px; font-size: 12px; color: #f6c90e; margin-bottom: 16px; line-height: 1.8; }
+  .log { margin-top: 24px; background: #0a0a1a; border-radius: 8px; padding: 16px; font-size: 12px; font-family: monospace; min-height: 100px; max-height: 320px; overflow-y: auto; line-height: 1.8; display: none; }
+  .log.visible { display: block; }
+  .log-info { color: #7ecfff; }
+  .log-success { color: #4ecca3; }
+  .log-error { color: #e94560; }
+  .log-warn { color: #f6c90e; }
+  .progress-bar { width: 100%; height: 4px; background: #0f3460; border-radius: 2px; margin-top: 16px; display: none; overflow: hidden; }
+  .progress-bar.visible { display: block; }
+  .progress-fill { height: 100%; background: #e94560; border-radius: 2px; width: 0%; transition: width 0.3s; }
+  .note { font-size: 11px; color: #556; margin-top: 6px; line-height: 1.6; }
+</style>
+</head>
+<body>
+<div class="container">
+  <h1>設置店マスタ 一括追加ツール</h1>
+  <p class="subtitle">Excelから設置店マスタにレコードを一括追加します</p>
+
+  <div class="warning-box">
+    ⚠️ <strong>このツールは「追加のみ」です。</strong><br>
+    既存レコードを全削除してから使ってください。削除はkintoneで手動またはレコード削除権限のあるトークンで実行。
+  </div>
+
+  <div class="field">
+    <label>PROXY URL</label>
+    <input type="text" id="proxyUrl" value="https://kintone-proxy.mmmm82mmmm.workers.dev" />
+  </div>
+  <div class="field">
+    <label>APIトークン：STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg</label>
+    <input type="text" id="tokenMaster" placeholder="マスタ追加用のトークンを入れてください" />
+    <p class="note">※ 既存トークン（閲覧のみ）では追加できません。kintoneでレコード追加権限を持つトークンを発行してください。</p>
+  </div>
+  <div class="field">
+    <label>Excelファイル（.xlsm）</label>
+    <input type="file" id="excelFile" accept=".xlsm,.xlsx" />
+    <p class="note">※「設置履歴と納本リスト」シートを読み込みます</p>
+  </div>
+
+  <div class="step-btns">
+    <button class="btn safe" id="previewBtn" onclick="preview()" disabled>🔍 内容を確認</button>
+    <button class="btn" id="runBtn" onclick="run()" disabled>▶ 設置店マスタに追加</button>
+  </div>
+
+  <div class="progress-bar" id="progressBar">
+    <div class="progress-fill" id="progressFill"></div>
+  </div>
+  <div class="log" id="log"></div>
+</div>
+
+<script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+<script>
+const PROXY = () => document.getElementById('proxyUrl').value.trim().replace(/\/$/, '');
+const APP_MASTER = 268;
+let masterRecords = [];
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  el.classList.add('visible');
+  const line = document.createElement('div');
+  line.className = `log-${type}`;
+  line.textContent = `[${new Date().toLocaleTimeString('ja-JP')}] ${msg}`;
+  el.appendChild(line);
+  el.scrollTop = el.scrollHeight;
+}
+
+function setProgress(pct) {
+  document.getElementById('progressBar').classList.add('visible');
+  document.getElementById('progressFill').style.width = pct + '%';
+}
+
+// 定休日を解析
+function parseTeikyu(text) {
+  if (!text) return [];
+  const s = String(text).trim();
+  if (!s || s === '無' || s === '無休' || s === '?' || s === '？' || s === '-') return [];
+  const result = [];
+  if (s.includes('日')) result.push('日');
+  if (s.includes('月') && !s.includes('月号')) result.push('月');
+  if (s.includes('火')) result.push('火');
+  if (s.includes('水')) result.push('水');
+  if (s.includes('木')) result.push('木');
+  if (s.includes('金')) result.push('金');
+  if (s.includes('土')) result.push('土');
+  if (s.includes('祝') || s.includes('不定') || s.includes('年末') || s.includes('?') || s.includes('？')) {
+    if (!result.includes('その他')) result.push('その他');
+  }
+  return result;
+}
+
+document.getElementById('excelFile').addEventListener('change', () => {
+  document.getElementById('previewBtn').disabled = false;
+});
+
+async function preview() {
+  const file = document.getElementById('excelFile').files[0];
+  if (!file) return;
+
+  document.getElementById('log').innerHTML = '';
+  document.getElementById('previewBtn').disabled = true;
+  document.getElementById('runBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    log('Excelファイルを読み込み中...');
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const ws = wb.Sheets['設置履歴と納本リスト'];
+    if (!ws) throw new Error('シート「設置履歴と納本リスト」が見つかりません');
+
+    const json = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    // 行3がヘッダー（index 2）、行4以降がデータ（index 3〜）
+    log(`総行数: ${json.length}`);
+    setProgress(30);
+
+    // ヘッダー確認（行3: index 2）
+    const header = json[2] || [];
+    log(`ヘッダー例: ${header.slice(0,15).join(', ')}`, 'info');
+
+    // データ整形
+    // 列マッピング（新マスタExcel形式）:
+    //  0:一覧 / 1:配本→ルート順 / 2:kintone / 3:ジャンル / 4:店名
+    //  5:条 / 6:丁目 / 7:ルート / 8:遅 / 9:列2
+    //  10:ビル / 11:階数 / 12:定休日 / 13:確認日 / 14:設置
+    //  15:要補充 / 16:コメント / 17:グループ / 18:納本頻度 / 19:MAP
+    //  ... / 24:設置場所 / ... / 29:納本(自動)→通常納本数
+    masterRecords = [];
+    let skippedInactive = 0;
+    for (let i = 3; i < json.length; i++) {
+      const row = json[i];
+      const name = row[4];
+      if (!name) continue;
+
+      // 設置='〇' のみ稼働中として取り込み
+      const status = row[14];
+      if (status !== '〇' && status !== '○') {
+        skippedInactive++;
+        continue;
+      }
+
+      const teikyuRaw = row[12];
+      const teikyu = parseTeikyu(teikyuRaw);
+      const freqRaw = row[18];
+      const frequency = (freqRaw && String(freqRaw).trim() === 'MAP月のみ') ? 'MAP月のみ' : '毎月';
+
+      masterRecords.push({
+        '文字列__1行__0':  { value: row[2] != null ? String(row[2]) : '' },   // kintone番号
+        '文字列__1行__1':  { value: row[3] != null ? String(row[3]) : '' },   // ジャンル
+        '文字列__1行__2':  { value: String(name) },                            // 店名
+        '文字列__1行__3':  { value: row[10] != null ? String(row[10]) : '' }, // ビル名
+        '文字列__1行__4':  { value: row[11] != null ? String(row[11]) : '' }, // 階数
+        'ドロップダウン_0':{ value: row[7] || '' },                            // ルート
+        'ドロップダウン_1':{ value: frequency },                               // 納本頻度（新）
+        'チェックボックス':{ value: row[8] === '遅' ? ['遅'] : [] },           // 遅
+        'チェックボックス_1':{ value: teikyu },                                // 定休日
+        '文字列__1行__7':  { value: row[5] != null ? String(row[5]) : '' },   // 条
+        '文字列__1行__8':  { value: row[6] != null ? String(row[6]) : '' },   // 丁目
+        '文字列__1行__9':  { value: row[24] != null ? String(row[24]) : '' },// 設置場所説明（col24）
+        '文字列__1行__11': { value: row[17] != null ? String(row[17]) : '' },// グループ（A1, A2…）
+        'チェックボックス_2':{ value: (row[15] === '○' || row[15] === '〇') ? ['要補充'] : [] }, // 要補充
+        '文字列__複数行__0':{ value: row[16] != null ? String(row[16]) : '' },// コメント
+        '数値_2':          { value: row[1] != null ? String(row[1]) : '' },   // ルート順（配本番号）
+        '数値_3':          { value: row[19] != null ? String(row[19]) : '' },// MAP冊数
+        '数値_4':          { value: row[29] != null ? String(row[29]) : '' },// 通常納本数（納本(自動)）
+        'ドロップダウン':  { value: '稼働中' },                                // 稼働状況
+      });
+    }
+    setProgress(80);
+
+    if (skippedInactive > 0) {
+      log(`設置='〇'以外を${skippedInactive}件スキップ`, 'warn');
+    }
+    log(`取り込み対象: ${masterRecords.length}件（稼働中のみ）`, 'success');
+
+    // サンプル＆統計
+    if (masterRecords.length > 0) {
+      const sample = masterRecords[0];
+      log(`サンプル: ${sample['文字列__1行__2']?.value} / ${sample['ドロップダウン_0']?.value}ルート ${sample['文字列__1行__11']?.value} / 通常${sample['数値_4']?.value}冊 / 頻度:${sample['ドロップダウン_1']?.value}`);
+      const refillCount = masterRecords.filter(m => (m['チェックボックス_2']?.value || []).length > 0).length;
+      const osoiCount = masterRecords.filter(m => (m['チェックボックス']?.value || []).length > 0).length;
+      const mapOnlyCount = masterRecords.filter(m => m['ドロップダウン_1']?.value === 'MAP月のみ').length;
+      const withGroupCount = masterRecords.filter(m => m['文字列__1行__11']?.value).length;
+      log(`要補充: ${refillCount}件 / 遅: ${osoiCount}件 / MAP月のみ: ${mapOnlyCount}件 / グループ設定済み: ${withGroupCount}件`, 'info');
+    }
+
+    setProgress(100);
+    log('--- 確認できたら「▶ 設置店マスタに追加」を押してください ---', 'warn');
+    document.getElementById('runBtn').textContent = `▶ ${masterRecords.length}件を追加`;
+    document.getElementById('runBtn').disabled = false;
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+    console.error(e);
+  }
+  document.getElementById('previewBtn').disabled = false;
+}
+
+async function run() {
+  const token = document.getElementById('tokenMaster').value.trim();
+  if (!token) {
+    log('APIトークンが入力されていません', 'error');
+    return;
+  }
+
+  document.getElementById('runBtn').disabled = true;
+  document.getElementById('previewBtn').disabled = true;
+  setProgress(0);
+
+  try {
+    const BATCH = 100;
+    let created = 0;
+    for (let i = 0; i < masterRecords.length; i += BATCH) {
+      const batch = masterRecords.slice(i, i + BATCH);
+      const params = new URLSearchParams({ subdomain: 'white' });
+      const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+        method: 'POST',
+        headers: { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: APP_MASTER, records: batch })
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(`作成失敗(${i+1}〜${i+batch.length}件目): ${JSON.stringify(data)}`);
+      created += batch.length;
+      setProgress(Math.round(created / masterRecords.length * 100));
+      log(`${created} / ${masterRecords.length}件 作成済み`);
+    }
+    log(`✅ 完了！${created}件の設置店マスタを追加しました`, 'success');
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+    console.error(e);
+  }
+  document.getElementById('previewBtn').disabled = false;
+}
+</script>
+</body>
+</html>
