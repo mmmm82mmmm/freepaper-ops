@@ -16,6 +16,8 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .back{color:#fff;text-decoration:none;font-size:20px;}
 .title{font-size:16px;font-weight:900;flex:1;}
 .month-badge{background:rgba(255,255,255,.12);padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;}
+.month-select{background:rgba(255,255,255,.12);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:11px;font-weight:700;font-family:inherit;cursor:pointer;}
+.month-select option{background:var(--ink);color:#fff;}
 
 /* Worker */
 .worker-bar{background:var(--card);padding:10px 16px;display:flex;align-items:center;gap:8px;border-bottom:1px solid var(--border);}
@@ -118,7 +120,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <div class="header">
   <a class="back" href="index.html">←</a>
   <div class="title">🔄 補充作業</div>
-  <div class="month-badge" id="month-badge">-</div>
+  <select class="month-select" id="month-select" onchange="changeMonth()"></select>
 </div>
 
 <div class="worker-bar">
@@ -223,11 +225,46 @@ let currentSearch = '';
 let selectedStore = null;
 
 // ===== Helpers =====
-function calcCurrentMonth() {
+function calcDefaultMonth() {
   // 翌月号を返す（月初の作業を想定）
   const d = new Date();
   const next = new Date(d.getFullYear(), d.getMonth() + 1, 1);
   return `${next.getFullYear()}年${next.getMonth() + 1}月号`;
+}
+
+function buildMonthOptions() {
+  // 今月号〜+3ヶ月先までを選択肢に
+  const opts = [];
+  const d = new Date();
+  for (let i = 0; i <= 3; i++) {
+    const m = new Date(d.getFullYear(), d.getMonth() + i, 1);
+    opts.push(`${m.getFullYear()}年${m.getMonth() + 1}月号`);
+  }
+  return opts;
+}
+
+function initMonthSelect() {
+  const sel = document.getElementById('month-select');
+  const defaultMonth = calcDefaultMonth();
+  buildMonthOptions().forEach(label => {
+    const o = document.createElement('option');
+    o.value = label;
+    o.textContent = label;
+    if (label === defaultMonth) o.selected = true;
+    sel.appendChild(o);
+  });
+  currentMonth = defaultMonth;
+}
+
+function changeMonth() {
+  currentMonth = document.getElementById('month-select').value;
+  document.getElementById('content').innerHTML = `
+    <div class="loading">
+      <div class="spinner"></div>
+      <div>読み込み中...</div>
+    </div>`;
+  document.getElementById('error-banner').classList.remove('show');
+  fetchData();
 }
 
 function getURLParam(key) {
@@ -273,8 +310,7 @@ function initWorker() {
 // ===== Data Fetching =====
 async function fetchData() {
   try {
-    currentMonth = calcCurrentMonth();
-    document.getElementById('month-badge').textContent = currentMonth;
+    if (!currentMonth) currentMonth = calcDefaultMonth();
 
     // 1. 設置店マスタから 要補充 フラグ付き店舗を取得
     let offset = 0;
@@ -591,6 +627,7 @@ async function submitRefill() {
 
 // ===== Init =====
 initWorker();
+initMonthSelect();
 fetchData();
 </script>
 </body>

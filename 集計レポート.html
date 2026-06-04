@@ -577,35 +577,31 @@ function renderPrevMonth() {
     return;
   }
 
-  // 前月号の納本数を店舗IDでインデックス化
-  const prevIndex = {};
-  prevMonthRecords.forEach(r => {
-    const sid = getVal(r,'文字列__1行__5');
-    if (sid) prevIndex[sid] = r;
-  });
-
-  // 当月レコードの返却数 = 前月号の返却数
-  // 前月レコードの納本数 + 補充 = 前月号の供給量
+  // Option B: 各月号の返却数は同じ月号のレコードに記録される
+  // 5月号レコードの数値_0 = 5月号の返却数（6月号納本時に回収されたもの）
   const storeData = [];
-  allRecords.forEach(r => {
-    const sid = getVal(r,'文字列__1行__5');
-    const henkyaku = getNum(r,'数値_0');  // 当月で回収した前月号の返却数
-    const prev = prevIndex[sid];
-    const prevNabon = prev ? getNum(prev,'数値') : 0;  // 前月号の納本数
-    const prevRefill = prev ? getRefillTotal(prev) : 0;  // 前月号の補充冊数
-    if (prevNabon <= 0) return;  // 前月に納本がない店舗はスキップ
+  // 当月で稼働中の店舗のIDセット（消えた店舗を除外するため）
+  const activeIds = new Set(allRecords.map(r => getVal(r,'文字列__1行__5')).filter(Boolean));
+
+  prevMonthRecords.forEach(prev => {
+    const sid = getVal(prev,'文字列__1行__5');
+    if (!activeIds.has(sid)) return;  // 当月にない店舗はスキップ
+    const prevNabon = getNum(prev,'数値');
+    const prevRefill = getRefillTotal(prev);
+    const henkyaku = getNum(prev,'数値_0');  // 前月号レコードに記録された前月号の返却数
+    if (prevNabon <= 0) return;
 
     const supply = prevNabon + prevRefill;
     const shouka = supply - henkyaku;
     const rate = supply > 0 ? Math.round(shouka / supply * 100) : 0;
     storeData.push({
       sid,
-      name: getVal(r,'文字列__1行__1'),
-      route: getVal(r,'文字列__1行__4'),
-      bldg: getVal(r,'文字列__1行__2'),
-      addr: getVal(r,'文字列__1行__8'),
-      genre: getVal(r,'文字列__1行__6'),
-      isOsoi: (r['チェックボックス_0']?.value || []).length > 0,
+      name: getVal(prev,'文字列__1行__1'),
+      route: getVal(prev,'文字列__1行__4'),
+      bldg: getVal(prev,'文字列__1行__2'),
+      addr: getVal(prev,'文字列__1行__8'),
+      genre: getVal(prev,'文字列__1行__6'),
+      isOsoi: (prev['チェックボックス_0']?.value || []).length > 0,
       prevNabon,
       prevRefill,
       henkyaku,
@@ -699,7 +695,7 @@ function renderPrevMonth() {
         📊 ${prevMonthLabel} の実績消化分析
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-        ${prevMonthLabel}の納本数 vs ${currentMonth}で回収した返却数（${storeData.length}店舗突合）
+        ${prevMonthLabel}の納本数と返却数で計算（${storeData.length}店舗）
       </div>
     </div>
 
@@ -711,7 +707,7 @@ function renderPrevMonth() {
         <div class="kpi-sub">${totalPrevRefill > 0 ? `+ <span style="color:var(--green);font-weight:700">${totalPrevRefill}補充</span>` : '冊'}</div>
       </div>
       <div class="kpi-card amber">
-        <div class="kpi-label">${currentMonth} 返却数</div>
+        <div class="kpi-label">${prevMonthLabel} 返却数</div>
         <div class="kpi-val">${totalHenkyaku.toLocaleString()}</div>
         <div class="kpi-sub">冊</div>
       </div>
