@@ -92,6 +92,15 @@ function setProgress(pct) {
   document.getElementById('progressFill').style.width = pct + '%';
 }
 
+// 数値抽出（"8*" → "8"、"100" → "100"、Null/不正値 → ""）
+function toNumStr(v) {
+  if (v == null || v === '') return '';
+  const s = String(v).trim();
+  if (!s) return '';
+  const m = s.match(/-?\d+(\.\d+)?/);
+  return m ? m[0] : '';
+}
+
 // 定休日を解析
 function parseTeikyu(text) {
   if (!text) return [];
@@ -182,9 +191,9 @@ async function preview() {
         '文字列__1行__11': { value: row[17] != null ? String(row[17]) : '' },// グループ（A1, A2…）
         'チェックボックス_2':{ value: (row[15] === '○' || row[15] === '〇') ? ['要補充'] : [] }, // 要補充
         '文字列__複数行__0':{ value: row[16] != null ? String(row[16]) : '' },// コメント
-        '数値_2':          { value: row[1] != null ? String(row[1]) : '' },   // ルート順（配本番号）
-        '数値_3':          { value: row[19] != null ? String(row[19]) : '' },// MAP冊数
-        '数値_4':          { value: row[29] != null ? String(row[29]) : '' },// 通常納本数（納本(自動)）
+        '数値_2':          { value: toNumStr(row[1]) },                       // ルート順（配本番号）
+        '数値_3':          { value: toNumStr(row[19]) },                      // MAP冊数
+        '数値_4':          { value: toNumStr(row[29]) },                      // 通常納本数（納本(自動)）
         'ドロップダウン':  { value: '稼働中' },                                // 稼働状況
       });
     }
