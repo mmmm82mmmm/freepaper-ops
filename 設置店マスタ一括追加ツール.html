@@ -235,17 +235,16 @@ async function run() {
     // まず1件だけで疎通確認
     log('🔍 1件で疎通確認中...', 'info');
     const testRecord = masterRecords[0];
-    const testParams = new URLSearchParams({ subdomain: 'white' });
     let testRes;
     try {
-      testRes = await fetch(`${PROXY()}/k/v1/records.json?${testParams}`, {
+      testRes = await fetch(`${PROXY()}/k/v1/records.json`, {
         method: 'POST',
         headers: { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ app: APP_MASTER, records: [testRecord] })
       });
     } catch (fetchErr) {
       log(`❌ fetch失敗: ${fetchErr.message}`, 'error');
-      log(`URL: ${PROXY()}/k/v1/records.json?${testParams}`, 'error');
+      log(`URL: ${PROXY()}/k/v1/records.json`, 'error');
       log('考えられる原因: ①Workerプロキシ未稼働 ②CORS問題 ③ネットワーク', 'warn');
       throw fetchErr;
     }
@@ -266,8 +265,7 @@ async function run() {
     // 残り（インデックス1以降）をバッチ処理
     for (let i = 1; i < masterRecords.length; i += BATCH) {
       const batch = masterRecords.slice(i, i + BATCH);
-      const params = new URLSearchParams({ subdomain: 'white' });
-      const res = await fetch(`${PROXY()}/k/v1/records.json?${params}`, {
+      const res = await fetch(`${PROXY()}/k/v1/records.json`, {
         method: 'POST',
         headers: { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' },
         body: JSON.stringify({ app: APP_MASTER, records: batch })
