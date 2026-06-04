@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>メンバー管理・URL配布</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcodejs/1.0.0/qrcode.min.js"></script>
+<style>
+:root {
+  --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888;
+  --border:#e0dbd0; --green:#1a8a4a; --amber:#c47a0a;
+  --blue:#1a5cd4; --red:#d42020; --line:#00B900;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:40px;}
+
+.app-header{background:var(--ink);color:white;padding:14px 16px;}
+.app-title{font-size:15px;font-weight:900;}
+.app-sub{font-size:11px;color:#888;margin-top:2px;}
+
+.container{padding:16px;max-width:600px;margin:0 auto;}
+
+/* 追加フォーム */
+.add-form{background:var(--card);border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.add-form-title{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:12px;}
+.add-row{display:flex;gap:8px;}
+.add-input{flex:1;padding:12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:15px;background:var(--bg);}
+.add-input:focus{outline:none;border-color:var(--blue);background:white;}
+.btn-add{padding:12px 18px;background:var(--ink);color:white;border:none;border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;cursor:pointer;white-space:nowrap;}
+.btn-add:active{transform:scale(.97);}
+
+/* メンバーリスト */
+.member-list{margin-bottom:20px;}
+.section-title{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;display:flex;justify-content:space-between;align-items:center;}
+
+.member-card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.member-header{display:flex;align-items:center;gap:10px;margin-bottom:12px;}
+.member-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:white;flex-shrink:0;}
+.member-name{font-size:16px;font-weight:900;flex:1;}
+.btn-delete{padding:5px 10px;border:1px solid var(--border);border-radius:6px;background:none;font-size:11px;color:var(--muted);cursor:pointer;}
+
+.member-url{font-family:'DM Mono',monospace;font-size:10px;color:var(--muted);background:var(--bg);padding:6px 10px;border-radius:6px;margin-bottom:10px;word-break:break-all;line-height:1.5;}
+
+.qr-area{display:flex;justify-content:center;margin-bottom:12px;}
+.qr-area canvas, .qr-area img{border-radius:8px;}
+
+.btn-row{display:flex;gap:8px;}
+.btn-line{flex:1;padding:11px;background:var(--line);color:white;border:none;border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;cursor:pointer;display:flex;align-items:center;justify-content:center;gap:6px;}
+.btn-copy{flex:1;padding:11px;background:var(--bg);border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;font-weight:700;cursor:pointer;color:var(--ink);}
+.btn-copy.copied{background:var(--green);color:white;border-color:var(--green);}
+
+/* 一括印刷 */
+.bulk-section{background:var(--card);border-radius:12px;padding:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.btn-print{width:100%;padding:14px;background:var(--ink);color:white;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:15px;font-weight:900;cursor:pointer;}
+.btn-print:active{transform:scale(.98);}
+
+/* 印刷用スタイル */
+@media print {
+  body{background:white;}
+  .app-header,.add-form,.bulk-section,.btn-row,.btn-delete,.section-title{display:none!important;}
+  .member-card{box-shadow:none;border:1px solid #ddd;break-inside:avoid;margin-bottom:12px;}
+  .member-url{display:none;}
+  .container{padding:0;}
+}
+
+.empty-state{text-align:center;padding:40px 20px;color:var(--muted);}
+.empty-icon{font-size:40px;margin-bottom:12px;}
+.empty-text{font-size:14px;}
+
+/* 配布物設定 */
+.item-card{background:var(--bg);border-radius:8px;padding:12px;margin-bottom:8px;display:flex;align-items:center;gap:8px;}
+.item-label-input{flex:1;padding:8px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:white;}
+.item-label-input:focus{outline:none;border-color:var(--blue);}
+.item-type-select{padding:8px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:12px;background:white;}
+.item-sublabel-input{flex:1;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:12px;background:white;color:var(--muted);}
+.btn-item-delete{padding:6px 10px;border:1px solid var(--border);border-radius:6px;background:none;font-size:11px;color:var(--red);cursor:pointer;}
+.btn-save{width:100%;padding:13px;background:var(--green);color:white;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:900;cursor:pointer;margin-top:8px;}
+.btn-save:active{transform:scale(.98);}
+.save-status{text-align:center;font-size:12px;color:var(--green);margin-top:8px;height:16px;}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <div style="display:flex;align-items:center;gap:10px;">
+    <a href="index.html" style="color:#fff;text-decoration:none;font-size:20px;">←</a>
+    <div>
+      <div class="app-title">👥 メンバー管理・URL配布</div>
+      <div class="app-sub">作業者のQRコード・LINEリンクを管理します</div>
+    </div>
+  </div>
+</div>
+
+<div class="container">
+
+  <!-- 追加フォーム -->
+  <div class="add-form">
+    <div class="add-form-title">メンバーを追加</div>
+    <div class="add-row">
+      <input class="add-input" id="name-input" type="text" placeholder="名前を入力（例：田中）" maxlength="20">
+      <button class="btn-add" onclick="addMember()">追加</button>
+    </div>
+  </div>
+
+  <!-- メンバーリスト -->
+  <div class="member-list">
+    <div class="section-title">
+      <span>メンバー一覧</span>
+      <span id="member-count" style="font-size:11px;color:var(--muted)">0名</span>
+    </div>
+    <div id="member-list-container">
+      <div class="empty-state">
+        <div class="empty-icon">👤</div>
+        <div class="empty-text">メンバーを追加してください</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 一括印刷 -->
+  <div class="bulk-section" id="bulk-section" style="display:none">
+    <button class="btn-print" onclick="window.print()">🖨️ QRコードを一括印刷</button>
+  </div>
+
+  <!-- 今月の配布物・アンケート設定 -->
+  <div class="add-form" style="margin-top:20px;">
+    <div class="add-form-title">📋 今月の配布物・アンケート設定</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">作業者画面に表示される項目を設定します</div>
+    <div id="items-list"></div>
+    <div style="display:flex;gap:8px;margin-top:10px;">
+      <button onclick="addItem('distribute')" style="flex:1;padding:10px;background:var(--bg);border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">＋ 配布物を追加</button>
+      <button onclick="addItem('yesno')" style="flex:1;padding:10px;background:var(--bg);border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">＋ アンケートを追加</button>
+    </div>
+    <button class="btn-save" onclick="saveItems()">💾 保存する</button>
+    <div class="save-status" id="save-status"></div>
+  </div>
+
+</div>
+
+<script>
+const BASE_URL = 'https://mmmm82mmmm.github.io/freepaper-ops/作業者画面.html';
+const COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d42020','#5c4a1a'];
+
+// kintone設定
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const APP = 269;
+
+// 作業月
+const now = new Date();
+const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+const currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+
+let members = [];
+let assignState = { members: [], cars: {}, assignments: {}, returned: [], dynamicItems: [], updatedAt: '' };
+
+// kintoneから割当JSONを取得
+async function loadAssignState() {
+  const params = new URLSearchParams({
+    subdomain: 'white', app: APP,
+    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
+  });
+  const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  const data = await res.json();
+  if (!data.records?.length) return;
+  const raw = data.records[0]['文字列__複数行__0']?.value || '';
+  try {
+    const parsed = JSON.parse(raw);
+    assignState = { members:[], cars:{}, assignments:{}, returned:[], dynamicItems:[], ...parsed };
+    members = assignState.members || [];
+  } catch(e) {}
+}
+
+async function saveAssignState() {
+  assignState.members = members;
+  assignState.updatedAt = new Date().toISOString();
+
+  const params = new URLSearchParams({
+    subdomain: 'white', app: APP,
+    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
+  });
+  const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  const data = await res.json();
+  if (!data.records?.length) throw new Error('レコードが見つかりません');
+  const recId = data.records[0]['$id'].value;
+
+  const putRes = await fetch(`${PROXY}/k/v1/record.json?subdomain=white`, {
+    method: 'PUT',
+    headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app: APP, id: recId, record: {
+      '文字列__複数行__0': { value: JSON.stringify(assignState, null, 2) }
+    }})
+  });
+  if (!putRes.ok) throw new Error('保存失敗');
+}
+
+// 読み込み
+async function loadMembers() {
+  try {
+    await loadAssignState();
+  } catch(e) { console.error(e); }
+  renderMembers();
+  renderItems();
+}
+
+async function saveMembers() {
+  try {
+    await saveAssignState();
+  } catch(e) { console.error('保存エラー:', e); }
+}
+
+async function addMember() {
+  const input = document.getElementById('name-input');
+  const name = input.value.trim();
+  if (!name) return;
+  if (members.includes(name)) {
+    alert(`「${name}」はすでに登録されています`);
+    return;
+  }
+  members.push(name);
+  renderMembers();
+  input.value = '';
+  input.focus();
+  await saveMembers();
+}
+
+async function deleteMember(name) {
+  if (!confirm(`「${name}」を削除しますか？`)) return;
+  members = members.filter(m => m !== name);
+  // 車の割当も削除
+  delete assignState.cars[name];
+  renderMembers();
+  await saveMembers();
+}
+
+function renderMembers() {
+  const container = document.getElementById('member-list-container');
+  const countEl = document.getElementById('member-count');
+  const bulkSection = document.getElementById('bulk-section');
+
+  countEl.textContent = `${members.length}名`;
+
+  if (members.length === 0) {
+    container.innerHTML = `
+      <div class="empty-state">
+        <div class="empty-icon">👤</div>
+        <div class="empty-text">メンバーを追加してください</div>
+      </div>`;
+    bulkSection.style.display = 'none';
+    return;
+  }
+
+  bulkSection.style.display = 'block';
+  container.innerHTML = '';
+
+  members.forEach((name, idx) => {
+    const color = COLORS[idx % COLORS.length];
+    const workerUrl = `${BASE_URL}?worker=${encodeURIComponent(name)}`;
+    const card = document.createElement('div');
+    card.className = 'member-card';
+    card.id = `card-${idx}`;
+    card.innerHTML = `
+      <div class="member-header">
+        <div class="member-avatar" style="background:${color}">${name[0]}</div>
+        <div class="member-name">${name} さん</div>
+        <button class="btn-delete" onclick="deleteMember('${name}')">削除</button>
+      </div>
+      <div class="member-url">${workerUrl}</div>
+      <div class="qr-area" id="qr-${idx}"></div>
+      <div class="btn-row">
+        <button class="btn-line" onclick="sendLine('${name}', '${workerUrl}')">
+          <span style="font-size:18px;font-weight:900">L</span>LINEで送る
+        </button>
+        <button class="btn-copy" id="copy-btn-${idx}" onclick="copyUrl('${workerUrl}', ${idx})">
+          📋 URLをコピー
+        </button>
+      </div>`;
+    container.appendChild(card);
+
+    // QRコード生成
+    setTimeout(() => {
+      const qrEl = document.getElementById(`qr-${idx}`);
+      if (qrEl) {
+        new QRCode(qrEl, {
+          text: workerUrl,
+          width: 180,
+          height: 180,
+          colorDark: '#1a1a1a',
+          colorLight: '#ffffff',
+          correctLevel: QRCode.CorrectLevel.L
+        });
+      }
+    }, 100);
+  });
+}
+
+function sendLine(name, url) {
+  const text = encodeURIComponent(`【すすきのフリーク 作業用URL】\n${name}さん専用\n${url}\n\nスマホのホーム画面に追加しておくと便利です！`);
+  window.open(`https://line.me/R/msg/text/?${text}`, '_blank');
+}
+
+function copyUrl(url, idx) {
+  navigator.clipboard.writeText(url).then(() => {
+    const btn = document.getElementById(`copy-btn-${idx}`);
+    btn.textContent = '✓ コピーしました';
+    btn.classList.add('copied');
+    setTimeout(() => {
+      btn.textContent = '📋 URLをコピー';
+      btn.classList.remove('copied');
+    }, 2000);
+  }).catch(() => {
+    prompt('URLをコピーしてください', url);
+  });
+}
+
+// Enterキーで追加
+document.getElementById('name-input').addEventListener('keypress', e => {
+  if (e.key === 'Enter') addMember();
+});
+
+// ===== 配布物・アンケート設定 =====
+function renderItems() {
+  const items = assignState.dynamicItems || [];
+  const el = document.getElementById('items-list');
+  if (!el) return;
+
+  if (items.length === 0) {
+    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">項目がありません</div>';
+    return;
+  }
+
+  el.innerHTML = items.map((item, i) => `
+    <div class="item-card">
+      <div style="flex:1;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
+          <span style="font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;background:${item.type==='distribute'?'#e0eaff':'#f5f0e8'};color:${item.type==='distribute'?'var(--blue)':'var(--amber)'};">${item.type==='distribute'?'配布物':'アンケート'}</span>
+          <input class="item-label-input" value="${item.label || ''}" placeholder="項目名を入力" oninput="updateItem(${i},'label',this.value)">
+          <button class="btn-item-delete" onclick="deleteItem(${i})">✕</button>
+        </div>
+        <input class="item-sublabel-input" style="width:100%;" value="${item.sublabel || ''}" placeholder="補足説明（任意）" oninput="updateItem(${i},'sublabel',this.value)">
+      </div>
+    </div>`).join('');
+}
+
+function addItem(type) {
+  if (!assignState.dynamicItems) assignState.dynamicItems = [];
+  assignState.dynamicItems.push({ key: 'item_' + Date.now(), label: '', sublabel: '', type });
+  renderItems();
+}
+
+function updateItem(i, field, value) {
+  if (assignState.dynamicItems?.[i]) {
+    assignState.dynamicItems[i][field] = value;
+  }
+}
+
+function deleteItem(i) {
+  assignState.dynamicItems.splice(i, 1);
+  renderItems();
+}
+
+async function saveItems() {
+  const btn = document.querySelector('.btn-save');
+  const status = document.getElementById('save-status');
+  btn.disabled = true;
+  btn.textContent = '保存中...';
+  try {
+    await saveAssignState();
+    status.textContent = '✅ 保存しました';
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  } catch(e) {
+    status.textContent = '❌ 保存失敗: ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
+  btn.textContent = '💾 保存する';
+}
+
+// 起動時に読み込み
+loadMembers();
+</script>
+</body>
+</html>
