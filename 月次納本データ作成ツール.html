@@ -80,6 +80,7 @@
     <p class="note">※ 設置店マスタの稼働中レコードからこの作業月でレコードを作成します</p>
     <p class="note">📈 通常納本数≤11冊 &amp; 2・3ヶ月前の戻り率≤30% の店舗は自動で+3冊（上限11冊）<br>
     ※ 直前月は戻り未回収のためスキップ（例: 7月号→5月号+4月号で判定）</p>
+    <p class="note">📅 納本頻度=「MAP月のみ」の店舗は 1・4・7・10月号 のみ作成</p>
   </div>
 
 
@@ -101,7 +102,7 @@ const APP_NOHON  = 269;
 let currentMode = 'add';
 let masterRecords = [];
 let existingIds = [];
-let pastDataIndex = {}; // { storeId: { totalNabon, totalHenkyaku } }
+let pastDataIndex = {}; // { storeId: { totalNabon, totalHenkyaku, monthCount } }
 
 // 作業月から判定対象の2ヶ月を取得
 // 例: 7月号 → 5月号, 4月号（6月号は戻り未回収のためスキップ）
@@ -118,23 +119,21 @@ function getPrev2Months(workMonth) {
   return result;
 }
 
+// MAP月判定（1・4・7・10月）
+function isMapMonth(workMonth) {
+  const m = workMonth.match(/(\d{4})年(\d{1,2})月号/);
+  if (!m) return false;
+  return [1, 4, 7, 10].includes(parseInt(m[2]));
+}
+
 // +3冊ロジック判定
 function calcDelivery(master, pastData) {
   const normalDel = parseFloat(master['数値_4']?.value) || 0;
-
-  // 対象外: 通常納本数 > 11
   if (normalDel > 11 || normalDel <= 0) return normalDel;
-
-  // 過去2ヶ月データがない場合はスキップ
   if (!pastData || pastData.monthCount < 2) return normalDel;
-
-  // 合算戻り率 = 返却合計 ÷ 納本合計
   if (pastData.totalNabon <= 0) return normalDel;
   const returnRate = pastData.totalHenkyaku / pastData.totalNabon;
-
-  if (returnRate <= 0.30) {
-    return Math.min(normalDel + 3, 11);
-  }
+  if (returnRate <= 0.30) return Math.min(normalDel + 3, 11);
   return normalDel;
 }
 
@@ -228,6 +227,17 @@ async function preview() {
     const withGroup = masterRecords.filter(r => r['文字列__1行__11']?.value).length;
     log(`設置店マスタ: ${masterRecords.length}件（グループ設定済み: ${withGroup}件）`, 'success');
 
+    // MAP月のみ店舗のフィルタリング
+    const mapOnlyCount = masterRecords.filter(r => r['ドロップダウン_1']?.value === 'MAP月のみ').length;
+    const currentIsMap = isMapMonth(workMonth);
+    if (!currentIsMap && mapOnlyCount > 0) {
+      const beforeCount = masterRecords.length;
+      masterRecords = masterRecords.filter(r => r['ドロップダウン_1']?.value !== 'MAP月のみ');
+      log(`📅 ${workMonth}はMAP月外（1・4・7・10月以外）→ MAP月のみ店舗 ${beforeCount - masterRecords.length}件を除外`, 'warn');
+    } else if (currentIsMap) {
+      log(`📅 ${workMonth}はMAP月（1・4・7・10月）→ MAP月のみ店舗 ${mapOnlyCount}件も含めて作成`, 'info');
+    }
+
     setProgress(30);
 
     // 過去2ヶ月データ取得（+3冊ロジック用）
@@ -247,7 +257,6 @@ async function preview() {
           pastDataIndex[sid].monthCount++;
         }
       }
-      // +3冊の適用件数をプレビュー
       let boostedCount = 0;
       for (const m of masterRecords) {
         const normalDel = parseFloat(m['数値_4']?.value) || 0;
@@ -346,7 +355,6 @@ async function run() {
     }
 
     setProgress(100);
-    // +3冊の適用件数を集計
     let boostedInRun = 0;
     for (const m of masterRecords) {
       const normalDel = parseFloat(m['数値_4']?.value) || 0;
