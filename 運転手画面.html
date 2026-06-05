@@ -162,6 +162,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div class="tab active" onclick="switchTab('progress')">📊 進捗確認</div>
     <div class="tab" onclick="switchTab('route')">🗺️ ルート別</div>
     <div class="tab" onclick="switchTab('assign')">👥 グループ割当</div>
+    <div class="tab" onclick="switchTab('revisit')">🔄 不在再訪<span id="revisit-tab-badge" style="display:none;background:#d42020;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:3px;font-weight:900;">0</span></div>
   </div>
 </div>
 
@@ -270,13 +271,16 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     </div>
   </div>
 
-  <!-- 不在再訪 -->
-  <div style="margin-bottom:16px">
-    <div class="section-title" style="display:flex;align-items:center;gap:8px;">
-      🔄 不在再訪
-      <span id="revisit-count" style="font-size:10px;color:var(--amber);font-weight:700;"></span>
+  <!-- 不在再訪バナー（割当タブには件数バッジのみ表示） -->
+  <div id="revisit-banner" style="display:none;background:#fff8e8;border:2px solid var(--amber);border-radius:10px;padding:10px 14px;margin-bottom:16px;cursor:pointer;" onclick="switchTab('revisit', document.querySelectorAll('.tab')[3])">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:18px">🔔</span>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:900;color:var(--amber);">不在再訪の振り分けが <span id="revisit-banner-count">0</span>件 待機中</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">タップして「🔄 不在再訪」タブで処理 → 休憩時にまとめて操作可能</div>
+      </div>
+      <span style="color:var(--amber);font-size:18px;">›</span>
     </div>
-    <div id="revisit-list"></div>
   </div>
 
   <!-- ルート↔車の紐付け設定 -->
@@ -296,6 +300,38 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
       </select>
     </div>
     <div id="assign-list"></div>
+  </div>
+</div>
+
+<!-- 不在再訪タブ -->
+<div class="screen" id="screen-revisit">
+  <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:900;margin-bottom:4px;">🔄 不在再訪の振り分け</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+      通常ルートで不在になった店舗を、A遅・B遅などの遅グループに振り分けます。<br>
+      <strong>休憩中など、落ち着いて操作できる時にまとめて設定するのがおすすめ。</strong>
+    </div>
+  </div>
+
+  <!-- フィルタ -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+    <div style="font-size:11px;color:var(--muted);font-weight:700;">ルートで絞り込み:</div>
+    <select id="revisit-filter" onchange="renderRevisit()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:11px;background:var(--card);">
+      <option value="">全ルート</option>
+    </select>
+    <div style="flex:1"></div>
+    <div style="font-size:11px;font-weight:700;color:var(--amber);" id="revisit-summary"></div>
+  </div>
+
+  <!-- 振り分け待ちリスト -->
+  <div id="revisit-list-main"></div>
+
+  <!-- 振り分け済みセクション -->
+  <div style="margin-top:24px;">
+    <div class="section-title" style="display:flex;align-items:center;gap:8px;">
+      ✅ 振り分け済み <span id="revisit-done-count" style="font-size:10px;color:var(--muted);font-weight:700;"></span>
+    </div>
+    <div id="revisit-done-list"></div>
   </div>
 </div>
 
@@ -541,10 +577,12 @@ function toggleRoute(id) {
 function switchTab(tab, el) {
   document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
-  (el || event.target).classList.add('active');
+  const target = el || (event.target && event.target.closest('.tab'));
+  if (target) target.classList.add('active');
   document.getElementById('screen-' + tab).classList.add('active');
   localStorage.setItem('fp_driver_tab', tab);
   if (tab === 'assign') renderAssign();
+  if (tab === 'revisit') renderRevisit();
 }
 
 // 月選択セレクトを初期化
@@ -847,10 +885,6 @@ function autoAssign(workerName, justAssigned = new Set()) {
 
 // ===== 不在再訪機能 =====
 function renderRevisit() {
-  const el = document.getElementById('revisit-list');
-  const countEl = document.getElementById('revisit-count');
-  if (!el) return;
-
   // 通常ルートで不在になった店舗を取得
   const absentRecords = allRecords.filter(r => {
     const status = r['ドロップダウン']?.value;
@@ -858,7 +892,7 @@ function renderRevisit() {
     return status === '不在' && !isOsoi;
   });
 
-  // 既に再訪先に追加されているレコードを除外する
+  // 既に再訪先に追加されているレコードIDのSet
   const revisitMap = assignState.revisitMap || {};
   const alreadyAssigned = new Set();
   Object.values(revisitMap).forEach(ids => {
@@ -866,69 +900,143 @@ function renderRevisit() {
   });
 
   const pending = absentRecords.filter(r => !alreadyAssigned.has(r['$id'].value));
+  const done = absentRecords.filter(r => alreadyAssigned.has(r['$id'].value));
 
-  if (countEl) countEl.textContent = pending.length > 0 ? `${pending.length}件` : '';
-
-  if (pending.length === 0) {
-    el.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;text-align:center;background:var(--card);border-radius:8px;">不在再訪対象なし</div>';
-    return;
+  // バナー＆タブバッジを更新
+  const bannerEl = document.getElementById('revisit-banner');
+  const bannerCountEl = document.getElementById('revisit-banner-count');
+  const tabBadgeEl = document.getElementById('revisit-tab-badge');
+  if (bannerEl) {
+    if (pending.length > 0) {
+      bannerEl.style.display = '';
+      if (bannerCountEl) bannerCountEl.textContent = pending.length;
+    } else {
+      bannerEl.style.display = 'none';
+    }
+  }
+  if (tabBadgeEl) {
+    if (pending.length > 0) {
+      tabBadgeEl.style.display = '';
+      tabBadgeEl.textContent = pending.length;
+    } else {
+      tabBadgeEl.style.display = 'none';
+    }
   }
 
-  // 各不在店舗ごとに、その遅ルートのグループ一覧を作成
-  el.innerHTML = pending.map(r => {
-    const recId = r['$id'].value;
-    const shop = r['文字列__1行__1']?.value || '';
-    const building = r['文字列__1行__2']?.value || '';
-    const floor = r['文字列__1行__3']?.value || '';
-    const address = r['文字列__1行__8']?.value || '';
-    const comment = r['文字列__1行__9']?.value || '';
-    const route = (r['文字列__1行__4']?.value || '').toLowerCase();
-    const groupCode = r['文字列__1行__0']?.value || '';
+  // 不在再訪専用タブのメインリスト
+  const mainEl = document.getElementById('revisit-list-main');
+  const doneEl = document.getElementById('revisit-done-list');
+  const summaryEl = document.getElementById('revisit-summary');
+  const doneCountEl = document.getElementById('revisit-done-count');
+  if (!mainEl) return;
 
-    // 同じルートの遅グループを抽出
-    const osoiGroups = allGroups.filter(g => {
-      const gRoute = (g.replace(/[0-9]/g, '')).toLowerCase();
-      if (gRoute !== route) return false;
-      // そのグループが遅グループかどうか
-      const hasOsoi = allRecords.some(rr =>
-        rr['文字列__1行__0']?.value === g &&
-        (rr['チェックボックス_0']?.value || []).length > 0
-      );
-      return hasOsoi;
+  // ルートフィルタを初期化
+  const filterSel = document.getElementById('revisit-filter');
+  const currentFilter = filterSel?.value || '';
+  if (filterSel) {
+    const existingRoutes = new Set(Array.from(filterSel.options).map(o => o.value));
+    const allAbsentRoutes = [...new Set(absentRecords.map(r => (r['文字列__1行__4']?.value || '').toUpperCase()).filter(Boolean))].sort();
+    allAbsentRoutes.forEach(rt => {
+      if (!existingRoutes.has(rt)) {
+        const o = document.createElement('option');
+        o.value = rt;
+        o.textContent = `ルート${rt}`;
+        filterSel.appendChild(o);
+      }
     });
+  }
 
-    // 各遅グループに含まれる店舗一覧（ビル名・住所）
-    const groupButtons = osoiGroups.map(g => {
-      const shops = allRecords.filter(rr => rr['文字列__1行__0']?.value === g)
-        .map(rr => {
-          const s = rr['文字列__1行__1']?.value || '';
-          const b = rr['文字列__1行__2']?.value || '';
-          const a = rr['文字列__1行__8']?.value || '';
-          return `${b}${a ? ` (${a})` : ''}`;
-        })
-        .slice(0, 5)
-        .join('、');
+  // フィルタ適用
+  const filteredPending = currentFilter
+    ? pending.filter(r => (r['文字列__1行__4']?.value || '').toUpperCase() === currentFilter)
+    : pending;
+
+  if (summaryEl) summaryEl.textContent = `待機 ${filteredPending.length}件 / 全体 ${pending.length}件`;
+  if (doneCountEl) doneCountEl.textContent = done.length > 0 ? `${done.length}件` : '';
+
+  // 振り分け待ちリスト
+  if (filteredPending.length === 0) {
+    mainEl.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:30px 10px;text-align:center;background:var(--card);border-radius:10px;">' + (pending.length === 0 ? '✅ 振り分け待ちはありません' : '該当ルートに待機なし') + '</div>';
+  } else {
+    mainEl.innerHTML = filteredPending.map(r => {
+      const recId = r['$id'].value;
+      const shop = r['文字列__1行__1']?.value || '';
+      const building = r['文字列__1行__2']?.value || '';
+      const floor = r['文字列__1行__3']?.value || '';
+      const address = r['文字列__1行__8']?.value || '';
+      const comment = r['文字列__1行__9']?.value || '';
+      const route = (r['文字列__1行__4']?.value || '').toLowerCase();
+      const groupCode = r['文字列__1行__0']?.value || '';
+
+      // 同じルートの遅グループを抽出
+      const osoiGroups = allGroups.filter(g => {
+        const gRoute = (g.replace(/[0-9]/g, '')).toLowerCase();
+        if (gRoute !== route) return false;
+        const hasOsoi = allRecords.some(rr =>
+          rr['文字列__1行__0']?.value === g &&
+          (rr['チェックボックス_0']?.value || []).length > 0
+        );
+        return hasOsoi;
+      });
+
+      const groupButtons = osoiGroups.map(g => {
+        const shops = allRecords.filter(rr => rr['文字列__1行__0']?.value === g)
+          .map(rr => {
+            const b = rr['文字列__1行__2']?.value || '';
+            const a = rr['文字列__1行__8']?.value || '';
+            return `${b}${a ? ` (${a})` : ''}`;
+          })
+          .slice(0, 5)
+          .join('、');
+        return `
+          <div style="background:var(--bg);border-radius:6px;padding:8px 10px;margin-top:6px;display:flex;align-items:flex-start;gap:8px;">
+            <button onclick="addToRevisit('${g}', ${recId})" style="flex-shrink:0;padding:8px 12px;background:var(--blue);color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;">${g}に追加</button>
+            <div style="flex:1;font-size:10px;color:var(--muted);line-height:1.5;">
+              含む店舗: ${shops || '（なし）'}
+            </div>
+          </div>`;
+      }).join('');
+
       return `
-        <div style="background:var(--bg);border-radius:6px;padding:8px 10px;margin-top:6px;display:flex;align-items:flex-start;gap:8px;">
-          <button onclick="addToRevisit('${g}', ${recId})" style="flex-shrink:0;padding:6px 10px;background:var(--blue);color:white;border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;">${g}に追加</button>
-          <div style="flex:1;font-size:10px;color:var(--muted);line-height:1.5;">
-            含む店舗: ${shops || '（なし）'}
+        <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:10px;border:2px solid var(--amber);">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:2px 6px;border-radius:4px;">${groupCode} 不在</span>
+            <span style="font-size:14px;font-weight:900;">${shop}</span>
           </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
+          ${comment ? `<div style="font-size:11px;color:#7a5a00;background:#fff8e8;padding:4px 8px;border-radius:4px;margin-bottom:6px;">💬 ${comment}</div>` : ''}
+          <div style="font-size:10px;font-weight:700;color:var(--muted);margin-top:8px;">▼ 振り分け先を選択：</div>
+          ${groupButtons || '<div style="font-size:11px;color:var(--muted);padding:8px;">遅グループなし</div>'}
         </div>`;
     }).join('');
+  }
 
-    return `
-      <div style="background:var(--card);border-radius:10px;padding:12px;margin-bottom:10px;border:1px solid var(--amber);">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
-          <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:2px 6px;border-radius:4px;">${groupCode} 不在</span>
-          <span style="font-size:13px;font-weight:700;">${shop}</span>
-        </div>
-        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
-        ${comment ? `<div style="font-size:10px;color:#7a5a00;background:#fff8e8;padding:3px 6px;border-radius:4px;margin-bottom:6px;">💬 ${comment}</div>` : ''}
-        <div style="font-size:10px;font-weight:700;color:var(--muted);margin-top:8px;">▼ 振り分け先を選択：</div>
-        ${groupButtons || '<div style="font-size:11px;color:var(--muted);padding:8px;">遅グループなし</div>'}
-      </div>`;
-  }).join('');
+  // 振り分け済みリスト
+  if (doneEl) {
+    if (done.length === 0) {
+      doneEl.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;text-align:center;background:var(--card);border-radius:8px;">振り分け済みなし</div>';
+    } else {
+      // どのレコードがどの遅グループに割り当てられたか逆引き
+      const recToGroup = {};
+      Object.entries(revisitMap).forEach(([g, ids]) => {
+        (ids || []).forEach(id => { recToGroup[String(id)] = g; });
+      });
+      doneEl.innerHTML = done.map(r => {
+        const recId = String(r['$id'].value);
+        const shop = r['文字列__1行__1']?.value || '';
+        const building = r['文字列__1行__2']?.value || '';
+        const targetGroup = recToGroup[recId];
+        return `
+          <div style="background:var(--card);border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:8px;border-left:4px solid var(--green);">
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;">${shop}</div>
+              <div style="font-size:10px;color:var(--muted);">${building} → <strong style="color:var(--green)">${targetGroup}に追加済</strong></div>
+            </div>
+            <button onclick="removeFromRevisit('${targetGroup}', ${recId})" style="padding:5px 9px;background:#fff;color:#888;border:1px solid var(--border);border-radius:5px;font-size:10px;cursor:pointer;font-weight:700;">取消</button>
+          </div>`;
+      }).join('');
+    }
+  }
 }
 
 async function addToRevisit(groupCode, recordId) {
