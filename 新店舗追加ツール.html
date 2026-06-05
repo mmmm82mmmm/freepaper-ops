@@ -70,7 +70,7 @@
       <select id="monthSelect"></select>
       <p class="note">📅 通常は配本中・次回配本予定の月号を選択（デフォルトは翌月号）</p>
       <p class="note">📈 通常納本数≤11冊 &amp; 2・3ヶ月前の戻り率≤30% の店舗は +3冊（上限11冊）</p>
-      <p class="note">🔄 1・4・7・10月号以外は「MAP月のみ」店舗を除外</p>
+      <p class="note">🔄 2・5・8・11月号以外は「MAP月のみ」店舗を除外</p>
     </div>
 
     <div class="step-btns">
@@ -130,7 +130,7 @@ function getPrev2Months(workMonth) {
 function isMapMonth(workMonth) {
   const m = workMonth.match(/(\d{4})年(\d{1,2})月号/);
   if (!m) return false;
-  return [1, 4, 7, 10].includes(parseInt(m[2]));
+  return [2, 5, 8, 11].includes(parseInt(m[2]));
 }
 
 function calcDelivery(master, pastData) {
@@ -237,7 +237,7 @@ async function preview() {
       const filtered = before - masterTarget.length;
       if (filtered > 0) log(`📅 ${workMonth}はMAP月外 → MAP月のみ店舗 ${filtered}件を除外`, 'warn');
     } else {
-      log(`📅 ${workMonth}はMAP月（1・4・7・10月）→ MAP月のみ店舗も対象`, 'info');
+      log(`📅 ${workMonth}はMAP月（2・5・8・11月号）→ MAP月のみ店舗も対象`, 'info');
     }
 
     // 4. マスタにあるが既存月号にない店舗を抽出

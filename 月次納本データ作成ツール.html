@@ -82,7 +82,7 @@
     <p class="note">※ 設置店マスタの稼働中レコードからこの作業月でレコードを作成します</p>
     <p class="note">📈 通常納本数≤11冊 &amp; 2・3ヶ月前の戻り率≤30% の店舗は自動で+3冊（上限11冊）<br>
     ※ 直前月は戻り未回収のためスキップ（例: 7月号→5月号+4月号で判定）</p>
-    <p class="note">📅 納本頻度=「MAP月のみ」の店舗は 1・4・7・10月号 のみ作成</p>
+    <p class="note">📅 納本頻度=「MAP月のみ」の店舗は 2・5・8・11月号 のみ作成</p>
   </div>
 
 
@@ -121,11 +121,11 @@ function getPrev2Months(workMonth) {
   return result;
 }
 
-// MAP月判定（1・4・7・10月）
+// MAP月判定（2・5・8・11月号）
 function isMapMonth(workMonth) {
   const m = workMonth.match(/(\d{4})年(\d{1,2})月号/);
   if (!m) return false;
-  return [1, 4, 7, 10].includes(parseInt(m[2]));
+  return [2, 5, 8, 11].includes(parseInt(m[2]));
 }
 
 // +3冊ロジック判定
@@ -235,9 +235,9 @@ async function preview() {
     if (!currentIsMap && mapOnlyCount > 0) {
       const beforeCount = masterRecords.length;
       masterRecords = masterRecords.filter(r => r['ドロップダウン_1']?.value !== 'MAP月のみ');
-      log(`📅 ${workMonth}はMAP月外（1・4・7・10月以外）→ MAP月のみ店舗 ${beforeCount - masterRecords.length}件を除外`, 'warn');
+      log(`📅 ${workMonth}はMAP月外（2・5・8・11月号以外）→ MAP月のみ店舗 ${beforeCount - masterRecords.length}件を除外`, 'warn');
     } else if (currentIsMap) {
-      log(`📅 ${workMonth}はMAP月（1・4・7・10月）→ MAP月のみ店舗 ${mapOnlyCount}件も含めて作成`, 'info');
+      log(`📅 ${workMonth}はMAP月（2・5・8・11月号）→ MAP月のみ店舗 ${mapOnlyCount}件も含めて作成`, 'info');
     }
 
     setProgress(30);
