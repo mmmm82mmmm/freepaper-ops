@@ -203,7 +203,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div class="app-header">
     <div class="app-header-top">
       <div class="app-title" id="work-title">📦 2026年5月号</div>
-      <div class="worker-name" id="work-worker">田中 さん</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button onclick="refreshNow()" title="再読み込み" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:14px;cursor:pointer;">🔄</button>
+        <div class="worker-name" id="work-worker">田中 さん</div>
+      </div>
     </div>
     <div class="progress-wrap">
       <div class="progress-bar-bg"><div class="progress-bar-fill" id="prog-fill" style="width:0%"></div></div>
@@ -226,18 +229,39 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div class="app-header" style="position:relative">
     <div class="app-header-top">
       <div class="app-title">📦 フリーペーパー作業</div>
-      <div class="worker-name" id="waiting-worker-name"></div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button onclick="refreshNow()" title="再読み込み" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:14px;cursor:pointer;">🔄</button>
+        <div class="worker-name" id="waiting-worker-name"></div>
+      </div>
     </div>
   </div>
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:20px;padding:24px;text-align:center;">
     <div style="font-size:48px">🚐</div>
     <div style="font-size:22px;font-weight:900">お疲れ様でした！</div>
-    <div style="font-size:14px;color:var(--muted);line-height:1.8">戻りを報告しました。<br>運転手が次のグループを割り当て中です...</div>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+    <div style="font-size:14px;color:var(--muted);line-height:1.8" id="waiting-msg">戻りを報告しました。<br>運転手が次のグループを割り当て中です...</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px" id="waiting-spinner-wrap">
       <div class="spinner"></div>
       <div style="font-size:13px;color:var(--muted)">割当を待っています</div>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-top:16px">次のグループ: <strong id="waiting-group" style="font-family:'DM Mono',monospace;color:var(--ink)">待機中</strong></div>
+
+    <!-- 受付停止トグル -->
+    <div style="margin-top:24px;width:100%;max-width:320px;">
+      <button id="pause-toggle" onclick="togglePause()" style="width:100%;padding:14px;background:#f5f5f0;color:#1a1a1a;border:2px solid var(--border);border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">
+        ⏸️ 受付を一時停止する
+      </button>
+      <div id="pause-help" style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">
+        電話対応・トイレなどで席を外す時に押してください。<br>停止中は次の割当が来ません。
+      </div>
+    </div>
+
+    <!-- 手動更新ボタン -->
+    <div style="margin-top:16px;width:100%;max-width:320px;">
+      <button onclick="refreshNow()" style="width:100%;padding:12px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">
+        🔄 今すぐ更新（割当の確認）
+      </button>
+    </div>
+
     <div id="driver-location-area" style="display:none;margin-top:8px;">
       <a id="driver-location-link" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:12px 20px;background:var(--blue);color:white;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
         📍 運転手の現在地を確認
@@ -260,7 +284,8 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     </div>
     <div class="modal-warning" id="modal-warning"></div>
     <div class="modal-btn-group">
-      <button class="btn-modal-confirm" id="btn-modal-confirm" onclick="confirmReturn()">車に戻る・次のグループを受け取る</button>
+      <button class="btn-modal-confirm" id="btn-modal-confirm" onclick="confirmReturn(false)">🚐 車に戻る・次のグループを受け取る</button>
+      <button class="btn-modal-confirm" id="btn-modal-pause" onclick="confirmReturn(true)" style="background:#888;margin-top:8px;">⏸️ 車に戻る・受付を停止する</button>
       <button class="btn-modal-cancel" onclick="closeModal()">キャンセル（作業を続ける）</button>
     </div>
   </div>
@@ -895,17 +920,19 @@ function closeModal() {
   document.getElementById('return-modal').classList.remove('show');
 }
 
-async function confirmReturn() {
+async function confirmReturn(withPause) {
   const btn = document.getElementById('btn-modal-confirm');
+  const btn2 = document.getElementById('btn-modal-pause');
   btn.disabled = true;
+  if (btn2) btn2.disabled = true;
   // UIを即座に切替（ユーザーを待たせない）
   closeModal();
   showWaitingScreen();
-  // バックグラウンドで保存
-  reportReturn().catch(e => console.error('戻り報告エラー:', e));
+  // 受付停止フラグを保持してバックグラウンドで保存
+  reportReturn(withPause === true).catch(e => console.error('戻り報告エラー:', e));
 }
 
-async function reportReturn() {
+async function reportReturn(withPause) {
   // 1回のGETで取得してすぐPUT
   const params = new URLSearchParams({
     subdomain: 'white', app: APP_NABON,
@@ -924,6 +951,12 @@ async function reportReturn() {
   if (!state.returned) state.returned = [];
   if (!state.returned.includes(currentWorker)) state.returned.push(currentWorker);
   delete state.assignments[currentWorker];
+
+  // 受付停止フラグを設定/解除
+  if (!state.paused) state.paused = {};
+  if (withPause) {
+    state.paused[currentWorker] = true;
+  }
   state.updatedAt = new Date().toISOString();
 
   await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
@@ -933,12 +966,20 @@ async function reportReturn() {
       '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
     }})
   });
+
+  // UI を即時更新
+  if (withPause) updatePauseUI(true);
 }
 
 function showWaitingScreen() {
   document.getElementById('work-screen').style.display = 'none';
   document.getElementById('return-footer').style.display = 'none';
   document.getElementById('waiting-screen').style.display = 'block';
+  // 受付停止状態を初期表示
+  getAssignState().then(state => {
+    const isPaused = (state.paused || {})[currentWorker] === true;
+    updatePauseUI(isPaused);
+  }).catch(() => {});
   // 割当をポーリング
   pollAssignment();
 }
@@ -993,6 +1034,75 @@ async function loadGroup(groupCode) {
     alert('読み込みエラー: ' + e.message);
     document.getElementById('waiting-screen').style.display = 'block';
     pollTimer = setTimeout(pollAssignment, 5000);
+  }
+}
+
+// ===== 手動更新 =====
+async function refreshNow() {
+  const btns = document.querySelectorAll('[onclick*="refreshNow"]');
+  btns.forEach(b => b.disabled = true);
+  try {
+    // 待機画面ならポーリング即実行
+    if (document.getElementById('waiting-screen').style.display !== 'none') {
+      clearTimeout(pollTimer);
+      await pollAssignment();
+    } else if (document.getElementById('work-screen').style.display !== 'none') {
+      // 作業画面なら現在のグループのレコードを再取得
+      const state = await getAssignState();
+      const myGroup = state.assignments?.[currentWorker];
+      if (myGroup) {
+        const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${myGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+        records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+        renderCards();
+      }
+    }
+  } catch(e) {
+    console.error('更新エラー:', e);
+  }
+  btns.forEach(b => b.disabled = false);
+}
+
+// ===== 受付停止トグル =====
+async function togglePause() {
+  const btn = document.getElementById('pause-toggle');
+  btn.disabled = true;
+  try {
+    const state = await getAssignState();
+    if (!state.paused) state.paused = {};
+    const isPaused = state.paused[currentWorker] === true;
+    if (isPaused) {
+      delete state.paused[currentWorker];
+    } else {
+      state.paused[currentWorker] = true;
+    }
+    state.updatedAt = new Date().toISOString();
+    await saveAssignState(state);
+    updatePauseUI(!isPaused);
+  } catch(e) {
+    alert('更新エラー: ' + e.message);
+  }
+  btn.disabled = false;
+}
+
+function updatePauseUI(isPaused) {
+  const btn = document.getElementById('pause-toggle');
+  const msg = document.getElementById('waiting-msg');
+  const spinner = document.getElementById('waiting-spinner-wrap');
+  if (!btn) return;
+  if (isPaused) {
+    btn.innerHTML = '▶️ 受付を再開する';
+    btn.style.background = '#d42020';
+    btn.style.color = '#fff';
+    btn.style.borderColor = '#d42020';
+    if (msg) msg.innerHTML = '<strong style="color:#d42020">受付停止中です</strong><br>準備ができたら下のボタンで再開してください';
+    if (spinner) spinner.style.display = 'none';
+  } else {
+    btn.innerHTML = '⏸️ 受付を一時停止する';
+    btn.style.background = '#f5f5f0';
+    btn.style.color = '#1a1a1a';
+    btn.style.borderColor = 'var(--border)';
+    if (msg) msg.innerHTML = '戻りを報告しました。<br>運転手が次のグループを割り当て中です...';
+    if (spinner) spinner.style.display = 'flex';
   }
 }
 

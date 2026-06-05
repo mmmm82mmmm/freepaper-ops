@@ -141,6 +141,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 
 <div class="app-header">
   <div class="app-header-top">
+    <a href="index.html" style="color:#fff;text-decoration:none;font-size:18px;margin-right:6px;">←</a>
     <div class="app-title">🚐 運転手画面</div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
       <select id="work-day-select" onchange="changeWorkDay(this.value)" style="font-size:11px;background:#c47a0a;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;">
@@ -470,6 +471,10 @@ function renderRoute() {
     const done = records.filter(r => getStatus(r) === '完了').length;
     const absent = records.filter(r => getStatus(r) === '不在').length;
     const todo = records.filter(r => getStatus(r) === '未着手').length;
+    // 未着手店舗の納本数合計（運転手が車に積むべき冊数）
+    const todoBooks = records
+      .filter(r => getStatus(r) === '未着手')
+      .reduce((s, r) => s + (parseFloat(r['数値']?.value) || 0), 0);
 
     const items = records.map(r => {
       const status = getStatus(r);
@@ -498,7 +503,7 @@ function renderRoute() {
           <div class="route-stats">
             <span class="route-stat-done">✓${done}</span>
             <span class="route-stat-absent">不在${absent}</span>
-            <span class="route-stat-todo">未${todo}</span>
+            <span class="route-stat-todo">未${todo}${todoBooks > 0 ? `<span style="font-size:10px;color:var(--blue);font-weight:700;margin-left:3px">📦${todoBooks}冊</span>` : ''}</span>
           </div>
           <div class="route-toggle" id="toggle-${route}">▼</div>
         </div>
@@ -623,6 +628,11 @@ async function loadAssignData() {
     // 二重割当を防ぐため、処理中に割当てたグループを記録
     const justAssigned = new Set();
     for (const worker of returned) {
+      // 受付停止中の作業者はスキップ
+      if ((assignState.paused || {})[worker] === true) {
+        console.log(`⏸️ 受付停止中スキップ: ${worker}`);
+        continue;
+      }
       if (!assignState.assignments[worker]) {
         const group = autoAssign(worker, justAssigned);
         if (group) {
@@ -665,12 +675,14 @@ function renderCars() {
     }
     el.innerHTML = workers.map(w => {
       const isReturned = (assignState.returned || []).includes(w);
+      const isPaused = (assignState.paused || {})[w] === true;
       const otherCar = carNum === 1 ? 2 : 1;
       const moveBtn = carNum !== 0
-        ? `<button class="move-btn" onclick="moveCar('${w}',${otherCar})">${otherCar}号車へ</button>`
+        ? `<button class="move-btn" onclick="moveCar('${w}',${otherCar})">${otherCar}号車へ</button><button class="move-btn" onclick="moveCar('${w}',0)" style="margin-left:2px;background:#aaa">未割当へ</button>`
         : `<button class="move-btn" onclick="moveCar('${w}',1)">1号車</button><button class="move-btn" onclick="moveCar('${w}',2)" style="margin-left:2px">2号車</button>`;
-      return `<div class="car-worker-chip ${isReturned ? 'returned' : ''}">
-        <span>${isReturned ? '🏃 ' : ''}${w}</span>
+      const pausedTag = isPaused ? '<span style="font-size:9px;background:#d42020;color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:700">受付停止</span>' : '';
+      return `<div class="car-worker-chip ${isReturned ? 'returned' : ''}" ${isPaused ? 'style="opacity:.6"' : ''}>
+        <span>${isReturned ? '🏃 ' : ''}${w}${pausedTag}</span>
         <span style="display:flex;gap:2px">${moveBtn}</span>
       </div>`;
     }).join('');
