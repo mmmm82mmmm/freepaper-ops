@@ -619,8 +619,8 @@ async function loadAssignData() {
       if (g) groupSet.add(g);
     });
     allGroups = [...groupSet].sort((a, b) => {
-      const routeA = a.replace(/[0-9]/g, '');
-      const routeB = b.replace(/[0-9]/g, '');
+      const routeA = a.replace(/[0-9.]/g, '');
+      const routeB = b.replace(/[0-9.]/g, '');
       if (routeA !== routeB) return routeA.localeCompare(routeB);
       const numA = parseFloat(a.replace(/[^0-9]/g, '')) || 0;
       const numB = parseFloat(b.replace(/[^0-9]/g, '')) || 0;
@@ -629,7 +629,7 @@ async function loadAssignData() {
 
     // 作業者はWORKER_COLORSベースで全員リストアップ
     // ルートフィルタ更新
-    const routes = [...new Set(allGroups.map(g => g.replace(/[0-9]/g,'')))].sort();
+    const routes = [...new Set(allGroups.map(g => g.replace(/[0-9.]/g,'')))].sort();
     const sel = document.getElementById('route-filter');
     const cur = sel?.value || '';
     if (sel) {
@@ -765,7 +765,7 @@ function renderRouteCars() {
       r['文字列__1行__0']?.value === g && 
       (r['チェックボックス_0']?.value || []).length > 0
     );
-    const routeLetter = g.replace(/[0-9]/g, '');
+    const routeLetter = g.replace(/[0-9.]/g, '');
     return hasOsoi ? routeLetter + '遅' : routeLetter;
   }))].sort();
 
@@ -970,7 +970,7 @@ function renderRevisit() {
 
       // 同じルートの遅グループを抽出
       const osoiGroups = allGroups.filter(g => {
-        const gRoute = (g.replace(/[0-9]/g, '')).toLowerCase();
+        const gRoute = (g.replace(/[0-9.]/g, '')).toLowerCase();
         if (gRoute !== route) return false;
         const hasOsoi = allRecords.some(rr =>
           rr['文字列__1行__0']?.value === g &&
@@ -1099,7 +1099,7 @@ function getGroupRoute(g) {
     r['文字列__1行__0']?.value === g &&
     (r['チェックボックス_0']?.value || []).length > 0
   );
-  const letter = g.replace(/[0-9]/g, '');
+  const letter = g.replace(/[0-9.]/g, '');
   return hasOsoi ? letter + '遅' : letter;
 }
 
