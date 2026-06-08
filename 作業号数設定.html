@@ -1,0 +1,250 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📅 作業号数設定 - FreePaper Ops</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888; --border:#e0dbd0; --green:#1a8a4a; --amber:#c47a0a; --blue:#1a5cd4; --red:#d42020; }
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:'Noto Sans JP',sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+.header { background:var(--ink); color:#fff; padding:14px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:10; }
+.back { color:#fff; text-decoration:none; font-size:18px; }
+.title { font-size:14px; font-weight:900; }
+.container { padding:20px; max-width:600px; margin:0 auto; }
+.card { background:var(--card); border-radius:12px; padding:18px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.section-title { font-size:12px; font-weight:900; color:var(--muted); margin-bottom:8px; letter-spacing:.04em; }
+.current-display { background:#e8f0ff; border:2px solid var(--blue); border-radius:10px; padding:14px; margin:10px 0; text-align:center; }
+.current-month { font-size:22px; font-weight:900; color:var(--blue); }
+.current-label { font-size:11px; color:var(--muted); margin-top:4px; }
+.detected { background:#f5f5f0; padding:10px 14px; border-radius:8px; margin:10px 0; font-size:12px; color:var(--muted); display:flex; justify-content:space-between; align-items:center; }
+select { width:100%; padding:12px; border:2px solid var(--border); border-radius:8px; font-family:inherit; font-size:14px; font-weight:700; background:#fff; margin-bottom:10px; }
+button { font-family:inherit; font-weight:700; cursor:pointer; border:none; }
+.btn-primary { width:100%; padding:14px; background:var(--blue); color:#fff; border-radius:10px; font-size:14px; }
+.btn-secondary { width:100%; padding:12px; background:#fff; color:var(--muted); border:1px solid var(--border); border-radius:10px; font-size:13px; margin-top:8px; }
+.btn-danger { width:100%; padding:12px; background:#ffebeb; color:var(--red); border:1px solid var(--red); border-radius:10px; font-size:13px; margin-top:8px; }
+.warning { background:#fff8e8; border:1px solid #f0d090; border-radius:10px; padding:10px 14px; font-size:11px; color:#7a5a00; line-height:1.6; }
+.log-box { background:#1a1a1a; color:#0f0; font-family:'DM Mono',monospace; font-size:11px; padding:10px; border-radius:6px; max-height:200px; overflow-y:auto; margin-top:10px; }
+.spinner { display:inline-block; width:14px; height:14px; border:2px solid #ddd; border-top-color:var(--blue); border-radius:50%; animation:spin 1s linear infinite; vertical-align:middle; }
+@keyframes spin { to { transform:rotate(360deg); } }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="back">←</a>
+  <div class="title">📅 作業号数設定</div>
+</div>
+
+<div class="container">
+
+  <div class="card">
+    <div class="section-title">現在の作業号</div>
+    <div class="current-display">
+      <div class="current-month" id="active-month">読込中...</div>
+      <div class="current-label" id="active-label">確認中</div>
+    </div>
+
+    <div class="detected">
+      <span>📅 自動検出: <strong id="auto-detected">--</strong></span>
+      <span id="match-indicator"></span>
+    </div>
+  </div>
+
+  <div class="card">
+    <div class="section-title">📝 作業号を変更</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:10px;line-height:1.6;">
+      作業者・運転手の画面に表示される作業号を上書きします。<br>
+      設定すると、全端末（PC・スマホ）の作業者・運転手画面が同じ月号を表示します。
+    </div>
+
+    <select id="force-month-select">
+      <option value="">自動検出（推奨）</option>
+    </select>
+
+    <button class="btn-primary" onclick="saveSetting()">この月号で固定する</button>
+
+    <button class="btn-danger" onclick="clearSetting()">⚠️ 自動検出に戻す（設定解除）</button>
+  </div>
+
+  <div class="warning">
+    ⚠️ <strong>注意：</strong>
+    <ul style="margin-left:18px;margin-top:4px;">
+      <li>通常は「自動検出」のままで問題ありません</li>
+      <li>納本日程の変更時など、特別な事情がある場合のみ設定してください</li>
+      <li>変更後は作業者・運転手の画面更新（🔄ボタン or 再読込）で反映されます</li>
+    </ul>
+  </div>
+
+  <div class="log-box" id="log">[ログ] 起動中...</div>
+</div>
+
+<script>
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const TOKEN_NOHON = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const APP_NOHON = 269;
+const SETTINGS_KEY = '__settings__'; // 作業月フィールドの予約値
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString('ja-JP');
+  const color = type === 'error' ? '#f55' : type === 'success' ? '#5f5' : '#0f0';
+  el.innerHTML += `<div style="color:${color}">[${time}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// 自動検出ロジック：来月号
+function autoDetectMonth() {
+  const now = new Date();
+  const d = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  return `${d.getFullYear()}年${d.getMonth() + 1}月号`;
+}
+
+// 月号リストを生成（過去3〜未来3ヶ月）
+function buildMonthOptions() {
+  const now = new Date();
+  const months = [];
+  for (let i = -3; i <= 3; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    months.push(`${d.getFullYear()}年${d.getMonth() + 1}月号`);
+  }
+  return months;
+}
+
+// kintoneから設定レコードを取得
+async function getSettingsRecord() {
+  const q = `文字列__1行_ = "${SETTINGS_KEY}" limit 1`;
+  const params = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: q });
+  const res = await fetch(`${PROXY}/kintone/v1/records.json?${params}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN_NOHON }
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data));
+  return data.records?.[0] || null;
+}
+
+// 設定を読み込む
+async function loadSettings() {
+  log('設定読み込み中...');
+  try {
+    const rec = await getSettingsRecord();
+    let forced = '';
+    if (rec) {
+      try {
+        const raw = rec['文字列__複数行__0']?.value || '';
+        const obj = JSON.parse(raw);
+        forced = obj.forceWorkMonth || '';
+      } catch(e) {}
+    }
+    updateDisplay(forced);
+    log(`現在の設定: ${forced || '(自動検出)'}`, 'success');
+  } catch(e) {
+    log(`読み込みエラー: ${e.message}`, 'error');
+  }
+}
+
+function updateDisplay(forced) {
+  const auto = autoDetectMonth();
+  document.getElementById('auto-detected').textContent = auto;
+
+  if (forced) {
+    document.getElementById('active-month').textContent = forced;
+    document.getElementById('active-label').textContent = '🔒 管理者により固定中';
+    document.getElementById('match-indicator').innerHTML = forced === auto
+      ? '<span style="color:var(--green);font-weight:900">✓ 一致</span>'
+      : '<span style="color:var(--amber);font-weight:900">⚠️ 自動検出と異なる</span>';
+    document.getElementById('force-month-select').value = forced;
+  } else {
+    document.getElementById('active-month').textContent = auto;
+    document.getElementById('active-label').textContent = '🤖 自動検出中';
+    document.getElementById('match-indicator').innerHTML = '<span style="color:var(--green)">— 自動 —</span>';
+    document.getElementById('force-month-select').value = '';
+  }
+}
+
+// 設定を保存（または作成）
+async function saveSettings(forceWorkMonth) {
+  const payload = {
+    forceWorkMonth: forceWorkMonth || '',
+    updatedAt: new Date().toISOString()
+  };
+  const rec = await getSettingsRecord();
+  if (rec) {
+    // 更新
+    const recId = rec['$id'].value;
+    const res = await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
+      method: 'PUT',
+      headers: { 'X-Cybozu-API-Token': TOKEN_NOHON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app: APP_NOHON, id: recId,
+        record: { '文字列__複数行__0': { value: JSON.stringify(payload) } }
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(data));
+  } else {
+    // 新規作成
+    const res = await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
+      method: 'POST',
+      headers: { 'X-Cybozu-API-Token': TOKEN_NOHON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        app: APP_NOHON,
+        record: {
+          '文字列__1行_': { value: SETTINGS_KEY },
+          '文字列__複数行__0': { value: JSON.stringify(payload) }
+        }
+      })
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(data));
+  }
+}
+
+async function saveSetting() {
+  const v = document.getElementById('force-month-select').value;
+  if (!v) {
+    if (!confirm('「自動検出」を選択しています。設定解除と同じ動作になりますがよろしいですか？')) return;
+  }
+  try {
+    log(`保存中: ${v || '(自動検出)'}`);
+    await saveSettings(v);
+    log('✅ 保存完了', 'success');
+    updateDisplay(v);
+    alert(v ? `作業号を「${v}」に固定しました。\n\n各端末の作業者・運転手画面では、画面を更新（🔄）すると反映されます。` : '設定を解除しました（自動検出に戻りました）');
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+    alert('保存に失敗しました: ' + e.message);
+  }
+}
+
+async function clearSetting() {
+  if (!confirm('自動検出に戻しますか？\n（手動設定は解除されます）')) return;
+  try {
+    log('解除中...');
+    await saveSettings('');
+    log('✅ 解除完了', 'success');
+    updateDisplay('');
+    alert('自動検出に戻しました');
+  } catch(e) {
+    log(`エラー: ${e.message}`, 'error');
+    alert('解除に失敗しました: ' + e.message);
+  }
+}
+
+// 月号セレクト初期化
+function init() {
+  const sel = document.getElementById('force-month-select');
+  buildMonthOptions().forEach(m => {
+    const o = document.createElement('option');
+    o.value = m;
+    o.textContent = m;
+    sel.appendChild(o);
+  });
+  loadSettings();
+}
+init();
+</script>
+
+</body>
+</html>

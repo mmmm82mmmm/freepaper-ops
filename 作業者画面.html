@@ -178,8 +178,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <select class="login-select" id="worker-select">
       <option value="">-- 選択してください --</option>
     </select>
-    <label class="login-label" style="margin-top:8px">作業月</label>
-    <select class="login-select" id="month-select"></select>
+    <div style="margin-top:8px;background:#e8f0ff;border:2px solid var(--blue);border-radius:8px;padding:10px 12px;text-align:center;">
+      <div style="font-size:10px;color:var(--muted);">作業月</div>
+      <div style="font-size:18px;font-weight:900;color:var(--blue);" id="login-month-display">読込中...</div>
+    </div>
     <button class="btn-login" id="btn-login" onclick="startWork()" disabled>作業を開始する →</button>
     <div id="login-error" class="error-box" style="display:none"></div>
   </div>
@@ -400,26 +402,45 @@ async function init() {
     });
   }
 
-  // 作業月セレクト
-  const msel = document.getElementById('month-select');
-  const now = new Date();
-  for (let i = 0; i < 3; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const label = `${d.getFullYear()}年${d.getMonth()+1}月号`;
-    const o = document.createElement('option');
-    o.value = label; o.textContent = label;
-    if (i === 0) o.selected = true;
-    msel.appendChild(o);
-  }
+  // 作業月を自動検出して表示（管理者設定があれば上書き）
+  await setupWorkMonth();
 
   wsel.addEventListener('change', checkLogin);
-  msel.addEventListener('change', checkLogin);
+}
+
+// 作業号を設定（kintone共有設定 → 自動検出のフォールバック）
+async function setupWorkMonth() {
+  // 自動検出（来月号）
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  let detected = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+
+  // kintone設定から取得して上書き
+  try {
+    const q = `文字列__1行_ = "__settings__" limit 1`;
+    const params = new URLSearchParams({ subdomain: KINTONE_DOMAIN, app: APP_NABON, query: q });
+    const res = await fetch(`${BASE}/records.json?${params}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
+    });
+    const data = await res.json();
+    if (res.ok && data.records?.length) {
+      const raw = data.records[0]['文字列__複数行__0']?.value || '';
+      const obj = JSON.parse(raw);
+      if (obj.forceWorkMonth) {
+        detected = obj.forceWorkMonth;
+        console.log(`📌 管理者設定により作業号を ${detected} に固定`);
+      }
+    }
+  } catch(e) { console.warn('設定取得失敗:', e); }
+
+  currentMonth = detected;
+  const display = document.getElementById('login-month-display');
+  if (display) display.textContent = `📅 ${detected}`;
 }
 
 function initLoginScreen() {
-  // ログイン画面の初期化（月選択など）
+  // ログイン画面の初期化
   const wsel = document.getElementById('worker-select');
-  const msel = document.getElementById('month-select');
   if (currentWorker && wsel) {
     // URLパラメータの名前を選択状態に
     for (const opt of wsel.options) {
@@ -431,8 +452,7 @@ function initLoginScreen() {
 
 function checkLogin() {
   const w = document.getElementById('worker-select').value;
-  const m = document.getElementById('month-select').value;
-  document.getElementById('btn-login').disabled = !w || !m;
+  document.getElementById('btn-login').disabled = !w || !currentMonth;
 }
 
 // ===== kintone API =====
@@ -521,7 +541,7 @@ async function startWorkDirect() {
 // ===== 作業開始 =====
 async function startWork() {
   currentWorker = document.getElementById('worker-select').value;
-  currentMonth = document.getElementById('month-select').value;
+  // currentMonth は setupWorkMonth() で既に設定済み
   saveSession();
 
   document.getElementById('login-screen').style.display = 'none';

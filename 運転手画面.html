@@ -155,7 +155,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
         <option value="6">土曜日</option>
       </select>
       <button id="location-btn" onclick="shareLocation()" style="font-size:11px;background:#1a5cd4;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;cursor:pointer;">📍 現在地を共有</button>
-      <select id="month-badge" onchange="changeMonth(this.value)" style="font-size:11px;background:#333;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;"></select>
+      <div id="month-badge" style="font-size:11px;background:#333;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;">📅 読込中...</div>
     </div>
   </div>
   <div class="tabs">
@@ -670,21 +670,35 @@ function applyCarFilter() {
 }
 
 // 月選択セレクトを初期化
+// 作業号数の設定をkintoneから読み込み（共有設定）
+async function getWorkMonthFromSettings() {
+  try {
+    const q = `文字列__1行_ = "__settings__" limit 1`;
+    const params = new URLSearchParams({ subdomain: DOMAIN, app: APP, query: q });
+    const res = await fetch(`${BASE}/records.json?${params}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    const data = await res.json();
+    if (!res.ok || !data.records?.length) return null;
+    const raw = data.records[0]['文字列__複数行__0']?.value || '';
+    const obj = JSON.parse(raw);
+    return obj.forceWorkMonth || null;
+  } catch(e) {
+    console.warn('設定取得失敗（自動検出にフォールバック）:', e);
+    return null;
+  }
+}
+
 function initMonthSelect() {
-  const sel = document.getElementById('month-badge');
-  if (!sel) return;
-  sel.innerHTML = ''; // 念のため初期化
-  months.forEach(m => {
-    const o = document.createElement('option');
-    o.value = m;
-    o.textContent = `📅 ${m}`;
-    if (m === currentMonth) o.selected = true;
-    sel.appendChild(o);
-  });
+  const el = document.getElementById('month-badge');
+  if (!el) return;
+  el.textContent = `📅 ${currentMonth}`;
 }
 
 function changeMonth(month) {
+  // 静的表示なので呼ばれることはないが念のため
   currentMonth = month;
+  initMonthSelect();
   loadData();
 }
 
@@ -1577,9 +1591,17 @@ function restoreTab() {
 }
 
 // 起動時に読み込み
-initMonthSelect();
-loadData();
-setTimeout(restoreTab, 500);
+(async function init() {
+  // kintone設定から作業号を取得（あれば上書き）
+  const forced = await getWorkMonthFromSettings();
+  if (forced) {
+    currentMonth = forced;
+    console.log(`📌 管理者設定により作業号を ${forced} に固定`);
+  }
+  initMonthSelect();
+  loadData();
+  setTimeout(restoreTab, 500);
+})();
 
 // 30秒ごとに自動更新
 setInterval(loadData, 60000);

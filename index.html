@@ -44,8 +44,23 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .menu-item.worker .menu-icon{color:var(--blue);}
 .menu-item.driver .menu-icon{color:var(--amber);}
 .menu-item.refill .menu-icon{color:var(--green);}
-.menu-item.member{}
-.menu-item.report{}
+
+/* 管理画面セクション */
+.admin-toggle{
+  display:flex;align-items:center;gap:10px;padding:14px 16px;
+  background:#2a2a2a;color:#fff;border-radius:12px;cursor:pointer;
+  font-size:13px;font-weight:900;border:none;width:100%;
+  font-family:inherit;letter-spacing:.04em;
+}
+.admin-toggle:active{background:#1a1a1a;}
+.admin-toggle .arrow{margin-left:auto;font-size:14px;}
+.admin-warning{
+  background:#fff8e8;border:1px solid #f0d090;border-radius:10px;
+  padding:10px 14px;font-size:11px;color:#7a5a00;line-height:1.6;
+  margin:10px 0;display:flex;gap:8px;
+}
+.admin-tools{display:none;}
+.admin-tools.open{display:block;}
 
 .footer-note{
   text-align:center;font-size:11px;color:var(--muted);
@@ -79,9 +94,9 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     </div>
   </div>
 
-  <!-- 現場での作業 -->
+  <!-- 作業者 -->
   <div class="menu-section">
-    <div class="section-title">📍 現場での作業</div>
+    <div class="section-title">📍 作業者</div>
 
     <a class="menu-item worker" href="./作業者画面.html">
       <div class="menu-icon">👤</div>
@@ -91,11 +106,16 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
       </div>
       <div class="menu-arrow">›</div>
     </a>
+  </div>
+
+  <!-- 運転手 -->
+  <div class="menu-section">
+    <div class="section-title">🚐 運転手</div>
 
     <a class="menu-item driver" href="./運転手画面.html">
       <div class="menu-icon">🚐</div>
       <div class="menu-info">
-        <div class="menu-name">運転手画面</div>
+        <div class="menu-name">通常納本</div>
         <div class="menu-desc">進捗確認・グループ割当・現在地共有</div>
       </div>
       <div class="menu-arrow">›</div>
@@ -111,67 +131,109 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     </a>
   </div>
 
-  <!-- 管理者向け -->
+  <!-- 管理画面（折りたたみ） -->
   <div class="menu-section">
-    <div class="section-title">⚙️ 管理者向け</div>
+    <button class="admin-toggle" onclick="toggleAdmin()">
+      <span style="font-size:18px">⚙️</span>
+      <span>管理画面（管理者のみ）</span>
+      <span class="arrow" id="admin-arrow">▼</span>
+    </button>
 
-    <a class="menu-item member" href="./メンバー管理.html">
-      <div class="menu-icon">👥</div>
-      <div class="menu-info">
-        <div class="menu-name">メンバー管理</div>
-        <div class="menu-desc">作業者の登録・URL配布・配布物設定</div>
+    <div class="admin-tools" id="admin-tools">
+      <div class="admin-warning">
+        <span style="font-size:14px">⚠️</span>
+        <div>
+          <strong>管理者専用機能です。</strong><br>
+          作業者・運転手の方は <strong>操作しないでください</strong>。誤操作によりデータが消失する可能性があります。
+        </div>
       </div>
-      <div class="menu-arrow">›</div>
-    </a>
 
-    <a class="menu-item report" href="./集計レポート.html">
-      <div class="menu-icon">📊</div>
-      <div class="menu-info">
-        <div class="menu-name">集計レポート</div>
-        <div class="menu-desc">サマリー・ルート別・不在一覧・消化分析</div>
-      </div>
-      <div class="menu-arrow">›</div>
-    </a>
-  </div>
+      <a class="menu-item" href="./作業号数設定.html">
+        <div class="menu-icon">📅</div>
+        <div class="menu-info">
+          <div class="menu-name">作業号数設定</div>
+          <div class="menu-desc">作業者・運転手画面で表示する月号を上書き設定</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      </a>
 
-  <!-- 月初準備 -->
-  <div class="menu-section">
-    <div class="section-title">🗓 月初準備（管理者のみ）</div>
+      <a class="menu-item" href="./メンバー管理.html">
+        <div class="menu-icon">👥</div>
+        <div class="menu-info">
+          <div class="menu-name">メンバー管理</div>
+          <div class="menu-desc">作業者の登録・URL配布・配布物設定</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      </a>
 
-    <a class="menu-item" href="./月次納本データ作成ツール.html">
-      <div class="menu-icon">📥</div>
-      <div class="menu-info">
-        <div class="menu-name">月次納本データ作成</div>
-        <div class="menu-desc">設置店マスタから月次レコードを一括作成</div>
-      </div>
-      <div class="menu-arrow">›</div>
-    </a>
+      <a class="menu-item" href="./集計レポート.html">
+        <div class="menu-icon">📊</div>
+        <div class="menu-info">
+          <div class="menu-name">集計レポート</div>
+          <div class="menu-desc">サマリー・ルート別・不在一覧・消化分析</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      </a>
 
-    <a class="menu-item" href="./遅フラグ更新ツール.html">
-      <div class="menu-icon">🌙</div>
-      <div class="menu-info">
-        <div class="menu-name">遅フラグ更新</div>
-        <div class="menu-desc">遅い時間帯店舗のフラグを反映</div>
-      </div>
-      <div class="menu-arrow">›</div>
-    </a>
+      <div class="section-title" style="margin-top:18px;">🗓 月初準備</div>
 
-    <a class="menu-item" href="./新店舗追加ツール.html">
-      <div class="menu-icon">➕</div>
-      <div class="menu-info">
-        <div class="menu-name">新店舗追加</div>
-        <div class="menu-desc">月内に追加されたマスタ新規店舗を月号レコードに反映</div>
-      </div>
-      <div class="menu-arrow">›</div>
-    </a>
+      <a class="menu-item" href="./月次納本データ作成ツール.html">
+        <div class="menu-icon">📥</div>
+        <div class="menu-info">
+          <div class="menu-name">月次納本データ作成</div>
+          <div class="menu-desc">設置店マスタから月次レコードを一括作成</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      </a>
+
+      <a class="menu-item" href="./遅フラグ更新ツール.html">
+        <div class="menu-icon">🌙</div>
+        <div class="menu-info">
+          <div class="menu-name">遅フラグ更新</div>
+          <div class="menu-desc">遅い時間帯店舗のフラグを反映</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      </a>
+
+      <a class="menu-item" href="./新店舗追加ツール.html">
+        <div class="menu-icon">➕</div>
+        <div class="menu-info">
+          <div class="menu-name">新店舗追加</div>
+          <div class="menu-desc">月内に追加されたマスタ新規店舗を月号レコードに反映</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      </a>
+    </div>
   </div>
 
   <div class="footer-note">
-    Ver 2.0 / 株式会社ホワイトカンパニー<br>
+    Ver 3.2 / 株式会社ホワイトカンパニー<br>
     <strong>困ったときは管理者へ連絡してください</strong>
   </div>
 
 </div>
+
+<script>
+function toggleAdmin() {
+  const el = document.getElementById('admin-tools');
+  const arrow = document.getElementById('admin-arrow');
+  const isOpen = el.classList.contains('open');
+  if (isOpen) {
+    el.classList.remove('open');
+    arrow.textContent = '▼';
+    localStorage.setItem('fp_admin_open', '0');
+  } else {
+    el.classList.add('open');
+    arrow.textContent = '▲';
+    localStorage.setItem('fp_admin_open', '1');
+  }
+}
+// 前回の状態を復元
+if (localStorage.getItem('fp_admin_open') === '1') {
+  document.getElementById('admin-tools').classList.add('open');
+  document.getElementById('admin-arrow').textContent = '▲';
+}
+</script>
 
 </body>
 </html>
