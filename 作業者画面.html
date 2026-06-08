@@ -1014,7 +1014,7 @@ async function pollAssignment() {
       return;
     }
   } catch(e) { console.error(e); }
-  pollTimer = setTimeout(pollAssignment, 5000);
+  pollTimer = setTimeout(pollAssignment, 10000);
 }
 
 async function loadGroup(groupCode) {
@@ -1033,7 +1033,7 @@ async function loadGroup(groupCode) {
     document.getElementById('loading-screen').style.display = 'none';
     alert('読み込みエラー: ' + e.message);
     document.getElementById('waiting-screen').style.display = 'block';
-    pollTimer = setTimeout(pollAssignment, 5000);
+    pollTimer = setTimeout(pollAssignment, 10000);
   }
 }
 

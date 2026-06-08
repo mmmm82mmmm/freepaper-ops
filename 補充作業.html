@@ -120,6 +120,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <div class="header">
   <a class="back" href="index.html">←</a>
   <div class="title">🔄 補充作業</div>
+  <button onclick="refreshAll()" title="最新データを取得（キャッシュクリア）" style="background:rgba(255,255,255,.12);color:#fff;border:none;padding:5px 10px;border-radius:6px;font-size:14px;cursor:pointer;">🔄</button>
   <select class="month-select" id="month-select" onchange="changeMonth()"></select>
 </div>
 
@@ -279,6 +280,18 @@ function changeMonth() {
   fetchData();
 }
 
+// マスタキャッシュをクリアして再取得
+function refreshAll() {
+  try { localStorage.removeItem(MASTER_CACHE_KEY); } catch(e) {}
+  document.getElementById('content').innerHTML = `
+    <div class="loading">
+      <div class="spinner"></div>
+      <div>最新データを取得中...</div>
+    </div>`;
+  document.getElementById('error-banner').classList.remove('show');
+  fetchData();
+}
+
 function getURLParam(key) {
   const m = window.location.search.match(new RegExp(`[?&]${key}=([^&]*)`));
   return m ? decodeURIComponent(m[1]) : '';
@@ -320,34 +333,71 @@ function initWorker() {
 }
 
 // ===== Data Fetching =====
+const MASTER_CACHE_KEY = 'fp_master_required_cache';
+const MASTER_CACHE_TTL = 60 * 60 * 1000; // 1時間
+
+// 必要なフィールドのみ取得（通信量・パース時間削減）
+function buildFieldsParam(fields) {
+  return fields.map(f => `&fields=${encodeURIComponent(f)}`).join('');
+}
+
 async function fetchData() {
   try {
     if (!currentMonth) currentMonth = calcDefaultMonth();
 
-    // 1. 設置店マスタから 要補充 フラグ付き店舗を取得
-    let offset = 0;
-    masterRequiredIds = new Set();
-    while (true) {
-      const q = encodeURIComponent(`チェックボックス_2 in ("要補充") limit 500 offset ${offset}`);
-      const res = await fetch(`${PROXY_URL}/k/v1/records.json?app=${APP_MASTER}&query=${q}`, {
-        headers: { 'X-Cybozu-API-Token': TOKEN_MASTER }
-      });
-      const data = await res.json();
-      if (!res.ok) throw new Error(`マスタ取得失敗: ${JSON.stringify(data)}`);
-      for (const r of data.records) {
-        const kno = getVal(r, '文字列__1行__0');
-        if (kno) masterRequiredIds.add(kno);
+    // 1. 設置店マスタから 要補充 ID Setを取得（localStorageキャッシュ・1時間）
+    const cached = (() => {
+      try {
+        const raw = localStorage.getItem(MASTER_CACHE_KEY);
+        if (!raw) return null;
+        const obj = JSON.parse(raw);
+        if (Date.now() - obj.ts > MASTER_CACHE_TTL) return null;
+        return obj.ids;
+      } catch(e) { return null; }
+    })();
+
+    if (cached) {
+      masterRequiredIds = new Set(cached);
+      console.log(`📦 マスタキャッシュ使用: ${masterRequiredIds.size}件`);
+    } else {
+      let offset = 0;
+      masterRequiredIds = new Set();
+      const fieldsParam = buildFieldsParam(['文字列__1行__0']);
+      while (true) {
+        const q = encodeURIComponent(`チェックボックス_2 in ("要補充") limit 500 offset ${offset}`);
+        const res = await fetch(`${PROXY_URL}/k/v1/records.json?app=${APP_MASTER}&query=${q}${fieldsParam}`, {
+          headers: { 'X-Cybozu-API-Token': TOKEN_MASTER }
+        });
+        const data = await res.json();
+        if (!res.ok) throw new Error(`マスタ取得失敗: ${JSON.stringify(data)}`);
+        for (const r of data.records) {
+          const kno = getVal(r, '文字列__1行__0');
+          if (kno) masterRequiredIds.add(kno);
+        }
+        if (data.records.length < 500) break;
+        offset += 500;
       }
-      if (data.records.length < 500) break;
-      offset += 500;
+      // キャッシュに保存
+      try {
+        localStorage.setItem(MASTER_CACHE_KEY, JSON.stringify({
+          ts: Date.now(),
+          ids: Array.from(masterRequiredIds)
+        }));
+      } catch(e) {}
+      console.log(`🌐 マスタ取得: ${masterRequiredIds.size}件`);
     }
 
-    // 2. 現在月の納本データ管理レコードを全件取得
-    offset = 0;
+    // 2. 現在月の納本データ管理レコードを全件取得（必要フィールドのみ）
+    let offset = 0;
     monthRecords = [];
+    const fieldsParam = buildFieldsParam([
+      '$id', '文字列__1行__1', '文字列__1行__2', '文字列__1行__3',
+      '文字列__1行__4', '文字列__1行__5', '文字列__1行__8',
+      '数値', '数値_2', 'テーブル_0', '数値_1'
+    ]);
     while (true) {
       const q = encodeURIComponent(`文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc limit 500 offset ${offset}`);
-      const res = await fetch(`${PROXY_URL}/k/v1/records.json?app=${APP_NOHON}&query=${q}`, {
+      const res = await fetch(`${PROXY_URL}/k/v1/records.json?app=${APP_NOHON}&query=${q}${fieldsParam}`, {
         headers: { 'X-Cybozu-API-Token': TOKEN_NOHON }
       });
       const data = await res.json();
