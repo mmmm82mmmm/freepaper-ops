@@ -532,6 +532,10 @@ function renderRoute() {
       .filter(r => getStatus(r) === '未着手')
       .reduce((s, r) => s + (parseFloat(r['数値_3']?.value) || 0), 0);
 
+    // 未着手店舗のラック交換・POP交換件数
+    const todoRack = records.filter(r => getStatus(r) === '未着手' && (r['チェックボックス_1']?.value || []).length > 0).length;
+    const todoPop = records.filter(r => getStatus(r) === '未着手' && (r['チェックボックス_3']?.value || []).length > 0).length;
+
     const items = records.map(r => {
       const status = getStatus(r);
       const statusClass = status === '完了' ? 'done' : status === '不在' ? 'absent' : 'todo';
@@ -540,15 +544,22 @@ function renderRoute() {
       const floor = r['文字列__1行__3']?.value || '';
       const nabon = r['数値']?.value || '';
       const mapNum = parseFloat(r['数値_3']?.value) || 0;
-      const henkyaku = r['数値_0']?.value || '';
+      const rackChange = (r['チェックボックス_1']?.value || []).length > 0;
+      const popChange = (r['チェックボックス_3']?.value || []).length > 0;
       return `
         <div class="route-item">
           <div class="item-status ${statusClass}"></div>
           <div class="item-info">
             <div class="item-name">${shop}</div>
-            <div class="item-meta">${floor ? floor+'階 ' : ''}${worker ? `<span class="item-worker">${worker}</span>` : ''}</div>
+            <div class="item-meta" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+              ${floor ? `<span>${floor}階</span>` : ''}
+              ${worker ? `<span class="item-worker">${worker}</span>` : ''}
+              ${nabon ? `<span style="background:#e8f0ff;color:var(--blue);padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">📦${nabon}冊</span>` : ''}
+              ${mapNum > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🗺️MAP${mapNum}冊</span>` : ''}
+              ${rackChange ? `<span style="background:#ffebeb;color:#d42020;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🔧ラック交換</span>` : ''}
+              ${popChange ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🏷️POP貼替</span>` : ''}
+            </div>
           </div>
-          <div class="item-nabon">${nabon ? `${nabon}冊` : ''}${mapNum > 0 ? `<span style="color:#c47a0a;margin-left:4px;font-size:10px">+MAP${mapNum}</span>` : ''}</div>
         </div>`;
     }).join('');
 
@@ -560,7 +571,7 @@ function renderRoute() {
           <div class="route-stats">
             <span class="route-stat-done">✓${done}</span>
             <span class="route-stat-absent">不在${absent}</span>
-            <span class="route-stat-todo">未${todo}${todoBooks > 0 ? `<span style="font-size:10px;color:var(--blue);font-weight:700;margin-left:3px">📦${todoBooks}冊</span>` : ''}${todoMapBooks > 0 ? `<span style="font-size:10px;color:#c47a0a;font-weight:700;margin-left:3px">マップ${todoMapBooks}冊</span>` : ''}</span>
+            <span class="route-stat-todo">未${todo}${todoBooks > 0 ? `<span style="font-size:10px;color:var(--blue);font-weight:700;margin-left:3px">📦${todoBooks}冊</span>` : ''}${todoMapBooks > 0 ? `<span style="font-size:10px;color:#c47a0a;font-weight:700;margin-left:3px">🗺️マップ${todoMapBooks}冊</span>` : ''}${todoRack > 0 ? `<span style="font-size:10px;color:#d42020;font-weight:700;margin-left:3px">🔧${todoRack}</span>` : ''}${todoPop > 0 ? `<span style="font-size:10px;color:#7a3dc4;font-weight:700;margin-left:3px">🏷️${todoPop}</span>` : ''}</span>
           </div>
           <div class="route-toggle" id="toggle-${route}">▼</div>
         </div>
@@ -1261,16 +1272,22 @@ function renderAssign() {
       const location = r['文字列__1行__7']?.value || '';
       const nabonNum = r['数値_2']?.value || '';
       const mapNum = r['数値_3']?.value || '';
-      const rackChange = (r['チェックボックス_1']?.value || []).includes('交換');
+      const rackChange = (r['チェックボックス_1']?.value || []).length > 0;
+      const popChange = (r['チェックボックス_3']?.value || []).length > 0;
       const status = r['ドロップダウン']?.value || '未着手';
       const statusColor = status === '完了' ? 'var(--green)' : status === '不在' ? 'var(--amber)' : 'var(--border)';
       return `
         <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
           <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;margin-top:4px;"></div>
           <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;font-weight:700;">${shop}${rackChange ? ' <span style="color:#d42020;font-size:10px;background:#ffebeb;padding:1px 4px;border-radius:3px;margin-left:2px;">🔧交換</span>' : ''}</div>
+            <div style="font-size:12px;font-weight:700;">${shop}</div>
             <div style="font-size:10px;color:var(--muted);">${building}${floor ? ` ${floor}階` : ''}${genre ? ` / ${genre}` : ''}${address ? ` / 📍${address}` : ''}</div>
-            <div style="font-size:10px;color:var(--muted);margin-top:2px;">${nabonNum ? `📦${nabonNum}冊` : ''}${mapNum ? ` 🗺️MAP${mapNum}冊` : ''}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
+              ${nabonNum ? `<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">📦${nabonNum}冊</span>` : ''}
+              ${mapNum && parseFloat(mapNum) > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🗺️MAP${mapNum}冊</span>` : ''}
+              ${rackChange ? `<span style="background:#ffebeb;color:#d42020;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🔧ラック交換</span>` : ''}
+              ${popChange ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🏷️POP貼替</span>` : ''}
+            </div>
             ${location ? `<div style="font-size:10px;color:#555;margin-top:2px;">設置: ${location}</div>` : ''}
             ${comment ? `<div style="font-size:10px;color:#7a5a00;background:#fff8e8;padding:3px 6px;border-radius:4px;margin-top:3px;border-left:2px solid var(--amber);">💬 ${comment}</div>` : ''}
           </div>

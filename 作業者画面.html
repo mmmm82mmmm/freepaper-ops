@@ -614,11 +614,22 @@ function renderCard(r, container) {
   const location = r['文字列__1行__7']?.value || '';  // 設置場所説明
   const comment = r['文字列__1行__9']?.value || '';   // コメント
   const nabon = r['数値_2']?.value || '';
+  const mapNum = parseFloat(r['数値_3']?.value) || 0;
+  const rackChange = (r['チェックボックス_1']?.value || []).length > 0;
+  const popChange = (r['チェックボックス_3']?.value || []).length > 0;
   const absent1 = r['文字列__1行__11']?.value || '';
   const absent2 = r['文字列__1行__12']?.value || '';
   const absent3 = r['文字列__1行__13']?.value || '';
   const nabonVal = r['数値']?.value || '';
   const henkyakuVal = r['数値_0']?.value || '';
+
+  // 準備物バッジ（通常納本数・MAP冊数・ラック交換・POP交換）
+  const badges = `
+    ${nabon ? `<span style="background:#e8f0ff;color:#1a5cd4;padding:3px 8px;border-radius:4px;font-weight:900;font-size:12px;">📦${nabon}冊</span>` : ''}
+    ${mapNum > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:3px 8px;border-radius:4px;font-weight:900;font-size:12px;">🗺️MAP${mapNum}冊</span>` : ''}
+    ${rackChange ? `<span style="background:#ffebeb;color:#d42020;padding:3px 8px;border-radius:4px;font-weight:900;font-size:12px;">🔧ラック交換</span>` : ''}
+    ${popChange ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:3px 8px;border-radius:4px;font-weight:900;font-size:12px;">🏷️POP貼替</span>` : ''}
+  `;
 
   const card = document.createElement('div');
   card.id = 'card-' + recId;
@@ -681,7 +692,7 @@ function renderCard(r, container) {
     bodyHtml = `
       ${location ? `<div class="shop-location">${location}</div>` : ''}
       ${comment ? `<div class="shop-comment">${comment}</div>` : ''}
-      ${nabon ? `<div class="nabon-hint">通常納本数 <strong>${nabon}</strong> 冊</div>` : ''}
+      <div style="padding:10px 14px 0;display:flex;flex-wrap:wrap;gap:5px;">${badges}</div>
       <div class="input-area" id="input-area-${recId}" style="display:none">
         <div class="input-row">
           <div class="input-group"><label>納本数</label><input type="number" id="nabon-${recId}" placeholder="0" min="0" inputmode="numeric" value="${nabonVal}"></div>
