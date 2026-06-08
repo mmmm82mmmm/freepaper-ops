@@ -371,6 +371,79 @@ async function run() {
     if (boostedInRun > 0) {
       log(`📈 うち${boostedInRun}件に+3冊ロジック適用（通常納本数+3、上限11冊）`, 'success');
     }
+
+    // ===== 前月の運用設定（メンバー・車編成・ルート紐付け）を引き継ぎ =====
+    try {
+      // 前月号を計算（例: 2026年7月号 → 2026年6月号）
+      const monMatch = workMonth.match(/(\d{4})年(\d{1,2})月号/);
+      let prevMonth = null;
+      if (monMatch) {
+        let y = parseInt(monMatch[1]), m = parseInt(monMatch[2]) - 1;
+        if (m < 1) { m = 12; y--; }
+        prevMonth = `${y}年${m}月号`;
+      }
+      if (prevMonth) {
+        log(`🔄 前月（${prevMonth}）の運用設定を引き継ぎ中...`);
+        // 前月の1件目を取得
+        const prevQ = `文字列__1行_ = "${prevMonth}" order by レコード番号 asc limit 1`;
+        const prevParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: prevQ });
+        const prevRes = await fetch(`${PROXY()}/k/v1/records.json?${prevParams}`, {
+          headers: { 'X-Cybozu-API-Token': tokenNohon }
+        });
+        const prevData = await prevRes.json();
+        if (prevData.records?.length) {
+          const raw = prevData.records[0]['文字列__複数行__0']?.value || '';
+          let prevState = null;
+          try { prevState = JSON.parse(raw); } catch(e) {}
+          if (prevState && (prevState.members || prevState.cars || prevState.routeCars)) {
+            // 当月の1件目を取得して引き継ぎ
+            const curQ = `文字列__1行_ = "${workMonth}" order by レコード番号 asc limit 1`;
+            const curParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: curQ });
+            const curRes = await fetch(`${PROXY()}/k/v1/records.json?${curParams}`, {
+              headers: { 'X-Cybozu-API-Token': tokenNohon }
+            });
+            const curData = await curRes.json();
+            if (curData.records?.length) {
+              const curRecId = curData.records[0]['$id'].value;
+              const newState = {
+                members: prevState.members || [],
+                cars: prevState.cars || {},
+                routeCars: prevState.routeCars || {},
+                workDay: prevState.workDay || null,
+                // 以下はリアルタイム作業データなのでリセット
+                assignments: {},
+                returned: [],
+                paused: {},
+                revisitMap: {},
+                updatedAt: new Date().toISOString()
+              };
+              const updRes = await fetch(`${PROXY()}/k/v1/record.json?subdomain=white`, {
+                method: 'PUT',
+                headers: { 'X-Cybozu-API-Token': tokenNohon, 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                  app: APP_NOHON,
+                  id: curRecId,
+                  record: { '文字列__複数行__0': { value: JSON.stringify(newState, null, 2) } }
+                })
+              });
+              if (updRes.ok) {
+                const memberCount = (newState.members || []).length;
+                const carCount = Object.keys(newState.cars || {}).length;
+                const routeCount = Object.keys(newState.routeCars || {}).length;
+                log(`✅ メンバー${memberCount}名・車編成${carCount}件・ルート設定${routeCount}件を引き継ぎました`, 'success');
+              }
+            }
+          } else {
+            log(`ℹ️ 前月に運用設定がなかったため引き継ぎはスキップ`, 'info');
+          }
+        } else {
+          log(`ℹ️ 前月レコードなし、引き継ぎスキップ`, 'info');
+        }
+      }
+    } catch(e) {
+      log(`⚠️ 引き継ぎ中に警告: ${e.message}（手動でメンバー・車編成を設定してください）`, 'warn');
+    }
+
     if (currentMode === 'add') {
       log(`💡 続けて遅フラグ更新ツールを実行してください`, 'warn');
     }
