@@ -161,7 +161,8 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div class="tabs">
     <div class="tab active" onclick="switchTab('progress')">📊 進捗確認</div>
     <div class="tab" onclick="switchTab('route')">🗺️ ルート別</div>
-    <div class="tab" onclick="switchTab('assign')">👥 グループ割当</div>
+    <div class="tab" onclick="switchTab('setup')">⚙️ 準備設定</div>
+    <div class="tab" onclick="switchTab('assign')">👥 割当</div>
     <div class="tab" onclick="switchTab('revisit')">🔄 不在再訪<span id="revisit-tab-badge" style="display:none;background:#d42020;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:3px;font-weight:900;">0</span></div>
   </div>
 </div>
@@ -226,7 +227,8 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 </div>
 
 <!-- グループ割当スクリーン -->
-<div class="screen" id="screen-assign">
+<!-- 準備設定タブ -->
+<div class="screen" id="screen-setup">
 
   <!-- 車の編成 -->
   <div style="margin-bottom:16px">
@@ -234,6 +236,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
       <div class="section-title" style="margin:0">🚐 車の編成</div>
       <button onclick="loadAssignData()" style="padding:6px 12px;background:var(--ink);color:white;border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;">🔄 更新</button>
     </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">作業者をどの車に乗せるか設定します</div>
     <div style="display:flex;gap:8px;margin-bottom:10px">
       <select id="new-worker-select" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:var(--card);">
         <option value="">-- 作業者を選択 --</option>
@@ -256,15 +259,41 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     </div>
   </div>
 
+  <!-- ルート↔車の紐付け設定 -->
+  <div style="margin-bottom:16px">
+    <div class="section-title">🗺️ ルート設定</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">どの車がどのルートを担当するか設定します</div>
+    <div id="route-car-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--card);border-radius:10px;"></div>
+  </div>
+
+  <div style="background:#f0f7ff;border:1px solid var(--blue);border-radius:10px;padding:12px;font-size:11px;color:var(--blue);line-height:1.6;">
+    💡 「車の編成」「ルート設定」は配本開始前の準備段階で設定する項目です。<br>
+    設定が完了したら「👥 割当」タブで実際のグループ割当を行ってください。
+  </div>
+</div>
+
+<!-- 割当タブ -->
+<div class="screen" id="screen-assign">
+
+  <!-- 車フィルタ (画面上部に大きく) -->
+  <div style="background:var(--card);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+    <div style="font-size:12px;font-weight:900;color:var(--muted);">表示する車:</div>
+    <select id="car-filter" onchange="onCarFilterChange()" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:700;background:#fff;">
+      <option value="">全車</option>
+      <option value="1">🚐 1号車のみ</option>
+      <option value="2">🚐 2号車のみ</option>
+    </select>
+  </div>
+
   <!-- 戻り報告 -->
   <div style="margin-bottom:16px">
     <div class="section-title">戻り待ち作業者</div>
-    <div style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
-      <div>
+    <div id="returned-area" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div data-car="1">
         <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">1号車</div>
         <div id="returned-list-1" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:var(--card);border-radius:8px;border:2px dashed var(--border);"></div>
       </div>
-      <div>
+      <div data-car="2">
         <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">2号車</div>
         <div id="returned-list-2" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:var(--card);border-radius:8px;border:2px dashed var(--border);"></div>
       </div>
@@ -272,7 +301,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   </div>
 
   <!-- 不在再訪バナー（割当タブには件数バッジのみ表示） -->
-  <div id="revisit-banner" style="display:none;background:#fff8e8;border:2px solid var(--amber);border-radius:10px;padding:10px 14px;margin-bottom:16px;cursor:pointer;" onclick="switchTab('revisit', document.querySelectorAll('.tab')[3])">
+  <div id="revisit-banner" style="display:none;background:#fff8e8;border:2px solid var(--amber);border-radius:10px;padding:10px 14px;margin-bottom:16px;cursor:pointer;" onclick="switchTab('revisit', document.querySelectorAll('.tab')[4])">
     <div style="display:flex;align-items:center;gap:8px;">
       <span style="font-size:18px">🔔</span>
       <div style="flex:1;">
@@ -283,22 +312,9 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     </div>
   </div>
 
-  <!-- ルート↔車の紐付け設定 -->
-  <div style="margin-bottom:16px">
-    <div class="section-title">🗺️ ルート設定（どの車がどのルートを担当するか）</div>
-    <div id="route-car-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--card);border-radius:10px;"></div>
-  </div>
-
   <!-- グループ割当 -->
   <div>
-    <div style="display:flex;align-items:center;gap:8px;margin-bottom:8px">
-      <div class="section-title" style="margin:0">グループ割当</div>
-      <select id="car-filter" onchange="localStorage.setItem('fp_car_filter',this.value);renderAssign()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:11px;background:var(--card);">
-        <option value="">全車</option>
-        <option value="1">1号車</option>
-        <option value="2">2号車</option>
-      </select>
-    </div>
+    <div class="section-title">グループ割当</div>
     <div id="assign-list"></div>
   </div>
 </div>
@@ -544,7 +560,7 @@ function renderRoute() {
           <div class="route-stats">
             <span class="route-stat-done">✓${done}</span>
             <span class="route-stat-absent">不在${absent}</span>
-            <span class="route-stat-todo">未${todo}${todoBooks > 0 ? `<span style="font-size:10px;color:var(--blue);font-weight:700;margin-left:3px">📦${todoBooks}冊</span>` : ''}${todoMapBooks > 0 ? `<span style="font-size:10px;color:#c47a0a;font-weight:700;margin-left:3px">🗺️MAP${todoMapBooks}</span>` : ''}</span>
+            <span class="route-stat-todo">未${todo}${todoBooks > 0 ? `<span style="font-size:10px;color:var(--blue);font-weight:700;margin-left:3px">📦${todoBooks}冊</span>` : ''}${todoMapBooks > 0 ? `<span style="font-size:10px;color:#c47a0a;font-weight:700;margin-left:3px">マップ${todoMapBooks}冊</span>` : ''}</span>
           </div>
           <div class="route-toggle" id="toggle-${route}">▼</div>
         </div>
@@ -581,8 +597,32 @@ function switchTab(tab, el) {
   if (target) target.classList.add('active');
   document.getElementById('screen-' + tab).classList.add('active');
   localStorage.setItem('fp_driver_tab', tab);
-  if (tab === 'assign') renderAssign();
+  if (tab === 'assign') { renderAssign(); applyCarFilter(); }
   if (tab === 'revisit') renderRevisit();
+  if (tab === 'setup') { renderCars(); renderRouteCars(); }
+}
+
+// 車フィルタを戻り待ちエリアにも適用
+function onCarFilterChange() {
+  const v = document.getElementById('car-filter').value;
+  localStorage.setItem('fp_car_filter', v);
+  applyCarFilter();
+  renderAssign();
+}
+
+function applyCarFilter() {
+  const v = document.getElementById('car-filter')?.value || '';
+  // 戻り待ちエリアの車別ボックスを表示/非表示
+  document.querySelectorAll('#returned-area > [data-car]').forEach(box => {
+    if (!v || box.dataset.car === v) {
+      box.style.display = '';
+    } else {
+      box.style.display = 'none';
+    }
+  });
+  // グリッドカラム数を調整
+  const area = document.getElementById('returned-area');
+  if (area) area.style.gridTemplateColumns = v ? '1fr' : '1fr 1fr';
 }
 
 // 月選択セレクトを初期化
@@ -1343,7 +1383,7 @@ async function shareLocation() {
 function restoreTab() {
   const saved = localStorage.getItem('fp_driver_tab') || 'assign';
   const tabs = document.querySelectorAll('.tab');
-  const tabNames = ['progress', 'route', 'assign'];
+  const tabNames = ['progress', 'route', 'setup', 'assign', 'revisit'];
   const idx = tabNames.indexOf(saved);
   if (idx >= 0) {
     switchTab(saved, tabs[idx]);
@@ -1354,6 +1394,7 @@ function restoreTab() {
   if (carFilter) {
     carFilter.value = savedCar;
     renderAssign();
+    applyCarFilter();
   }
 }
 
