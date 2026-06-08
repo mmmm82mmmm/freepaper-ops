@@ -1062,6 +1062,19 @@ async function removeFromRevisit(groupCode, recordId) {
 }
 
 async function assignWorker(groupCode, workerName) {
+  // 受付停止中の作業者を割り当てる時は確認ダイアログ
+  if (workerName && (assignState.paused || {})[workerName] === true) {
+    const ok = confirm(
+      `⚠️ ${workerName} さんは「受付停止中」です。\n\n` +
+      `（電話対応・トイレ等で離席中の可能性があります）\n\n` +
+      `それでも「${groupCode}」を割り当てますか？\n\n` +
+      `※ OKを押すと受付停止も解除されます。`
+    );
+    if (!ok) return;
+    // 受付停止解除
+    if (assignState.paused) delete assignState.paused[workerName];
+  }
+
   // 最新の状態を取得して上書き競合を防ぐ
   try {
     const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
@@ -1069,9 +1082,14 @@ async function assignWorker(groupCode, workerName) {
       const raw = recs[0]['文字列__複数行__0']?.value || '';
       try {
         const latest = JSON.parse(raw);
-        // 最新の割当を反映
+        // 最新の割当を反映（ただし受付停止解除は維持）
+        const wasPaused = (assignState.paused || {})[workerName];
         assignState.assignments = latest.assignments || {};
         assignState.returned = latest.returned || [];
+        if (latest.paused) {
+          assignState.paused = { ...latest.paused };
+          if (wasPaused === undefined && workerName) delete assignState.paused[workerName];
+        }
       } catch(e) {}
     }
   } catch(e) { console.error('最新状態取得エラー:', e); }
@@ -1178,10 +1196,13 @@ function renderAssign() {
     const workerBtns = isDone ? '' : filteredWorkers.map(w => {
       const isAssigned = assignedWorker === w;
       const isReturned = (assignState.returned || []).includes(w);
+      const isPaused = (assignState.paused || {})[w] === true;
       const carNum = assignState.cars?.[w] || 0;
       const carTag = carNum ? `<span style="font-size:9px;opacity:0.7"> ${carNum}号車</span>` : '';
+      const pausedTag = isPaused ? '<span style="font-size:9px;background:#d42020;color:#fff;padding:0 4px;border-radius:3px;margin-left:3px;font-weight:900">停止中</span>' : '';
       const cls = isAssigned ? 'assigned' : isReturned ? 'returned' : '';
-      return `<button class="assign-worker-btn ${cls}" onclick="assignWorker('${g}','${w}')">${w}${carTag}</button>`;
+      const pausedStyle = isPaused ? 'opacity:0.5;' : '';
+      return `<button class="assign-worker-btn ${cls}" style="${pausedStyle}" onclick="assignWorker('${g}','${w}')">${w}${carTag}${pausedTag}</button>`;
     }).join('');
 
     // 店舗一覧HTML（コメント付き）
