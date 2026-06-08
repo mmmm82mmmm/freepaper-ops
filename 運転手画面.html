@@ -453,7 +453,9 @@ async function loadData() {
     const query = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
     allRecords = await kintoneGet(query);
 
-    document.getElementById('month-badge').textContent = currentMonth;
+    // 月号セレクトの選択値を更新（textContentは設定しない！optionsが消える）
+    const monthSel = document.getElementById('month-badge');
+    if (monthSel) monthSel.value = currentMonth;
     renderProgress();
     renderRoute();
     await loadAssignData();
@@ -670,9 +672,12 @@ function applyCarFilter() {
 // 月選択セレクトを初期化
 function initMonthSelect() {
   const sel = document.getElementById('month-badge');
+  if (!sel) return;
+  sel.innerHTML = ''; // 念のため初期化
   months.forEach(m => {
     const o = document.createElement('option');
-    o.value = m; o.textContent = m;
+    o.value = m;
+    o.textContent = `📅 ${m}`;
     if (m === currentMonth) o.selected = true;
     sel.appendChild(o);
   });
