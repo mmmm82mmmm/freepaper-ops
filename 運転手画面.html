@@ -1186,6 +1186,7 @@ function renderAssign() {
 
   // グループごとの集計（定休日除外）
   const groupCounts = {}, groupDone = {}, groupNabon = {}, groupClosed = {};
+  const groupMap = {}, groupRack = {}, groupPop = {};
   allRecords.forEach(r => {
     const g = r['文字列__1行__0']?.value;
     if (!g) return;
@@ -1196,6 +1197,9 @@ function renderAssign() {
     }
     groupCounts[g] = (groupCounts[g] || 0) + 1;
     groupNabon[g] = (groupNabon[g] || 0) + (parseInt(r['数値_2']?.value) || 0);
+    groupMap[g]   = (groupMap[g]   || 0) + (parseInt(r['数値_3']?.value) || 0);
+    if ((r['チェックボックス_1']?.value || []).length > 0) groupRack[g] = (groupRack[g] || 0) + 1;
+    if ((r['チェックボックス_3']?.value || []).length > 0) groupPop[g]  = (groupPop[g]  || 0) + 1;
     if (r['ドロップダウン']?.value === '完了' || r['ドロップダウン']?.value === '不在') {
       groupDone[g] = (groupDone[g] || 0) + 1;
     }
@@ -1238,6 +1242,9 @@ function renderAssign() {
     const count = groupCounts[g] || 0;
     const done = groupDone[g] || 0;
     const nabon = groupNabon[g] || 0;
+    const mapTotal = groupMap[g] || 0;
+    const rackTotal = groupRack[g] || 0;
+    const popTotal = groupPop[g] || 0;
     const assignedCar = assignedWorker ? (assignState.cars?.[assignedWorker] || 0) : 0;
     const carLabel = assignedCar ? `🚐${assignedCar} ` : '';
     const route = getGroupRoute(g);
@@ -1299,7 +1306,7 @@ function renderAssign() {
         <div class="assign-group-header" onclick="toggleGroupDetail('detail-${g}')" style="cursor:pointer;">
           <div class="assign-group-code">${g}</div>
           <div style="flex:1">
-            <div class="assign-group-info">${count}件 ${done > 0 ? `完了${done}/` : ''}📦<strong>${nabon}冊</strong>${groupClosed[g] ? ` <span style="color:var(--amber);font-size:10px;">🚫定休${groupClosed[g]}件除外</span>` : ''}</div>
+            <div class="assign-group-info">${count}件 ${done > 0 ? `完了${done}/` : ''}<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">📦${nabon}冊</span>${mapTotal > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🗺️MAP${mapTotal}冊</span>` : ''}${rackTotal > 0 ? `<span style="background:#ffebeb;color:#d42020;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🔧${rackTotal}</span>` : ''}${popTotal > 0 ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🏷️${popTotal}</span>` : ''}${groupClosed[g] ? ` <span style="color:var(--amber);font-size:10px;">🚫定休${groupClosed[g]}件除外</span>` : ''}</div>
             <div style="margin-top:2px">${routeCarLabel}</div>
           </div>
           <div class="assign-group-worker">${assignedWorker ? `${carLabel}👤 ${assignedWorker}` : isDone ? '✅ 完了' : '未割当'}</div>
