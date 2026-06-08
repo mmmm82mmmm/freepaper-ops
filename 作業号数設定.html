@@ -207,25 +207,125 @@ async function saveSetting() {
     if (!confirm('「自動検出」を選択しています。設定解除と同じ動作になりますがよろしいですか？')) return;
   }
   try {
+    // 切替前の作業号を取得（チーム設定のソース）
+    let sourceMonth = autoDetectMonth();
+    try {
+      const cur = await getSettingsRecord();
+      if (cur) {
+        const raw = cur['文字列__複数行__0']?.value || '';
+        const obj = JSON.parse(raw);
+        if (obj.forceWorkMonth) sourceMonth = obj.forceWorkMonth;
+      }
+    } catch(e) {}
+
+    // 切替先が異なる場合、チーム設定をコピー
+    const targetMonth = v || autoDetectMonth();
+    if (targetMonth !== sourceMonth) {
+      log(`🔄 ${sourceMonth} → ${targetMonth} のチーム設定をコピー中...`);
+      await syncTeamConfig(sourceMonth, targetMonth);
+    }
+
     log(`保存中: ${v || '(自動検出)'}`);
     await saveSettings(v);
     log('✅ 保存完了', 'success');
     updateDisplay(v);
-    alert(v ? `作業号を「${v}」に固定しました。\n\n各端末の作業者・運転手画面では、画面を更新（🔄）すると反映されます。` : '設定を解除しました（自動検出に戻りました）');
+    alert(v
+      ? `作業号を「${v}」に固定しました。\nチーム設定（メンバー・車編成・ルート設定）も引き継ぎ済み。\n\n各端末の作業者・運転手画面では、画面更新（🔄）で反映されます。`
+      : '設定を解除しました（自動検出に戻りました）');
   } catch(e) {
     log(`エラー: ${e.message}`, 'error');
     alert('保存に失敗しました: ' + e.message);
   }
 }
 
+// チーム設定（メンバー・車編成・ルート設定）をソース月号→ターゲット月号へコピー
+async function syncTeamConfig(sourceMonth, targetMonth) {
+  // ソースのassignState取得
+  const srcQ = `文字列__1行_ = "${sourceMonth}" order by レコード番号 asc limit 1`;
+  const srcParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: srcQ });
+  const srcRes = await fetch(`${PROXY}/kintone/v1/records.json?${srcParams}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN_NOHON }
+  });
+  const srcData = await srcRes.json();
+  if (!srcData.records?.length) {
+    log(`⚠️ ${sourceMonth} のレコードなし、コピーをスキップ`);
+    return;
+  }
+  let srcState = {};
+  try { srcState = JSON.parse(srcData.records[0]['文字列__複数行__0']?.value || '{}'); } catch(e) {}
+
+  if (!(srcState.members || []).length && !Object.keys(srcState.cars || {}).length) {
+    log(`ℹ️ ${sourceMonth} にチーム設定なし、コピーをスキップ`);
+    return;
+  }
+
+  // ターゲットの先頭レコード取得
+  const tgtQ = `文字列__1行_ = "${targetMonth}" order by レコード番号 asc limit 1`;
+  const tgtParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: tgtQ });
+  const tgtRes = await fetch(`${PROXY}/kintone/v1/records.json?${tgtParams}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN_NOHON }
+  });
+  const tgtData = await tgtRes.json();
+  if (!tgtData.records?.length) {
+    log(`⚠️ ${targetMonth} のレコードなし、コピー不可`);
+    return;
+  }
+  const tgtRecId = tgtData.records[0]['$id'].value;
+  let tgtState = {};
+  try { tgtState = JSON.parse(tgtData.records[0]['文字列__複数行__0']?.value || '{}'); } catch(e) {}
+
+  // チーム設定だけ上書き（作業データは保持）
+  const newTgtState = {
+    ...tgtState,
+    members: srcState.members || [],
+    cars: srcState.cars || {},
+    routeCars: srcState.routeCars || {},
+    workDay: srcState.workDay || tgtState.workDay || null,
+    // 作業データはターゲット側を維持
+    assignments: tgtState.assignments || {},
+    returned: tgtState.returned || [],
+    paused: tgtState.paused || {},
+    revisitMap: tgtState.revisitMap || {},
+    updatedAt: new Date().toISOString()
+  };
+
+  await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
+    method: 'PUT',
+    headers: { 'X-Cybozu-API-Token': TOKEN_NOHON, 'Content-Type': 'application/json' },
+    body: JSON.stringify({
+      app: APP_NOHON, id: tgtRecId,
+      record: { '文字列__複数行__0': { value: JSON.stringify(newTgtState, null, 2) } }
+    })
+  });
+  log(`✅ メンバー${(srcState.members || []).length}名・車編成${Object.keys(srcState.cars || {}).length}件をコピー`, 'success');
+}
+
 async function clearSetting() {
   if (!confirm('自動検出に戻しますか？\n（手動設定は解除されます）')) return;
   try {
+    // 現在の固定月号を取得（ソース）
+    let sourceMonth = null;
+    try {
+      const cur = await getSettingsRecord();
+      if (cur) {
+        const raw = cur['文字列__複数行__0']?.value || '';
+        const obj = JSON.parse(raw);
+        sourceMonth = obj.forceWorkMonth || null;
+      }
+    } catch(e) {}
+
+    // 自動検出値（ターゲット）にコピー
+    const targetMonth = autoDetectMonth();
+    if (sourceMonth && sourceMonth !== targetMonth) {
+      log(`🔄 ${sourceMonth} → ${targetMonth}（自動検出）のチーム設定をコピー中...`);
+      await syncTeamConfig(sourceMonth, targetMonth);
+    }
+
     log('解除中...');
     await saveSettings('');
     log('✅ 解除完了', 'success');
     updateDisplay('');
-    alert('自動検出に戻しました');
+    alert('自動検出に戻しました\nチーム設定も自動検出月号にコピー済み');
   } catch(e) {
     log(`エラー: ${e.message}`, 'error');
     alert('解除に失敗しました: ' + e.message);
