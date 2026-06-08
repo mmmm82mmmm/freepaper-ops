@@ -1032,8 +1032,25 @@ async function loadGroup(groupCode) {
   document.getElementById('loading-screen').style.display = 'block';
   document.getElementById('loading-text').textContent = `グループ ${groupCode.toUpperCase()} を読み込み中...`;
   try {
+    // 1. グループコードに直接マッチするレコードを取得
     const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${groupCode}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+    let groupRecords = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // 2. revisitMap[groupCode] にあるレコードも取得（不在再訪・個別訪問）
+    const state = await getAssignState();
+    const revisitIds = (state.revisitMap?.[groupCode] || []).map(String);
+    if (revisitIds.length > 0) {
+      const idsClause = revisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idsClause})`;
+      const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+      // 重複除外してマージ
+      const existingIds = new Set(groupRecords.map(r => r['$id'].value));
+      revisitRecords.forEach(r => {
+        if (!existingIds.has(r['$id'].value)) groupRecords.push(r);
+      });
+    }
+
+    records = groupRecords;
     doneCount = 0; absentCount = 0; todoCount = 0;
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';
