@@ -1051,26 +1051,51 @@ async function loadGroup(groupCode) {
 // ===== 手動更新 =====
 async function refreshNow() {
   const btns = document.querySelectorAll('[onclick*="refreshNow"]');
-  btns.forEach(b => b.disabled = true);
+  // 元のテキストを保存して⏳に変更
+  const originalTexts = [];
+  btns.forEach(b => {
+    originalTexts.push(b.innerHTML);
+    b.disabled = true;
+    if (b.innerHTML.includes('🔄')) {
+      b.innerHTML = b.innerHTML.replace('🔄', '⏳');
+    }
+  });
+
   try {
-    // 待機画面ならポーリング即実行
+    // 待機画面・作業画面に関わらず、まず割当状態を確認
+    const state = await getAssignState();
+    const myGroup = state.assignments?.[currentWorker];
+
     if (document.getElementById('waiting-screen').style.display !== 'none') {
+      // 待機画面：割当が来てれば作業画面に遷移
       clearTimeout(pollTimer);
       await pollAssignment();
     } else if (document.getElementById('work-screen').style.display !== 'none') {
-      // 作業画面なら現在のグループのレコードを再取得
-      const state = await getAssignState();
-      const myGroup = state.assignments?.[currentWorker];
+      // 作業画面：割当が変わっていれば新しいグループ読込、同じなら現在グループのデータ再取得
       if (myGroup) {
         const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${myGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
         records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
         renderCards();
+      } else {
+        // 割当が外された場合、待機画面へ
+        showWaitingScreen();
       }
     }
+    // 成功表示
+    btns.forEach((b, i) => {
+      b.innerHTML = originalTexts[i].replace('🔄', '✅');
+      setTimeout(() => { b.innerHTML = originalTexts[i]; }, 1200);
+    });
   } catch(e) {
     console.error('更新エラー:', e);
+    btns.forEach((b, i) => {
+      b.innerHTML = originalTexts[i].replace('🔄', '❌');
+      setTimeout(() => { b.innerHTML = originalTexts[i]; }, 1500);
+    });
+    alert('更新に失敗しました: ' + e.message);
+  } finally {
+    btns.forEach(b => b.disabled = false);
   }
-  btns.forEach(b => b.disabled = false);
 }
 
 // ===== 受付停止トグル =====
