@@ -85,10 +85,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <div class="app-header">
   <div style="display:flex;align-items:center;gap:10px;">
     <a href="index.html" style="color:#fff;text-decoration:none;font-size:20px;">←</a>
-    <div>
+    <div style="flex:1;">
       <div class="app-title">👥 メンバー管理・URL配布</div>
       <div class="app-sub">作業者のQRコード・LINEリンクを管理します</div>
     </div>
+    <div id="current-month-display" style="font-size:11px;background:#333;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;">📅 読込中...</div>
   </div>
 </div>
 
@@ -146,10 +147,38 @@ const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
 const TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
 const APP = 269;
 
-// 作業月
-const now = new Date();
-const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-const currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+// 作業月（kintone設定 → 自動検出のフォールバック）
+let currentMonth = '';
+
+async function determineWorkMonth() {
+  // 自動検出: 来月号
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  let detected = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+  // kintone設定から取得して上書き
+  try {
+    const params = new URLSearchParams({
+      subdomain: 'white', app: APP,
+      query: `文字列__1行_ = "__settings__" limit 1`
+    });
+    const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    const data = await res.json();
+    if (res.ok && data.records?.length) {
+      const raw = data.records[0]['文字列__複数行__0']?.value || '';
+      const obj = JSON.parse(raw);
+      if (obj.forceWorkMonth) {
+        detected = obj.forceWorkMonth;
+        console.log(`📌 管理者設定により作業号を ${detected} に固定`);
+      }
+    }
+  } catch(e) { console.warn('設定取得失敗:', e); }
+  currentMonth = detected;
+  // ヘッダー表示更新
+  const display = document.getElementById('current-month-display');
+  if (display) display.textContent = `📅 ${currentMonth}`;
+}
 
 let members = [];
 let assignState = { members: [], cars: {}, assignments: {}, returned: [], dynamicItems: [], updatedAt: '' };
@@ -381,7 +410,10 @@ async function saveItems() {
 }
 
 // 起動時に読み込み
-loadMembers();
+(async () => {
+  await determineWorkMonth();
+  loadMembers();
+})();
 </script>
 </body>
 </html>
