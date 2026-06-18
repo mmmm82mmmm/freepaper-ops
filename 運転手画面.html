@@ -1025,12 +1025,8 @@ function autoAssign(workerName, justAssigned = new Set()) {
 
 // ===== 不在再訪機能 =====
 function renderRevisit() {
-  // 通常ルートで不在になった店舗を取得
-  const absentRecords = allRecords.filter(r => {
-    const status = r['ドロップダウン']?.value;
-    const isOsoi = (r['チェックボックス_0']?.value || []).length > 0;
-    return status === '不在' && !isOsoi;
-  });
+  // 全ての不在店舗を取得（遅フラグの有無問わず）
+  const absentRecords = allRecords.filter(r => r['ドロップダウン']?.value === '不在');
 
   // 既に再訪先に追加されているレコードIDのSet
   const revisitMap = assignState.revisitMap || {};
@@ -1108,8 +1104,9 @@ function renderRevisit() {
       const route = (r['文字列__1行__4']?.value || '').toLowerCase();
       const groupCode = r['文字列__1行__0']?.value || '';
 
-      // 同じルートの遅グループを抽出
+      // 同じルートの遅グループを抽出（自分自身のグループは除外）
       const osoiGroups = allGroups.filter(g => {
+        if (g === groupCode) return false; // 自グループは候補から除外
         const gRoute = (g.replace(/[0-9.]/g, '')).toLowerCase();
         if (gRoute !== route) return false;
         const hasOsoi = allRecords.some(rr =>
@@ -1225,26 +1222,45 @@ function updateSoloPositions() {
   const route = document.getElementById('solo-route').value.toLowerCase();
   const posSel = document.getElementById('solo-position');
 
+  const options = [];
+
+  // 既存の個別訪問グループ（仮想グループ）を抽出: revisitMap にあるが実レコードがないキー
+  const existingVirtual = [];
+  Object.keys(assignState.revisitMap || {}).forEach(k => {
+    if (k.replace(/[0-9.]/g, '').toLowerCase() !== route) return;
+    const realRecs = allRecords.filter(r => r['文字列__1行__0']?.value === k).length;
+    if (realRecs === 0) {
+      // 仮想グループ
+      const count = (assignState.revisitMap[k] || []).length;
+      existingVirtual.push({ code: k, count });
+    }
+  });
+  existingVirtual.sort((a, b) => {
+    const numA = parseFloat(a.code.replace(/[^0-9.]/g, '')) || 0;
+    const numB = parseFloat(b.code.replace(/[^0-9.]/g, '')) || 0;
+    return numA - numB;
+  });
+  existingVirtual.forEach(v => {
+    options.push({ value: `__merge__${v.code}`, label: `🔗 既存の「${v.code}」(${v.count}件) に追加` });
+  });
+
   // そのルートのグループ一覧（数値順）
   const routeGroups = allGroups.filter(g => g.replace(/[0-9.]/g, '').toLowerCase() === route);
-
-  // 各グループの数値を取得してソート
   const groupNums = routeGroups.map(g => ({
     code: g,
     num: parseFloat(g.replace(/[^0-9.]/g, '')) || 0
   })).sort((a, b) => a.num - b.num);
 
-  const options = [];
   // ルート先頭
   if (groupNums.length > 0) {
-    options.push({ value: (groupNums[0].num - 0.5).toFixed(1), label: `${route.toUpperCase()}ルートの先頭（${groupNums[0].code}の前）` });
+    options.push({ value: (groupNums[0].num - 0.5).toFixed(1), label: `🆕 ${route.toUpperCase()}ルートの先頭（${groupNums[0].code}の前）` });
   }
   // 各グループの後
   groupNums.forEach((g, i) => {
     const next = groupNums[i + 1];
     const newNum = next ? ((g.num + next.num) / 2) : (g.num + 0.5);
     const newCode = route.toUpperCase() + (Number.isInteger(newNum) ? newNum.toFixed(1) : newNum.toString());
-    const label = next ? `${g.code} と ${next.code} の間（${newCode}）` : `${g.code} の後（末尾・${newCode}）`;
+    const label = next ? `🆕 ${g.code} と ${next.code} の間（${newCode}）` : `🆕 ${g.code} の後（末尾・${newCode}）`;
     options.push({ value: newNum.toString(), label });
   });
 
@@ -1260,28 +1276,43 @@ function closeSoloModal() {
 async function confirmSoloRevisit() {
   if (!soloModalRecordId) return;
   const route = document.getElementById('solo-route').value.toUpperCase();
-  const posNum = document.getElementById('solo-position').value;
-  if (!route || !posNum) return;
+  const posValue = document.getElementById('solo-position').value;
+  if (!route || !posValue) return;
 
-  // 仮想グループコードを生成
-  let virtualCode = route + posNum;
-  // 重複チェック - 既に同じコードが使われている場合は微調整
-  if (allGroups.includes(virtualCode) || assignState.revisitMap?.[virtualCode]) {
-    let suffix = 1;
-    while (allGroups.includes(virtualCode + 'a'.repeat(suffix)) || assignState.revisitMap?.[virtualCode + 'a'.repeat(suffix)]) {
-      suffix++;
+  let virtualCode;
+  let isNew = false;
+
+  if (posValue.startsWith('__merge__')) {
+    // 既存の個別訪問グループに追加
+    virtualCode = posValue.replace('__merge__', '');
+    if (!assignState.revisitMap) assignState.revisitMap = {};
+    const existing = (assignState.revisitMap[virtualCode] || []).map(String);
+    if (!existing.includes(String(soloModalRecordId))) {
+      existing.push(String(soloModalRecordId));
     }
-    virtualCode = virtualCode + 'a'.repeat(suffix);
+    assignState.revisitMap[virtualCode] = existing;
+  } else {
+    // 新規グループとして作成
+    isNew = true;
+    virtualCode = route + posValue;
+    // 重複チェック - 既に同じコードが使われている場合は微調整
+    if (allGroups.includes(virtualCode) || assignState.revisitMap?.[virtualCode]) {
+      let suffix = 1;
+      while (allGroups.includes(virtualCode + 'a'.repeat(suffix)) || assignState.revisitMap?.[virtualCode + 'a'.repeat(suffix)]) {
+        suffix++;
+      }
+      virtualCode = virtualCode + 'a'.repeat(suffix);
+    }
+    if (!assignState.revisitMap) assignState.revisitMap = {};
+    assignState.revisitMap[virtualCode] = [String(soloModalRecordId)];
   }
 
-  if (!assignState.revisitMap) assignState.revisitMap = {};
-  assignState.revisitMap[virtualCode] = [String(soloModalRecordId)];
   assignState.updatedAt = new Date().toISOString();
 
   await saveAssign();
   closeSoloModal();
-  // allGroupsに仮想グループを追加
-  if (!allGroups.includes(virtualCode)) {
+  // allGroupsに仮想グループを追加（新規の場合）
+  if (isNew && !allGroups.includes(virtualCode)) {
     allGroups.push(virtualCode);
     allGroups.sort((a, b) => {
       const routeA = a.replace(/[0-9.]/g, '');
@@ -1294,7 +1325,12 @@ async function confirmSoloRevisit() {
   }
   renderRevisit();
   renderAssign();
-  alert(`📍 個別訪問グループ「${virtualCode}」を作成しました。\n「👥 割当」タブで作業者に割り当ててください。`);
+  if (isNew) {
+    alert(`📍 個別訪問グループ「${virtualCode}」を作成しました。\n「👥 割当」タブで作業者に割り当ててください。`);
+  } else {
+    const count = assignState.revisitMap[virtualCode].length;
+    alert(`✅ 個別訪問グループ「${virtualCode}」に追加しました（合計${count}件）`);
+  }
 }
 
 async function assignWorker(groupCode, workerName) {
