@@ -308,8 +308,34 @@ async function run() {
   try {
     const BATCH = 100;
 
-    // 削除モードの場合は先に削除
+    // 削除モードの場合は先に削除（その前にチーム設定を退避）
+    let savedTeamState = null;
     if (currentMode === 'reset' && existingIds.length > 0) {
+      // 🔒 削除前にチーム設定を退避（メンバー・車編成・ルート設定）
+      try {
+        const stateQuery = `文字列__1行_ = "${workMonth}" order by レコード番号 asc limit 1`;
+        const stateParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: stateQuery });
+        const stateRes = await fetch(`${PROXY()}/k/v1/records.json?${stateParams}`, {
+          headers: { 'X-Cybozu-API-Token': tokenNohon }
+        });
+        const stateData = await stateRes.json();
+        if (stateData.records?.length) {
+          const raw = stateData.records[0]['文字列__複数行__0']?.value || '';
+          try {
+            const parsed = JSON.parse(raw);
+            if ((parsed.members || []).length > 0 || Object.keys(parsed.cars || {}).length > 0) {
+              savedTeamState = {
+                members: parsed.members || [],
+                cars: parsed.cars || {},
+                routeCars: parsed.routeCars || {},
+                workDay: parsed.workDay || null
+              };
+              log(`💾 削除前にチーム設定を退避: メンバー${(savedTeamState.members || []).length}名・車編成${Object.keys(savedTeamState.cars || {}).length}件`);
+            }
+          } catch(e) {}
+        }
+      } catch(e) { log(`⚠️ チーム設定の退避に失敗: ${e.message}（前月から引き継ぎを試みます）`, 'warn'); }
+
       log(`${existingIds.length}件を削除中...`);
       let deleted = 0;
       const DELETE_BATCH = 100;
@@ -372,76 +398,90 @@ async function run() {
       log(`📈 うち${boostedInRun}件に+3冊ロジック適用（通常納本数+3、上限11冊）`, 'success');
     }
 
-    // ===== 前月の運用設定（メンバー・車編成・ルート紐付け）を引き継ぎ =====
+    // ===== チーム設定の引き継ぎ（メンバー・車編成・ルート紐付け） =====
+    // 優先度: ① 削除前に退避したsavedTeamState（resetモード） > ② 前月の設定（addモード or 退避失敗時）
     try {
-      // 前月号を計算（例: 2026年7月号 → 2026年6月号）
-      const monMatch = workMonth.match(/(\d{4})年(\d{1,2})月号/);
-      let prevMonth = null;
-      if (monMatch) {
-        let y = parseInt(monMatch[1]), m = parseInt(monMatch[2]) - 1;
-        if (m < 1) { m = 12; y--; }
-        prevMonth = `${y}年${m}月号`;
-      }
-      if (prevMonth) {
-        log(`🔄 前月（${prevMonth}）の運用設定を引き継ぎ中...`);
-        // 前月の1件目を取得
-        const prevQ = `文字列__1行_ = "${prevMonth}" order by レコード番号 asc limit 1`;
-        const prevParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: prevQ });
-        const prevRes = await fetch(`${PROXY()}/k/v1/records.json?${prevParams}`, {
-          headers: { 'X-Cybozu-API-Token': tokenNohon }
-        });
-        const prevData = await prevRes.json();
-        if (prevData.records?.length) {
-          const raw = prevData.records[0]['文字列__複数行__0']?.value || '';
-          let prevState = null;
-          try { prevState = JSON.parse(raw); } catch(e) {}
-          if (prevState && (prevState.members || prevState.cars || prevState.routeCars)) {
-            // 当月の1件目を取得して引き継ぎ
-            const curQ = `文字列__1行_ = "${workMonth}" order by レコード番号 asc limit 1`;
-            const curParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: curQ });
-            const curRes = await fetch(`${PROXY()}/k/v1/records.json?${curParams}`, {
-              headers: { 'X-Cybozu-API-Token': tokenNohon }
-            });
-            const curData = await curRes.json();
-            if (curData.records?.length) {
-              const curRecId = curData.records[0]['$id'].value;
-              const newState = {
-                members: prevState.members || [],
-                cars: prevState.cars || {},
-                routeCars: prevState.routeCars || {},
-                workDay: prevState.workDay || null,
-                // 以下はリアルタイム作業データなのでリセット
-                assignments: {},
-                returned: [],
-                paused: {},
-                revisitMap: {},
-                updatedAt: new Date().toISOString()
-              };
-              const updRes = await fetch(`${PROXY()}/k/v1/record.json?subdomain=white`, {
-                method: 'PUT',
-                headers: { 'X-Cybozu-API-Token': tokenNohon, 'Content-Type': 'application/json' },
-                body: JSON.stringify({
-                  app: APP_NOHON,
-                  id: curRecId,
-                  record: { '文字列__複数行__0': { value: JSON.stringify(newState, null, 2) } }
-                })
-              });
-              if (updRes.ok) {
-                const memberCount = (newState.members || []).length;
-                const carCount = Object.keys(newState.cars || {}).length;
-                const routeCount = Object.keys(newState.routeCars || {}).length;
-                log(`✅ メンバー${memberCount}名・車編成${carCount}件・ルート設定${routeCount}件を引き継ぎました`, 'success');
+      // 当月号の先頭レコードを取得
+      const curQ = `文字列__1行_ = "${workMonth}" order by レコード番号 asc limit 1`;
+      const curParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: curQ });
+      const curRes = await fetch(`${PROXY()}/k/v1/records.json?${curParams}`, {
+        headers: { 'X-Cybozu-API-Token': tokenNohon }
+      });
+      const curData = await curRes.json();
+
+      // 適用するチーム設定を決定
+      let teamState = null;
+      let source = '';
+
+      if (savedTeamState) {
+        teamState = savedTeamState;
+        source = `削除前の${workMonth}のチーム設定`;
+      } else {
+        // 前月から引き継ぎ
+        const monMatch = workMonth.match(/(\d{4})年(\d{1,2})月号/);
+        let prevMonth = null;
+        if (monMatch) {
+          let y = parseInt(monMatch[1]), m = parseInt(monMatch[2]) - 1;
+          if (m < 1) { m = 12; y--; }
+          prevMonth = `${y}年${m}月号`;
+        }
+        if (prevMonth) {
+          const prevQ = `文字列__1行_ = "${prevMonth}" order by レコード番号 asc limit 1`;
+          const prevParams = new URLSearchParams({ subdomain: 'white', app: APP_NOHON, query: prevQ });
+          const prevRes = await fetch(`${PROXY()}/k/v1/records.json?${prevParams}`, {
+            headers: { 'X-Cybozu-API-Token': tokenNohon }
+          });
+          const prevData = await prevRes.json();
+          if (prevData.records?.length) {
+            const raw = prevData.records[0]['文字列__複数行__0']?.value || '';
+            try {
+              const prevState = JSON.parse(raw);
+              if ((prevState.members || []).length > 0 || Object.keys(prevState.cars || {}).length > 0) {
+                teamState = {
+                  members: prevState.members || [],
+                  cars: prevState.cars || {},
+                  routeCars: prevState.routeCars || {},
+                  workDay: prevState.workDay || null
+                };
+                source = `前月（${prevMonth}）のチーム設定`;
               }
-            }
-          } else {
-            log(`ℹ️ 前月に運用設定がなかったため引き継ぎはスキップ`, 'info');
+            } catch(e) {}
           }
-        } else {
-          log(`ℹ️ 前月レコードなし、引き継ぎスキップ`, 'info');
         }
       }
+
+      // 反映
+      if (teamState && curData.records?.length) {
+        const curRecId = curData.records[0]['$id'].value;
+        const newState = {
+          members: teamState.members || [],
+          cars: teamState.cars || {},
+          routeCars: teamState.routeCars || {},
+          workDay: teamState.workDay || null,
+          // リアルタイム作業データはリセット
+          assignments: {},
+          returned: [],
+          paused: {},
+          revisitMap: {},
+          updatedAt: new Date().toISOString()
+        };
+        const updRes = await fetch(`${PROXY()}/k/v1/record.json?subdomain=white`, {
+          method: 'PUT',
+          headers: { 'X-Cybozu-API-Token': tokenNohon, 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            app: APP_NOHON,
+            id: curRecId,
+            record: { '文字列__複数行__0': { value: JSON.stringify(newState, null, 2) } }
+          })
+        });
+        if (updRes.ok) {
+          log(`✅ ${source} を反映: メンバー${(newState.members).length}名・車編成${Object.keys(newState.cars).length}件・ルート設定${Object.keys(newState.routeCars).length}件`, 'success');
+        }
+      } else if (!teamState) {
+        log(`ℹ️ チーム設定の引き継ぎなし（手動でメンバー・車編成を設定してください）`, 'info');
+      }
     } catch(e) {
-      log(`⚠️ 引き継ぎ中に警告: ${e.message}（手動でメンバー・車編成を設定してください）`, 'warn');
+      log(`⚠️ チーム設定の反映で警告: ${e.message}（手動でメンバー・車編成を設定してください）`, 'warn');
     }
 
     if (currentMode === 'add') {
