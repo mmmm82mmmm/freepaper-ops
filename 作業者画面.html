@@ -502,15 +502,36 @@ async function startWorkDirect() {
     // 割当グループ・配布物設定を取得
     const state = await getAssignState();
     DYNAMIC_ITEMS = state.dynamicItems || [];
-    const assignedGroup = state.assignments?.[currentWorker];
+    const assignedRaw = state.assignments?.[currentWorker];
+    const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
     let query;
-    if (assignedGroup) {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    if (assignedGroups.length > 0) {
+      const groupClause = assignedGroups.map(g => `"${g}"`).join(',');
+      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     } else {
       // グループ未割当の場合は担当者名で絞り込み
       query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     }
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // revisitMap (再訪・個別訪問・統合) のレコードも追加
+    if (assignedGroups.length > 0) {
+      const revisitIds = [];
+      for (const g of assignedGroups) {
+        const ids = (state.revisitMap?.[g] || []).map(String);
+        revisitIds.push(...ids);
+      }
+      const uniqueRevisitIds = [...new Set(revisitIds)];
+      if (uniqueRevisitIds.length > 0) {
+        const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
+        const revisitQuery = `$id in (${idsClause})`;
+        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+        const existingIds = new Set(records.map(r => r['$id'].value));
+        revisitRecords.forEach(r => {
+          if (!existingIds.has(r['$id'].value)) records.push(r);
+        });
+      }
+    }
     if (records.length === 0) {
       // データがなければ月選択画面を表示
       document.getElementById('loading-screen').style.display = 'none';
@@ -548,14 +569,35 @@ async function startWork() {
 
     // 割当グループを取得
     const state = await getAssignState();
-    const assignedGroup = state.assignments?.[currentWorker];
+    const assignedRaw = state.assignments?.[currentWorker];
+    const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
     let query;
-    if (assignedGroup) {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    if (assignedGroups.length > 0) {
+      const groupClause = assignedGroups.map(g => `"${g}"`).join(',');
+      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     } else {
       query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     }
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // revisitMap (再訪・個別訪問・統合) のレコードも追加
+    if (assignedGroups.length > 0) {
+      const revisitIds = [];
+      for (const g of assignedGroups) {
+        const ids = (state.revisitMap?.[g] || []).map(String);
+        revisitIds.push(...ids);
+      }
+      const uniqueRevisitIds = [...new Set(revisitIds)];
+      if (uniqueRevisitIds.length > 0) {
+        const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
+        const revisitQuery = `$id in (${idsClause})`;
+        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+        const existingIds = new Set(records.map(r => r['$id'].value));
+        revisitRecords.forEach(r => {
+          if (!existingIds.has(r['$id'].value)) records.push(r);
+        });
+      }
+    }
 
     if (records.length === 0) {
       throw new Error(`${currentMonth}の担当レコードが見つかりませんでした。\n運転手にグループの割当を依頼してください。`);
@@ -1031,31 +1073,41 @@ async function pollAssignment() {
       }
     }
 
-    const myGroup = state.assignments[currentWorker];
-    if (myGroup) {
+    const myGroupRaw = state.assignments[currentWorker];
+    const myGroups = Array.isArray(myGroupRaw) ? myGroupRaw : (myGroupRaw ? [myGroupRaw] : []);
+    if (myGroups.length > 0) {
       clearTimeout(pollTimer);
-      document.getElementById('waiting-group').textContent = myGroup.toUpperCase();
+      document.getElementById('waiting-group').textContent = myGroups.join(' + ').toUpperCase();
       document.getElementById('waiting-screen').style.display = 'none';
-      await loadGroup(myGroup);
+      await loadGroup(myGroups);
       return;
     }
   } catch(e) { console.error(e); }
   pollTimer = setTimeout(pollAssignment, 10000);
 }
 
-async function loadGroup(groupCode) {
+async function loadGroup(groupCodes) {
+  // 配列でも単一でも受付（後方互換）
+  const groups = Array.isArray(groupCodes) ? groupCodes : [groupCodes];
+  const groupLabel = groups.join(' + ').toUpperCase();
   document.getElementById('loading-screen').style.display = 'block';
-  document.getElementById('loading-text').textContent = `グループ ${groupCode.toUpperCase()} を読み込み中...`;
+  document.getElementById('loading-text').textContent = `グループ ${groupLabel} を読み込み中...`;
   try {
-    // 1. グループコードに直接マッチするレコードを取得
-    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${groupCode}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    // 1. グループコードに直接マッチするレコードを取得（複数グループ対応）
+    const groupClause = groups.map(g => `"${g}"`).join(',');
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     let groupRecords = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
-    // 2. revisitMap[groupCode] にあるレコードも取得（不在再訪・個別訪問）
+    // 2. revisitMap にあるレコードも取得（不在再訪・個別訪問・統合）
     const state = await getAssignState();
-    const revisitIds = (state.revisitMap?.[groupCode] || []).map(String);
-    if (revisitIds.length > 0) {
-      const idsClause = revisitIds.map(id => `"${id}"`).join(',');
+    const revisitIds = [];
+    for (const g of groups) {
+      const ids = (state.revisitMap?.[g] || []).map(String);
+      revisitIds.push(...ids);
+    }
+    const uniqueRevisitIds = [...new Set(revisitIds)];
+    if (uniqueRevisitIds.length > 0) {
+      const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
       const revisitQuery = `$id in (${idsClause})`;
       const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
       // 重複除外してマージ
@@ -1096,7 +1148,8 @@ async function refreshNow() {
   try {
     // 待機画面・作業画面に関わらず、まず割当状態を確認
     const state = await getAssignState();
-    const myGroup = state.assignments?.[currentWorker];
+    const myGroupRaw = state.assignments?.[currentWorker];
+    const myGroups = Array.isArray(myGroupRaw) ? myGroupRaw : (myGroupRaw ? [myGroupRaw] : []);
 
     if (document.getElementById('waiting-screen').style.display !== 'none') {
       // 待機画面：割当が来てれば作業画面に遷移
@@ -1104,10 +1157,8 @@ async function refreshNow() {
       await pollAssignment();
     } else if (document.getElementById('work-screen').style.display !== 'none') {
       // 作業画面：割当が変わっていれば新しいグループ読込、同じなら現在グループのデータ再取得
-      if (myGroup) {
-        const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${myGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-        records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
-        renderCards();
+      if (myGroups.length > 0) {
+        await loadGroup(myGroups);
       } else {
         // 割当が外された場合、待機画面へ
         showWaitingScreen();

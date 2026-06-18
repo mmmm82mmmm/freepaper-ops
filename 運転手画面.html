@@ -394,6 +394,41 @@ const DOMAIN = 'white';
 
 const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d42020','#5c4a1a'];
 
+// ===== 複数グループ担当のためのヘルパー関数 =====
+// assignments[worker] は文字列（単一）または配列（複数）。両方をサポート。
+function getWorkerGroups(worker) {
+  const v = (assignState.assignments || {})[worker];
+  if (!v) return [];
+  return Array.isArray(v) ? [...v] : [v];
+}
+
+function getGroupWorker(group) {
+  for (const [w, val] of Object.entries(assignState.assignments || {})) {
+    const groups = Array.isArray(val) ? val : [val];
+    if (groups.includes(group)) return w;
+  }
+  return '';
+}
+
+function getAllAssignedGroups() {
+  const all = [];
+  Object.values(assignState.assignments || {}).forEach(v => {
+    if (Array.isArray(v)) all.push(...v);
+    else if (v) all.push(v);
+  });
+  return all;
+}
+
+function setWorkerGroups(worker, groups) {
+  if (!groups || groups.length === 0) {
+    delete assignState.assignments[worker];
+  } else if (groups.length === 1) {
+    assignState.assignments[worker] = groups[0];
+  } else {
+    assignState.assignments[worker] = groups;
+  }
+}
+
 let allRecords = [];
 let currentMonth = '';
 let assignState = { cars: {}, routeCars: {}, assignments: {}, returned: [], revisitMap: {}, updatedAt: '' };
@@ -960,7 +995,7 @@ function autoAssign(workerName, justAssigned = new Set()) {
 
   // 既に割当済みのグループ（今回のループで割当てられたものも含む）
   const assignedGroups = new Set([
-    ...Object.values(assignState.assignments || {}),
+    ...getAllAssignedGroups(),
     ...justAssigned
   ]);
 
@@ -1263,8 +1298,22 @@ async function confirmSoloRevisit() {
 }
 
 async function assignWorker(groupCode, workerName) {
+  // 「✕ 解除」モード: workerName=''
+  if (!workerName) {
+    const w = getGroupWorker(groupCode);
+    if (w) {
+      const newGroups = getWorkerGroups(w).filter(g => g !== groupCode);
+      setWorkerGroups(w, newGroups);
+      assignState.updatedAt = new Date().toISOString();
+      await saveAssign();
+      renderCars();
+      renderAssign();
+    }
+    return;
+  }
+
   // 受付停止中の作業者を割り当てる時は確認ダイアログ
-  if (workerName && (assignState.paused || {})[workerName] === true) {
+  if ((assignState.paused || {})[workerName] === true) {
     const ok = confirm(
       `⚠️ ${workerName} さんは「受付停止中」です。\n\n` +
       `（電話対応・トイレ等で離席中の可能性があります）\n\n` +
@@ -1272,7 +1321,6 @@ async function assignWorker(groupCode, workerName) {
       `※ OKを押すと受付停止も解除されます。`
     );
     if (!ok) return;
-    // 受付停止解除
     if (assignState.paused) delete assignState.paused[workerName];
   }
 
@@ -1283,7 +1331,6 @@ async function assignWorker(groupCode, workerName) {
       const raw = recs[0]['文字列__複数行__0']?.value || '';
       try {
         const latest = JSON.parse(raw);
-        // 最新の割当を反映（ただし受付停止解除は維持）
         const wasPaused = (assignState.paused || {})[workerName];
         assignState.assignments = latest.assignments || {};
         assignState.returned = latest.returned || [];
@@ -1295,17 +1342,45 @@ async function assignWorker(groupCode, workerName) {
     }
   } catch(e) { console.error('最新状態取得エラー:', e); }
 
-  // 既存の割当を外す（同じグループに別作業者が既に割り当てられていれば外す）
+  // 既に他の作業者がこのグループに割当てられている場合、外す
   Object.keys(assignState.assignments).forEach(w => {
-    if (assignState.assignments[w] === groupCode) delete assignState.assignments[w];
+    if (w === workerName) return;
+    const wGroups = getWorkerGroups(w);
+    if (wGroups.includes(groupCode)) {
+      setWorkerGroups(w, wGroups.filter(g => g !== groupCode));
+    }
   });
-  // 同じ作業者の別の割当も外す
-  if (workerName) {
-    delete assignState.assignments[workerName];
-    assignState.assignments[workerName] = groupCode;
-    // returnedから外す
-    assignState.returned = (assignState.returned || []).filter(w => w !== workerName);
+
+  // 現在の対象作業者のグループ一覧
+  const currentGroups = getWorkerGroups(workerName);
+  const otherGroups = currentGroups.filter(g => g !== groupCode);
+
+  // 既にこのグループだけ担当中の場合は何もしない
+  if (currentGroups.length === 1 && currentGroups[0] === groupCode) {
+    return;
   }
+
+  // 他のグループも担当している場合は確認ダイアログ
+  let finalGroups;
+  if (otherGroups.length > 0) {
+    const choice = confirm(
+      `${workerName} さんは既に「${otherGroups.join('、')}」を担当中です。\n\n` +
+      `[OK]   →「${groupCode}」も追加で担当（合計${otherGroups.length + 1}グループ）\n` +
+      `[キャンセル] →「${groupCode}」のみ担当（既存は解除）`
+    );
+    if (choice) {
+      finalGroups = [...otherGroups, groupCode];
+    } else {
+      finalGroups = [groupCode];
+    }
+  } else {
+    finalGroups = [groupCode];
+  }
+
+  setWorkerGroups(workerName, finalGroups);
+  // returnedから外す
+  assignState.returned = (assignState.returned || []).filter(w => w !== workerName);
+
   assignState.updatedAt = new Date().toISOString();
   await saveAssign();
   renderCars();
@@ -1388,7 +1463,7 @@ function renderAssign() {
   });
 
   function renderGroup(g, isDone) {
-    const assignedWorker = Object.entries(assignState.assignments || {}).find(([w, grp]) => grp === g)?.[0] || '';
+    const assignedWorker = getGroupWorker(g);
     // 仮想グループ判定（実レコードにないが revisitMap にある）
     const isVirtual = !allRecords.some(r => r['文字列__1行__0']?.value === g) && (assignState.revisitMap || {})[g];
     const virtualBadge = isVirtual ? '<span style="background:#7a3dc4;color:#fff;font-size:9px;padding:1px 6px;border-radius:4px;margin-left:6px;font-weight:900;">📍個別</span>' : '';
@@ -1424,9 +1499,12 @@ function renderAssign() {
       const carNum = assignState.cars?.[w] || 0;
       const carTag = carNum ? `<span style="font-size:9px;opacity:0.7"> ${carNum}号車</span>` : '';
       const pausedTag = isPaused ? '<span style="font-size:9px;background:#d42020;color:#fff;padding:0 4px;border-radius:3px;margin-left:3px;font-weight:900">停止中</span>' : '';
+      // 複数グループ担当中の作業者にバッジ表示
+      const wGroups = getWorkerGroups(w);
+      const multiTag = wGroups.length > 1 ? `<span style="font-size:9px;background:#7a3dc4;color:#fff;padding:0 4px;border-radius:3px;margin-left:3px;font-weight:900;">🔗${wGroups.length}</span>` : '';
       const cls = isAssigned ? 'assigned' : isReturned ? 'returned' : '';
       const pausedStyle = isPaused ? 'opacity:0.5;' : '';
-      return `<button class="assign-worker-btn ${cls}" style="${pausedStyle}" onclick="assignWorker('${g}','${w}')">${w}${carTag}${pausedTag}</button>`;
+      return `<button class="assign-worker-btn ${cls}" style="${pausedStyle}" onclick="assignWorker('${g}','${w}')">${w}${carTag}${multiTag}${pausedTag}</button>`;
     }).join('');
 
     // 店舗一覧HTML（コメント付き）
