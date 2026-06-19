@@ -800,14 +800,13 @@ function openCard(recId) {
   pill.textContent = '● 入力中';
 }
 
+// 失敗したリクエストの再試行用ストア
+const pendingUpdates = new Map();
+
 async function markDone(recId) {
   const nabon = document.getElementById('nabon-' + recId)?.value || '';
   const henkyaku = document.getElementById('henkyaku-' + recId)?.value || '';
   const memo = document.getElementById('memo-' + recId)?.value || '';
-  const btn = document.getElementById('btn-done-' + recId);
-
-  btn.disabled = true;
-  btn.innerHTML = '<span class="sending"></span>送信中...';
 
   // 動的項目の値を収集
   const dynamicFields = {};
@@ -816,44 +815,71 @@ async function markDone(recId) {
     if (selected) dynamicFields[item.key] = { value: selected.textContent.trim() };
   });
 
+  const updateData = {
+    'ドロップダウン': { value: '完了' },
+    '文字列__1行__10': { value: currentWorker },
+    '数値': { value: nabon },
+    '数値_0': { value: henkyaku },
+    '文字列__複数行_': { value: memo },
+    ...dynamicFields
+  };
+
+  // === ① 即座にUI更新（楽観的UI） ===
+  const card = document.getElementById('card-' + recId);
+  card.className = 'shop-card status-done';
+  document.getElementById('pill-' + recId).className = 'status-pill pill-done';
+  document.getElementById('pill-' + recId).textContent = '✓ 完了';
+  card.querySelector('.input-area').outerHTML = `
+    <div class="done-overlay" id="overlay-${recId}">
+      <div class="done-icon" id="overlay-icon-${recId}">⏳</div>
+      <div class="done-info">
+        <div class="done-label" id="overlay-label-${recId}">完了（送信中...）</div>
+        <div class="done-vals">納本 ${nabon}冊 ／ 返却 ${henkyaku}冊</div>
+      </div>
+      <button onclick="reopenCard('${recId}')" style="font-size:11px;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:white;cursor:pointer;color:#888">修正</button>
+    </div>`;
+  card.querySelectorAll('.dynamic-section,.memo-area').forEach(el => el.style.display = 'none');
+
+  // ローカルレコード即時更新
+  const rec = records.find(r => r['$id'].value == recId);
+  if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; rec['数値_0'] = { value: henkyaku }; }
+
+  doneCount++; todoCount = Math.max(0, todoCount - 1);
+  updateProgress();
+
+  // === ② バックグラウンドで送信 ===
+  pendingUpdates.set(recId, updateData);
+  sendPendingUpdate(recId, '完了');
+}
+
+async function sendPendingUpdate(recId, label) {
+  const updateData = pendingUpdates.get(recId);
+  if (!updateData) return;
+  const iconEl = document.getElementById('overlay-icon-' + recId);
+  const labelEl = document.getElementById('overlay-label-' + recId);
   try {
-    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-      'ドロップダウン': { value: '完了' },
-      '文字列__1行__10': { value: currentWorker },
-      '数値': { value: nabon },
-      '数値_0': { value: henkyaku },
-      '文字列__複数行_': { value: memo },
-      ...dynamicFields
-    });
-
-    // UI更新
-    const card = document.getElementById('card-' + recId);
-    card.className = 'shop-card status-done';
-    document.getElementById('pill-' + recId).className = 'status-pill pill-done';
-    document.getElementById('pill-' + recId).textContent = '✓ 完了';
-    card.querySelector('.input-area').outerHTML = `
-      <div class="done-overlay">
-        <div class="done-icon">✅</div>
-        <div class="done-info">
-          <div class="done-label">作業完了（送信済み）</div>
-          <div class="done-vals">納本 ${nabon}冊 ／ 返却 ${henkyaku}冊</div>
-        </div>
-        <button onclick="reopenCard('${recId}')" style="font-size:11px;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:white;cursor:pointer;color:#888">修正</button>
-      </div>`;
-    card.querySelectorAll('.dynamic-section,.memo-area').forEach(el => el.style.display = 'none');
-
-    // レコードのステータスを更新
-    const rec = records.find(r => r['$id'].value == recId);
-    if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; rec['数値_0'] = { value: henkyaku }; }
-
-    doneCount++; todoCount = Math.max(0, todoCount - 1);
-    updateProgress();
-
+    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, updateData);
+    pendingUpdates.delete(recId);
+    if (iconEl) iconEl.textContent = (label === '不在' ? '❌' : '✅');
+    if (labelEl) {
+      labelEl.style.color = '';
+      labelEl.textContent = (label === '不在' ? '不在（送信済み）' : '作業完了（送信済み）');
+    }
   } catch(e) {
-    btn.disabled = false;
-    btn.textContent = '✓ 作業完了を送信';
-    alert(`送信エラー: ${e.message}`);
+    if (iconEl) iconEl.textContent = '⚠️';
+    if (labelEl) {
+      labelEl.style.color = '#d42020';
+      labelEl.innerHTML = `送信失敗 <button onclick="retryUpdate('${recId}','${label}')" style="font-size:11px;padding:4px 8px;background:#d42020;color:#fff;border:none;border-radius:4px;margin-left:6px;cursor:pointer;">再送信</button>`;
+    }
   }
+}
+
+function retryUpdate(recId, label) {
+  const iconEl = document.getElementById('overlay-icon-' + recId);
+  const labelEl = document.getElementById('overlay-label-' + recId);
+  if (iconEl) iconEl.textContent = '⏳';
+  if (labelEl) { labelEl.style.color = ''; labelEl.textContent = (label === '不在' ? '不在（再送信中...）' : '完了（再送信中...）'); }
+  sendPendingUpdate(recId, label);
 }
 
 async function markAbsent(recId) {
@@ -862,52 +888,66 @@ async function markAbsent(recId) {
 
   // 既存の不在時間を確認
   const rec = records.find(r => r['$id'].value == recId);
-  const t1 = rec?.['不在時間1']?.value || '';
-  const t2 = rec?.['不在時間2']?.value || '';
+  const t1 = rec?.['文字列__1行__11']?.value || '';
+  const t2 = rec?.['文字列__1行__12']?.value || '';
   let newT1 = t1, newT2 = t2, newT3 = '';
   if (!t1) newT1 = t;
   else if (!t2) newT2 = t;
   else newT3 = t;
 
+  const updateData = {
+    'ドロップダウン': { value: '不在' },
+    '文字列__1行__10': { value: currentWorker },
+    '文字列__1行__11': { value: newT1 },
+    '文字列__1行__12': { value: newT2 },
+    '文字列__1行__13': { value: newT3 },
+  };
+
+  // === ① 即座にUI更新（楽観的UI） ===
+  const card = document.getElementById('card-' + recId);
+  card.className = 'shop-card status-absent';
+  document.getElementById('pill-' + recId).className = 'status-pill pill-absent';
+  document.getElementById('pill-' + recId).textContent = '不在';
+  ['input-area-', 'tap-hint-', 'memo-area-'].forEach(prefix => {
+    const el = document.getElementById(prefix + recId);
+    if (el) el.style.display = 'none';
+  });
+  const div = document.createElement('div');
+  let absentText = '';
+  if (newT1) absentText += `① ${newT1} `;
+  if (newT2) absentText += `② ${newT2} `;
+  if (newT3) absentText += `③ ${newT3}`;
+  div.innerHTML = `
+    <div class="absent-overlay" id="overlay-${recId}">
+      <div class="absent-label" id="overlay-label-${recId}"><span id="overlay-icon-${recId}">⏳</span> 不在記録（送信中...）</div>
+      <div class="absent-times-display">${absentText}</div>
+    </div>
+    <div style="padding:0 14px 14px">
+      <button onclick="reopenCard('${recId}')" style="width:100%;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
+    </div>`;
+  card.appendChild(div);
+
+  if (rec) { rec['ドロップダウン'] = { value: '不在' }; rec['文字列__1行__11'] = { value: newT1 }; rec['文字列__1行__12'] = { value: newT2 }; rec['文字列__1行__13'] = { value: newT3 }; }
+  absentCount++; todoCount = Math.max(0, todoCount - 1);
+  updateProgress();
+
+  // === ② バックグラウンドで送信 ===
+  pendingUpdates.set(recId, updateData);
   try {
-    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-      'ドロップダウン': { value: '不在' },
-      '文字列__1行__10': { value: currentWorker },
-      '文字列__1行__11': { value: newT1 },
-      '文字列__1行__12': { value: newT2 },
-      '文字列__1行__13': { value: newT3 },
-    });
-
-    // UI更新
-    const card = document.getElementById('card-' + recId);
-    card.className = 'shop-card status-absent';
-    document.getElementById('pill-' + recId).className = 'status-pill pill-absent';
-    document.getElementById('pill-' + recId).textContent = '不在';
-    ['input-area-', 'tap-hint-', 'memo-area-'].forEach(prefix => {
-      const el = document.getElementById(prefix + recId);
-      if (el) el.style.display = 'none';
-    });
-    const div = document.createElement('div');
-    let absentText = '';
-    if (newT1) absentText += `① ${newT1} `;
-    if (newT2) absentText += `② ${newT2} `;
-    if (newT3) absentText += `③ ${newT3}`;
-    div.innerHTML = `
-      <div class="absent-overlay">
-        <div class="absent-label">🚫 不在記録（送信済み）</div>
-        <div class="absent-times-display">${absentText}</div>
-      </div>
-      <div style="padding:0 14px 14px">
-        <button onclick="reopenCard('${recId}')" style="width:100%;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
-      </div>`;
-    card.appendChild(div);
-
-    if (rec) { rec['ドロップダウン'] = { value: '不在' }; rec['文字列__1行__11'] = { value: newT1 }; rec['文字列__1行__12'] = { value: newT2 }; rec['文字列__1行__13'] = { value: newT3 }; }
-    absentCount++; todoCount = Math.max(0, todoCount - 1);
-    updateProgress();
-
+    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, updateData);
+    pendingUpdates.delete(recId);
+    const ic = document.getElementById('overlay-icon-' + recId);
+    const lbl = document.getElementById('overlay-label-' + recId);
+    if (ic) ic.textContent = '🚫';
+    if (lbl) lbl.innerHTML = `<span id="overlay-icon-${recId}">🚫</span> 不在記録（送信済み）`;
   } catch(e) {
-    alert(`送信エラー: ${e.message}`);
+    const ic = document.getElementById('overlay-icon-' + recId);
+    const lbl = document.getElementById('overlay-label-' + recId);
+    if (ic) ic.textContent = '⚠️';
+    if (lbl) {
+      lbl.style.color = '#d42020';
+      lbl.innerHTML = `<span>⚠️</span> 送信失敗 <button onclick="retryUpdate('${recId}','不在')" style="font-size:11px;padding:4px 8px;background:#d42020;color:#fff;border:none;border-radius:4px;margin-left:6px;cursor:pointer;">再送信</button>`;
+    }
   }
 }
 
@@ -1083,7 +1123,7 @@ async function pollAssignment() {
       return;
     }
   } catch(e) { console.error(e); }
-  pollTimer = setTimeout(pollAssignment, 10000);
+  pollTimer = setTimeout(pollAssignment, 5000);
 }
 
 async function loadGroup(groupCodes) {
@@ -1128,7 +1168,7 @@ async function loadGroup(groupCodes) {
     document.getElementById('loading-screen').style.display = 'none';
     alert('読み込みエラー: ' + e.message);
     document.getElementById('waiting-screen').style.display = 'block';
-    pollTimer = setTimeout(pollAssignment, 10000);
+    pollTimer = setTimeout(pollAssignment, 5000);
   }
 }
 

@@ -1717,8 +1717,40 @@ function restoreTab() {
   setTimeout(restoreTab, 500);
 })();
 
-// 30秒ごとに自動更新
-setInterval(loadData, 60000);
+// ===== ポーリング =====
+// 軽量ポーリング: assignStateのみ取得（1レコード・即応性重視）
+async function quickPollAssignState() {
+  try {
+    const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
+    if (recs.length) {
+      const raw = recs[0]['文字列__複数行__0']?.value || '';
+      try {
+        const newState = JSON.parse(raw);
+        // assignState差分検知して更新
+        const oldStateStr = JSON.stringify({
+          a: assignState.assignments, r: assignState.returned, p: assignState.paused
+        });
+        const newStateStr = JSON.stringify({
+          a: newState.assignments, r: newState.returned, p: newState.paused
+        });
+        if (oldStateStr !== newStateStr) {
+          assignState.assignments = newState.assignments || {};
+          assignState.returned = newState.returned || [];
+          assignState.paused = newState.paused || {};
+          assignState.revisitMap = newState.revisitMap || {};
+          // assign系・cars系UIだけ更新
+          renderAssign();
+          renderCars();
+        }
+      } catch(e) {}
+    }
+  } catch(e) { console.warn('軽量ポーリングエラー:', e); }
+}
+
+// 重量ポーリング: 全レコード取得（進捗・ルート別タブ用）
+setInterval(loadData, 30000);
+// 軽量ポーリング: 10秒ごとにassignState更新（割当の即応性確保）
+setInterval(quickPollAssignState, 10000);
 </script>
 </body>
 </html>
