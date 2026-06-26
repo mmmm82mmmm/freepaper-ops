@@ -189,11 +189,12 @@ async function kintoneGet(query) {
   let offset = 0;
   const limit = 500;
   while (true) {
-    const params = new URLSearchParams({
-      subdomain: 'white', app: APP_NOHON,
-      query: `${query} limit ${limit} offset ${offset}`
-    });
-    const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+    const fullQuery = `${query} limit ${limit} offset ${offset}`;
+    // URLSearchParams.toString()は空白を「+」エンコードしkintoneが拒否(CB_IL02)するため
+    // encodeURIComponentで個別エンコード（空白→%20）
+    const paramStr = `subdomain=white&app=${APP_NOHON}&query=${encodeURIComponent(fullQuery)}`;
+    log(`📡 取得中 (offset=${offset})...`);
+    const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
       headers: { 'X-Cybozu-API-Token': document.getElementById('token').value }
     });
     const data = await res.json();
