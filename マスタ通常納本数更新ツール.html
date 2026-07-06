@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>📊 マスタ通常納本数更新ツール</title>
+<script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888; --border:#e0dbd0; --green:#1a8a4a; --amber:#c47a0a; --blue:#1a5cd4; --red:#d42020; }
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:'Noto Sans JP',sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+.header { background:var(--ink); color:#fff; padding:14px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:10; }
+.back { color:#fff; text-decoration:none; font-size:18px; }
+.title { font-size:14px; font-weight:900; }
+.container { padding:20px; max-width:900px; margin:0 auto; }
+.card { background:var(--card); border-radius:12px; padding:18px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.section-title { font-size:13px; font-weight:900; margin-bottom:10px; }
+label { font-size:12px; font-weight:700; display:block; margin-bottom:4px; color:var(--muted); }
+input { width:100%; padding:10px; border:2px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; margin-bottom:10px; background:#fff; }
+input[type="file"] { padding:10px; background:#f9f6f0; }
+button { font-family:inherit; font-weight:700; cursor:pointer; border:none; }
+.btn-primary { width:100%; padding:14px; background:var(--blue); color:#fff; border-radius:10px; font-size:14px; margin-top:8px; }
+.btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
+.btn-danger { width:100%; padding:14px; background:var(--red); color:#fff; border-radius:10px; font-size:14px; margin-top:8px; }
+.warning { background:#fff8e8; border:1px solid #f0d090; border-radius:10px; padding:12px 14px; font-size:11px; color:#7a5a00; line-height:1.7; margin-bottom:14px; }
+.warning ul { margin-left:16px; }
+.log-box { background:#1a1a1a; color:#0f0; font-family:'DM Mono',monospace; font-size:11px; padding:10px; border-radius:6px; max-height:300px; overflow-y:auto; margin-top:10px; line-height:1.5; }
+.preview-table { width:100%; font-size:11px; border-collapse:collapse; margin-top:10px; }
+.preview-table th { background:#f5f5f0; padding:6px; text-align:left; border:1px solid var(--border); font-weight:700; position:sticky; top:0; }
+.preview-table td { padding:6px; border:1px solid var(--border); }
+.preview-table tr.changed { background:#fffce8; }
+.preview-table tr.reduced td.diff { color:var(--red); font-weight:900; }
+.preview-table tr.increased td.diff { color:var(--green); font-weight:900; }
+.stat-box { display:flex; gap:8px; margin:10px 0; flex-wrap:wrap; }
+.stat { flex:1; min-width:100px; background:#f5f5f0; padding:10px; border-radius:8px; text-align:center; }
+.stat-val { font-size:20px; font-weight:900; }
+.stat-lbl { font-size:10px; color:var(--muted); }
+.stat.success { background:#e8f7ee; color:var(--green); }
+.stat.warn { background:#fff8e8; color:var(--amber); }
+.stat.err { background:#ffebeb; color:var(--red); }
+.stat.info { background:#e8f0ff; color:var(--blue); }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="back">←</a>
+  <div class="title">📊 マスタ通常納本数 一括更新ツール</div>
+</div>
+
+<div class="container">
+
+  <div class="warning">
+    ⚠️ <strong>このツールは設置店マスタ（App 268）の「通常納本数」を一括更新します。</strong>
+    <ul>
+      <li>Excel Col 29「納本(自動)」→ マスタ「数値_4（通常納本数）」</li>
+      <li>マッチング: Excel「kintone」列 = マスタ「文字列__1行__0（kintone番号）」</li>
+      <li><strong>変更があった店舗のみ</strong>更新します（同じ値ならスキップ）</li>
+      <li>更新後、月次納本データ作成ツールの +3冊ロジックに影響します</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">📂 ① エクセルファイルを選択</div>
+    <input type="file" id="fileInput" accept=".xlsx,.xlsm,.xls" />
+    <div id="file-info" style="font-size:11px;color:var(--muted);margin-top:6px;"></div>
+  </div>
+
+  <div class="card" id="config-card" style="display:none;">
+    <div class="section-title">🔑 ② APIトークン</div>
+    <label>設置店マスタ (App 268) のAPIトークン</label>
+    <input type="text" id="token" value="STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg" />
+    <button class="btn-primary" onclick="loadPreview()">プレビューを表示</button>
+  </div>
+
+  <div class="card" id="preview-card" style="display:none;">
+    <div class="section-title">👀 ③ プレビュー</div>
+    <div class="stat-box">
+      <div class="stat"><div class="stat-val" id="stat-total">0</div><div class="stat-lbl">Excel行数</div></div>
+      <div class="stat info"><div class="stat-val" id="stat-match">0</div><div class="stat-lbl">マスタ一致</div></div>
+      <div class="stat warn"><div class="stat-val" id="stat-nomatch">0</div><div class="stat-lbl">マスタなし</div></div>
+      <div class="stat success"><div class="stat-val" id="stat-changed">0</div><div class="stat-lbl">変更あり</div></div>
+      <div class="stat"><div class="stat-val" id="stat-same">0</div><div class="stat-lbl">変更なし</div></div>
+    </div>
+
+    <div style="margin:10px 0;">
+      <label style="display:flex;align-items:center;gap:6px;cursor:pointer;">
+        <input type="checkbox" id="showAll" onchange="renderTable()" style="width:auto;margin:0;" />
+        変更なしも表示する
+      </label>
+    </div>
+
+    <div style="max-height:500px;overflow:auto;border:1px solid var(--border);border-radius:8px;">
+      <table class="preview-table" id="preview-table"></table>
+    </div>
+    <button class="btn-danger" onclick="executeUpdate()" id="execBtn">⚠️ マスタを更新する（変更あるものだけ）</button>
+  </div>
+
+  <div class="log-box" id="log">[ログ] 起動中...</div>
+
+</div>
+
+<script>
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const APP_MASTER = 268;
+let excelRows = [];
+let columnMap = {};
+let updatePlan = []; // {storeId, storeName, currentValue, newValue, recId, changed}
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString('ja-JP');
+  const color = type === 'error' ? '#f55' : type === 'success' ? '#5f5' : type === 'warn' ? '#fc5' : '#0f0';
+  el.innerHTML += `<div style="color:${color}">[${time}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// Excel読み込み
+document.getElementById('fileInput').addEventListener('change', async (e) => {
+  const file = e.target.files[0];
+  if (!file) return;
+  log(`📂 ファイル読み込み中: ${file.name}`);
+  document.getElementById('file-info').textContent = `${file.name} (${(file.size/1024).toFixed(1)} KB)`;
+  try {
+    const data = await file.arrayBuffer();
+    const wb = XLSX.read(data, { type: 'array' });
+    const sheetName = wb.SheetNames.find(n => n.includes('設置履歴')) || wb.SheetNames[0];
+    const ws = wb.Sheets[sheetName];
+    const rawRows = XLSX.utils.sheet_to_json(ws, { header: 1, defval: null });
+    const headers = rawRows[2]; // 3rd row is header
+    const dataRows = rawRows.slice(3);
+
+    columnMap = {};
+    headers.forEach((h, idx) => {
+      if (h !== null && h !== undefined) columnMap[String(h).trim()] = idx;
+    });
+
+    excelRows = dataRows.filter(r => r[columnMap['kintone']]);
+    log(`✅ ${excelRows.length}件のレコード読み込み完了`, 'success');
+    log(`📍 使用する列: kintone(col ${columnMap['kintone']}) / 納本(自動)(col ${columnMap['納本(自動)']})`);
+    if (columnMap['納本(自動)'] === undefined) {
+      log(`❌ 「納本(自動)」列がExcelに見つかりません`, 'error');
+      return;
+    }
+    document.getElementById('config-card').style.display = 'block';
+  } catch(e) {
+    log(`❌ ファイル読み込みエラー: ${e.message}`, 'error');
+  }
+});
+
+async function kintoneGet(query) {
+  const all = [];
+  let offset = 0;
+  const limit = 500;
+  while (true) {
+    const fullQuery = `${query} limit ${limit} offset ${offset}`;
+    const paramStr = `subdomain=white&app=${APP_MASTER}&query=${encodeURIComponent(fullQuery)}`;
+    log(`📡 マスタ取得中 (offset=${offset})...`);
+    const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
+      headers: { 'X-Cybozu-API-Token': document.getElementById('token').value }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(JSON.stringify(data));
+    all.push(...(data.records || []));
+    if (!data.records || data.records.length < limit) break;
+    offset += limit;
+  }
+  return all;
+}
+
+async function loadPreview() {
+  try {
+    // マスタ全件取得
+    log(`🔍 マスタ取得中...`);
+    const master = await kintoneGet('order by レコード番号 asc');
+    log(`✅ マスタ: ${master.length}件`, 'success');
+
+    // kintone番号でインデックス化
+    const masterMap = {};
+    master.forEach(r => {
+      const sid = r['文字列__1行__0']?.value;
+      if (sid) masterMap[String(sid).trim()] = r;
+    });
+
+    // Excel突合
+    updatePlan = [];
+    let matched = 0, noMatch = 0, changed = 0, same = 0;
+    for (const row of excelRows) {
+      const storeId = String(row[columnMap['kintone']]).trim();
+      if (!storeId || storeId === 'なし') { noMatch++; continue; }
+      const rec = masterMap[storeId];
+      if (!rec) { noMatch++; continue; }
+      matched++;
+
+      const currentValue = Number(rec['数値_4']?.value) || 0;
+      const rawNew = row[columnMap['納本(自動)']];
+      const newValue = (rawNew === null || rawNew === undefined || rawNew === '') ? 0 : Number(rawNew);
+      if (isNaN(newValue)) { continue; }
+      const isChanged = currentValue !== newValue;
+      if (isChanged) changed++; else same++;
+
+      updatePlan.push({
+        storeId,
+        storeName: rec['文字列__1行__2']?.value || '',
+        route: rec['ドロップダウン_0']?.value || '',
+        group: rec['文字列__1行__11']?.value || '',
+        currentValue,
+        newValue,
+        recId: rec['$id'].value,
+        changed: isChanged
+      });
+    }
+
+    document.getElementById('stat-total').textContent = excelRows.length;
+    document.getElementById('stat-match').textContent = matched;
+    document.getElementById('stat-nomatch').textContent = noMatch;
+    document.getElementById('stat-changed').textContent = changed;
+    document.getElementById('stat-same').textContent = same;
+
+    renderTable();
+    document.getElementById('preview-card').style.display = 'block';
+  } catch(e) {
+    log(`❌ プレビューエラー: ${e.message}`, 'error');
+  }
+}
+
+function renderTable() {
+  const showAll = document.getElementById('showAll').checked;
+  const rows = showAll ? updatePlan : updatePlan.filter(p => p.changed);
+  const table = document.getElementById('preview-table');
+  table.innerHTML = `
+    <thead>
+      <tr>
+        <th>kintone</th><th>店名</th><th>ルート</th><th>グループ</th>
+        <th style="text-align:right">現在値</th>
+        <th style="text-align:right">新値</th>
+        <th style="text-align:right">差分</th>
+      </tr>
+    </thead>
+    <tbody>
+      ${rows.slice(0, 200).map(p => {
+        const diff = p.newValue - p.currentValue;
+        const cls = !p.changed ? '' : (diff > 0 ? 'changed increased' : 'changed reduced');
+        return `
+          <tr class="${cls}">
+            <td>${p.storeId}</td>
+            <td>${p.storeName}</td>
+            <td>${p.route}</td>
+            <td>${p.group}</td>
+            <td style="text-align:right">${p.currentValue}</td>
+            <td style="text-align:right">${p.newValue}</td>
+            <td class="diff" style="text-align:right">${!p.changed ? '―' : (diff > 0 ? '+' + diff : diff)}</td>
+          </tr>`;
+      }).join('')}
+      ${rows.length > 200 ? `<tr><td colspan="7" style="text-align:center;color:#888">... 他 ${rows.length - 200}件</td></tr>` : ''}
+    </tbody>
+  `;
+}
+
+async function executeUpdate() {
+  const toUpdate = updatePlan.filter(p => p.changed);
+  if (toUpdate.length === 0) {
+    alert('変更対象がありません');
+    return;
+  }
+  if (!confirm(`本当にマスタを更新しますか？\n\n${toUpdate.length}件を更新します。\nこの操作は取り消せません。`)) return;
+
+  document.getElementById('execBtn').disabled = true;
+  document.getElementById('execBtn').textContent = '更新中...';
+  log(`🚀 マスタ更新開始: ${toUpdate.length}件`);
+
+  const updates = toUpdate.map(p => ({
+    id: p.recId,
+    record: { '数値_4': { value: String(p.newValue) } }
+  }));
+
+  const BATCH = 100;
+  const token = document.getElementById('token').value;
+  let success = 0, fail = 0;
+  const failedIds = [];
+
+  for (let i = 0; i < updates.length; i += BATCH) {
+    const batch = updates.slice(i, i + BATCH);
+    try {
+      const res = await fetch(`${PROXY}/k/v1/records.json?subdomain=white`, {
+        method: 'PUT',
+        headers: { 'X-Cybozu-API-Token': token, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: APP_MASTER, records: batch })
+      });
+      if (!res.ok) {
+        const err = await res.text();
+        throw new Error(err.slice(0, 200));
+      }
+      success += batch.length;
+      log(`✅ ${success}/${toUpdate.length}件 更新済`, 'success');
+    } catch(e) {
+      fail += batch.length;
+      failedIds.push(...batch.map(b => b.id));
+      log(`❌ エラー(${batch.length}件): ${e.message}`, 'error');
+    }
+  }
+
+  log(`\n=========================`);
+  log(`🎉 完了: 成功 ${success}件 / 失敗 ${fail}件`, fail > 0 ? 'warn' : 'success');
+  if (failedIds.length > 0) {
+    log(`失敗したレコード番号: ${failedIds.join(', ')}`, 'warn');
+  }
+  alert(`更新完了！\n\n成功: ${success}件\n失敗: ${fail}件`);
+  document.getElementById('execBtn').disabled = false;
+  document.getElementById('execBtn').textContent = '⚠️ マスタを更新する（変更あるものだけ）';
+}
+
+log('💡 Excelファイルを選択してください。');
+</script>
+
+</body>
+</html>
