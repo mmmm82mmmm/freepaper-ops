@@ -615,6 +615,8 @@ document.getElementById('modal-overlay').addEventListener('click', e => {
 // ===== Submit =====
 async function submitRefill() {
   if (!selectedStore) return;
+  // ★ 開始時点で selectedStore への参照をキャプチャ（await中にnullになるのを防ぐ）
+  const capturedStore = selectedStore;
 
   // 入力値検証
   workerName = document.getElementById('worker-input').value.trim();
@@ -638,7 +640,7 @@ async function submitRefill() {
 
   try {
     // 最新のサブテーブル値を取得（他端末との衝突防止）
-    const recordId = selectedStore.$id.value;
+    const recordId = capturedStore.$id.value;
     const getRes = await fetch(`${PROXY_URL}/k/v1/record.json?app=${APP_NOHON}&id=${recordId}`, {
       headers: { 'X-Cybozu-API-Token': TOKEN_NOHON }
     });
@@ -670,13 +672,15 @@ async function submitRefill() {
     if (!putRes.ok) throw new Error(`更新失敗: HTTP ${putRes.status}: ${putText.substring(0,200)}`);
 
     showToast(`✅ ${count}冊の補充を記録しました`);
-    closeModal();
 
-    // ローカル状態を更新（fetch直す代わりに）
-    selectedStore[F_TABLE] = { value: [...currentTable, newRow] };
-    storeMap[getVal(selectedStore,'文字列__1行__5')] = selectedStore;
+    // ローカル状態を更新（capturedStoreを使用）
+    capturedStore[F_TABLE] = { value: [...currentTable, newRow] };
+    const sid = getVal(capturedStore, '文字列__1行__5');
+    if (sid) storeMap[sid] = capturedStore;
     const idx = monthRecords.findIndex(r => r.$id.value === recordId);
     if (idx >= 0) monthRecords[idx][F_TABLE] = { value: [...currentTable, newRow] };
+
+    closeModal();
     render();
   } catch (e) {
     showToast(e.message, true);
