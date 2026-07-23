@@ -20,6 +20,70 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .app-title{font-size:15px;font-weight:900;}
 .month-badge{font-size:11px;background:#333;padding:4px 10px;border-radius:20px;}
 
+/* ===== 大きい文字モード（老眼対応） ===== */
+/* サイズ大 (+30%) */
+body.text-large .app-title{font-size:19px;}
+body.text-large .tab{font-size:16px;padding:14px;}
+body.text-large .kpi-label{font-size:13px;}
+body.text-large .kpi-val{font-size:36px;}
+body.text-large .kpi-sub{font-size:14px;}
+body.text-large .progress-label{font-size:14px;}
+body.text-large .section-title{font-size:15px;}
+body.text-large .worker-name{font-size:19px;}
+body.text-large .worker-status{font-size:14px;}
+body.text-large .worker-stat .val{font-size:22px;}
+body.text-large .worker-stat .lbl{font-size:12px;}
+body.text-large .route-badge{font-size:14px;padding:4px 10px;}
+body.text-large .route-name{font-size:17px;}
+body.text-large .route-stats{font-size:14px;}
+body.text-large .route-toggle{font-size:15px;}
+body.text-large .item-name{font-size:16px;}
+body.text-large .item-meta{font-size:13px;}
+body.text-large .item-worker{font-size:13px;}
+body.text-large .item-nabon{font-size:14px;}
+body.text-large .assign-group-code{font-size:15px;padding:4px 10px;}
+body.text-large .assign-group-info{font-size:15px;}
+body.text-large .assign-group-worker{font-size:15px;}
+body.text-large .assign-worker-btn{font-size:14px;padding:8px 12px;}
+body.text-large .car-panel-title{font-size:16px;}
+body.text-large .car-worker-name{font-size:15px;}
+body.text-large .move-btn{font-size:12px;padding:5px 9px;}
+body.text-large .last-update{font-size:14px;}
+body.text-large .error-box{font-size:16px;}
+
+/* サイズ特大 (+60%) */
+body.text-xlarge .app-title{font-size:22px;}
+body.text-xlarge .tab{font-size:19px;padding:16px;}
+body.text-xlarge .kpi-label{font-size:15px;}
+body.text-xlarge .kpi-val{font-size:44px;}
+body.text-xlarge .kpi-sub{font-size:17px;}
+body.text-xlarge .progress-label{font-size:17px;}
+body.text-xlarge .section-title{font-size:17px;}
+body.text-xlarge .worker-name{font-size:22px;}
+body.text-xlarge .worker-status{font-size:17px;}
+body.text-xlarge .worker-stat .val{font-size:26px;}
+body.text-xlarge .worker-stat .lbl{font-size:14px;}
+body.text-xlarge .route-badge{font-size:16px;padding:5px 12px;}
+body.text-xlarge .route-name{font-size:20px;}
+body.text-xlarge .route-stats{font-size:17px;}
+body.text-xlarge .route-toggle{font-size:18px;}
+body.text-xlarge .item-name{font-size:19px;}
+body.text-xlarge .item-meta{font-size:16px;}
+body.text-xlarge .item-worker{font-size:16px;}
+body.text-xlarge .item-nabon{font-size:17px;}
+body.text-xlarge .assign-group-code{font-size:18px;padding:5px 12px;}
+body.text-xlarge .assign-group-info{font-size:18px;}
+body.text-xlarge .assign-group-worker{font-size:18px;}
+body.text-xlarge .assign-worker-btn{font-size:17px;padding:10px 14px;}
+body.text-xlarge .car-panel-title{font-size:19px;}
+body.text-xlarge .car-worker-name{font-size:18px;}
+body.text-xlarge .move-btn{font-size:14px;padding:6px 11px;}
+body.text-xlarge .last-update{font-size:16px;}
+body.text-xlarge .error-box{font-size:19px;}
+
+.text-size-btn:active{opacity:.7;}
+
+
 /* TABS */
 .tabs{display:flex;border-top:1px solid #333;}
 .tab{flex:1;padding:11px;text-align:center;font-size:13px;font-weight:700;color:#888;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;}
@@ -144,6 +208,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <a href="index.html" style="color:#fff;text-decoration:none;font-size:18px;margin-right:6px;">←</a>
     <div class="app-title">🚐 運転手画面</div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <button class="text-size-btn" onclick="cycleTextSize()" title="文字サイズ変更" style="font-size:12px;background:rgba(255,255,255,.15);color:#fff;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:900;cursor:pointer;min-width:40px;">A</button>
       <select id="work-day-select" onchange="changeWorkDay(this.value)" style="font-size:11px;background:#c47a0a;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;">
         <option value="">📅 作業日</option>
         <option value="0">日曜日</option>
@@ -403,6 +468,37 @@ const APP = 269;
 const DOMAIN = 'white';
 
 const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d42020','#5c4a1a'];
+
+// ===== 文字サイズ切替（老眼対応） =====
+const TEXT_SIZE_STORAGE = 'fp_driver_text_size';
+const TEXT_SIZES = ['normal', 'large', 'xlarge'];
+const TEXT_SIZE_LABELS = { normal: 'A', large: 'A+', xlarge: 'A++' };
+
+function applyTextSize(size) {
+  document.body.classList.remove('text-large', 'text-xlarge');
+  if (size === 'large') document.body.classList.add('text-large');
+  else if (size === 'xlarge') document.body.classList.add('text-xlarge');
+  const label = TEXT_SIZE_LABELS[size] || 'A';
+  document.querySelectorAll('.text-size-btn').forEach(b => b.textContent = label);
+  localStorage.setItem(TEXT_SIZE_STORAGE, size);
+}
+
+function cycleTextSize() {
+  const current = localStorage.getItem(TEXT_SIZE_STORAGE) || 'normal';
+  const idx = TEXT_SIZES.indexOf(current);
+  const next = TEXT_SIZES[(idx + 1) % TEXT_SIZES.length];
+  applyTextSize(next);
+  if (!localStorage.getItem('fp_driver_text_size_hinted')) {
+    setTimeout(() => alert('💡 文字サイズを変更しました\n\n通常(A) → 大(A+) → 特大(A++) の順に切替できます。\nもう一度タップで次のサイズになります。'), 100);
+    localStorage.setItem('fp_driver_text_size_hinted', '1');
+  }
+}
+
+// 起動時に前回設定を適用
+(function initTextSize() {
+  const saved = localStorage.getItem(TEXT_SIZE_STORAGE) || 'normal';
+  applyTextSize(saved);
+})();
 
 // ===== 複数グループ担当のためのヘルパー関数 =====
 // assignments[worker] は文字列（単一）または配列（複数）。両方をサポート。

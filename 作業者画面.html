@@ -23,6 +23,51 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .progress-bar-bg{flex:1;height:5px;background:#333;border-radius:3px;overflow:hidden;}
 .progress-bar-fill{height:100%;background:var(--green);border-radius:3px;transition:width 0.5s;}
 .progress-text{font-family:'DM Mono',monospace;font-size:11px;color:#aaa;white-space:nowrap;}
+.text-size-btn{background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 8px;border-radius:6px;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;min-width:36px;}
+.text-size-btn:active{background:rgba(255,255,255,.3);}
+
+/* ===== 大きい文字モード（老眼対応） ===== */
+/* サイズ大 (+30%) */
+body.text-large .shop-name{font-size:22px;}
+body.text-large .shop-location{font-size:16px;line-height:1.6;}
+body.text-large .shop-location::before{font-size:16px;}
+body.text-large .shop-comment{font-size:15px;line-height:1.6;}
+body.text-large .nabon-hint{font-size:15px;}
+body.text-large .nabon-hint strong{font-size:20px;}
+body.text-large .input-group label{font-size:13px;}
+body.text-large .input-group input{font-size:26px;padding:14px;}
+body.text-large .status-pill{font-size:14px;padding:6px 12px;}
+body.text-large .meta-chip{font-size:14px;padding:3px 10px;}
+body.text-large .group-name{font-size:17px;}
+body.text-large .group-count{font-size:14px;}
+body.text-large .group-badge{font-size:14px;padding:4px 10px;}
+body.text-large .app-title{font-size:19px;}
+body.text-large .worker-name{font-size:15px;padding:5px 12px;}
+body.text-large .progress-text{font-size:14px;}
+body.text-large .btn-done, body.text-large .btn-absent{font-size:16px;padding:14px;}
+body.text-large .btn-return{font-size:17px;padding:16px;}
+body.text-large .btn-modal-confirm{font-size:16px;}
+
+/* サイズ特大 (+60%) */
+body.text-xlarge .shop-name{font-size:27px;}
+body.text-xlarge .shop-location{font-size:19px;line-height:1.6;}
+body.text-xlarge .shop-location::before{font-size:19px;}
+body.text-xlarge .shop-comment{font-size:18px;line-height:1.6;}
+body.text-xlarge .nabon-hint{font-size:18px;}
+body.text-xlarge .nabon-hint strong{font-size:24px;}
+body.text-xlarge .input-group label{font-size:15px;}
+body.text-xlarge .input-group input{font-size:32px;padding:18px;}
+body.text-xlarge .status-pill{font-size:16px;padding:7px 14px;}
+body.text-xlarge .meta-chip{font-size:16px;padding:4px 12px;}
+body.text-xlarge .group-name{font-size:20px;}
+body.text-xlarge .group-count{font-size:16px;}
+body.text-xlarge .group-badge{font-size:16px;padding:5px 12px;}
+body.text-xlarge .app-title{font-size:22px;}
+body.text-xlarge .worker-name{font-size:17px;padding:6px 14px;}
+body.text-xlarge .progress-text{font-size:16px;}
+body.text-xlarge .btn-done, body.text-xlarge .btn-absent{font-size:19px;padding:17px;}
+body.text-xlarge .btn-return{font-size:20px;padding:20px;}
+body.text-xlarge .btn-modal-confirm{font-size:19px;}
 
 /* LOGIN */
 .login-screen{max-width:400px;margin:60px auto 0;padding:24px;}
@@ -206,6 +251,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div class="app-header-top">
       <div class="app-title" id="work-title">📦 2026年5月号</div>
       <div style="display:flex;align-items:center;gap:6px;">
+        <button class="text-size-btn" onclick="cycleTextSize()" title="文字サイズ変更" id="text-size-btn-work">A</button>
         <button onclick="refreshNow()" title="再読み込み" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:14px;cursor:pointer;">🔄</button>
         <div class="worker-name" id="work-worker">田中 さん</div>
       </div>
@@ -232,6 +278,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div class="app-header-top">
       <div class="app-title">📦 フリーペーパー作業</div>
       <div style="display:flex;align-items:center;gap:6px;">
+        <button class="text-size-btn" onclick="cycleTextSize()" title="文字サイズ変更" id="text-size-btn-wait">A</button>
         <button onclick="refreshNow()" title="再読み込み" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:14px;cursor:pointer;">🔄</button>
         <div class="worker-name" id="waiting-worker-name"></div>
       </div>
@@ -316,6 +363,38 @@ let currentWorker = '';
 let currentMonth = '';
 let records = []; // kintoneから取得したレコード
 let doneCount = 0, absentCount = 0, todoCount = 0;
+
+// ===== 文字サイズ切替（老眼対応） =====
+const TEXT_SIZE_STORAGE = 'fp_text_size';
+const TEXT_SIZES = ['normal', 'large', 'xlarge']; // 通常 → 大 → 特大 → 通常...
+const TEXT_SIZE_LABELS = { normal: 'A', large: 'A+', xlarge: 'A++' };
+
+function applyTextSize(size) {
+  document.body.classList.remove('text-large', 'text-xlarge');
+  if (size === 'large') document.body.classList.add('text-large');
+  else if (size === 'xlarge') document.body.classList.add('text-xlarge');
+  const label = TEXT_SIZE_LABELS[size] || 'A';
+  document.querySelectorAll('.text-size-btn').forEach(b => b.textContent = label);
+  localStorage.setItem(TEXT_SIZE_STORAGE, size);
+}
+
+function cycleTextSize() {
+  const current = localStorage.getItem(TEXT_SIZE_STORAGE) || 'normal';
+  const idx = TEXT_SIZES.indexOf(current);
+  const next = TEXT_SIZES[(idx + 1) % TEXT_SIZES.length];
+  applyTextSize(next);
+  // 一度だけヘルプメッセージ表示（初回のみ）
+  if (!localStorage.getItem('fp_text_size_hinted')) {
+    setTimeout(() => alert('💡 文字サイズを変更しました\n\n通常(A) → 大(A+) → 特大(A++) の順に切替できます。\nもう一度タップで次のサイズになります。'), 100);
+    localStorage.setItem('fp_text_size_hinted', '1');
+  }
+}
+
+// 起動時に前回設定を適用
+(function initTextSize() {
+  const saved = localStorage.getItem(TEXT_SIZE_STORAGE) || 'normal';
+  applyTextSize(saved);
+})();
 
 // セッション保存・復元
 function saveSession() {
