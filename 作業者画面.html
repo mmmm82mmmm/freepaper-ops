@@ -1037,11 +1037,25 @@ async function confirmReturn(withPause) {
   const btn2 = document.getElementById('btn-modal-pause');
   btn.disabled = true;
   if (btn2) btn2.disabled = true;
-  // UIを即座に切替（ユーザーを待たせない）
+  const origLabel = btn.textContent;
+  btn.textContent = '📤 送信中...';
+
+  // 戻り報告を必ず完了させてから待機画面へ遷移（レース条件回避）
+  try {
+    await reportReturn(withPause === true);
+  } catch(e) {
+    console.error('戻り報告エラー:', e);
+    alert('戻り報告に失敗しました。通信環境を確認してもう一度お試しください。\n\nエラー: ' + e.message);
+    btn.disabled = false;
+    if (btn2) btn2.disabled = false;
+    btn.textContent = origLabel;
+    return;
+  }
+
+  // 保存完了後に画面切替＋ポーリング開始
   closeModal();
+  btn.textContent = origLabel;
   showWaitingScreen();
-  // 受付停止フラグを保持してバックグラウンドで保存
-  reportReturn(withPause === true).catch(e => console.error('戻り報告エラー:', e));
 }
 
 async function reportReturn(withPause) {
