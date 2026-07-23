@@ -584,42 +584,46 @@ async function startWorkDirect() {
     DYNAMIC_ITEMS = state.dynamicItems || [];
     const assignedRaw = state.assignments?.[currentWorker];
     const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
-    let query;
-    if (assignedGroups.length > 0) {
-      const groupClause = assignedGroups.map(g => `"${g}"`).join(',');
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    } else {
-      // グループ未割当の場合は担当者名で絞り込み
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    }
-    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
-
-    // revisitMap (再訪・個別訪問・統合) のレコードも追加
-    if (assignedGroups.length > 0) {
-      const revisitIds = [];
-      for (const g of assignedGroups) {
-        const ids = (state.revisitMap?.[g] || []).map(String);
-        revisitIds.push(...ids);
-      }
-      const uniqueRevisitIds = [...new Set(revisitIds)];
-      if (uniqueRevisitIds.length > 0) {
-        const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
-        const revisitQuery = `$id in (${idsClause})`;
-        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
-        const existingIds = new Set(records.map(r => r['$id'].value));
-        revisitRecords.forEach(r => {
-          if (!existingIds.has(r['$id'].value)) records.push(r);
-        });
-      }
-    }
-    if (records.length === 0) {
-      // 担当がまだ割り当てられていない場合は待機画面を表示
+    // 割当なしなら待機画面（担当者名で全レコード取得しないこと！過去の完了レコードが全部出てしまうため）
+    if (assignedGroups.length === 0) {
       document.getElementById('loading-screen').style.display = 'none';
       document.getElementById('login-screen').style.display = 'none';
       const nameEl = document.getElementById('waiting-worker-name');
       if (nameEl) nameEl.textContent = currentWorker + ' さん';
       const msgEl = document.getElementById('waiting-msg');
       if (msgEl) msgEl.innerHTML = 'ようこそ！<br>運転手からのグループ割当を待っています...';
+      showWaitingScreen();
+      return;
+    }
+
+    const groupClause = assignedGroups.map(g => `"${g}"`).join(',');
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // revisitMap (再訪・個別訪問・統合) のレコードも追加
+    const revisitIds = [];
+    for (const g of assignedGroups) {
+      const ids = (state.revisitMap?.[g] || []).map(String);
+      revisitIds.push(...ids);
+    }
+    const uniqueRevisitIds = [...new Set(revisitIds)];
+    if (uniqueRevisitIds.length > 0) {
+      const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idsClause})`;
+      const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+      const existingIds = new Set(records.map(r => r['$id'].value));
+      revisitRecords.forEach(r => {
+        if (!existingIds.has(r['$id'].value)) records.push(r);
+      });
+    }
+    if (records.length === 0) {
+      // 割当はあるがレコードが見つからない（グループ削除等の異常状態）→ 待機画面へ
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = '割当のレコードが見つかりません。<br>運転手にご確認ください。';
       showWaitingScreen();
       return;
     }
@@ -655,36 +659,50 @@ async function startWork() {
     const state = await getAssignState();
     const assignedRaw = state.assignments?.[currentWorker];
     const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
-    let query;
-    if (assignedGroups.length > 0) {
-      const groupClause = assignedGroups.map(g => `"${g}"`).join(',');
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    } else {
-      query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__10 = "${currentWorker}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+
+    // 割当なしなら待機画面（担当者名で全レコード取得しないこと）
+    if (assignedGroups.length === 0) {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = 'ようこそ！<br>運転手からのグループ割当を待っています...';
+      showWaitingScreen();
+      return;
     }
+
+    const groupClause = assignedGroups.map(g => `"${g}"`).join(',');
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
     // revisitMap (再訪・個別訪問・統合) のレコードも追加
-    if (assignedGroups.length > 0) {
-      const revisitIds = [];
-      for (const g of assignedGroups) {
-        const ids = (state.revisitMap?.[g] || []).map(String);
-        revisitIds.push(...ids);
-      }
-      const uniqueRevisitIds = [...new Set(revisitIds)];
-      if (uniqueRevisitIds.length > 0) {
-        const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
-        const revisitQuery = `$id in (${idsClause})`;
-        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
-        const existingIds = new Set(records.map(r => r['$id'].value));
-        revisitRecords.forEach(r => {
-          if (!existingIds.has(r['$id'].value)) records.push(r);
-        });
-      }
+    const revisitIds = [];
+    for (const g of assignedGroups) {
+      const ids = (state.revisitMap?.[g] || []).map(String);
+      revisitIds.push(...ids);
+    }
+    const uniqueRevisitIds = [...new Set(revisitIds)];
+    if (uniqueRevisitIds.length > 0) {
+      const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idsClause})`;
+      const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+      const existingIds = new Set(records.map(r => r['$id'].value));
+      revisitRecords.forEach(r => {
+        if (!existingIds.has(r['$id'].value)) records.push(r);
+      });
     }
 
     if (records.length === 0) {
-      throw new Error(`${currentMonth}の担当レコードが見つかりませんでした。\n運転手にグループの割当を依頼してください。`);
+      // 割当はあるがレコードが見つからない（グループ削除等の異常状態）→ 待機画面へ
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = '割当のレコードが見つかりません。<br>運転手にご確認ください。';
+      showWaitingScreen();
+      return;
     }
 
     document.getElementById('loading-screen').style.display = 'none';
@@ -1112,11 +1130,21 @@ function closeModal() {
   document.getElementById('return-modal').classList.remove('show');
 }
 
+let isReturning = false; // 車に戻る処理中フラグ（多重タップ・ポーリング競合防止）
+
 async function confirmReturn(withPause) {
+  if (isReturning) {
+    console.log('既に戻り処理中のため無視');
+    return;
+  }
+  isReturning = true;
+
   const btn = document.getElementById('btn-modal-confirm');
   const btn2 = document.getElementById('btn-modal-pause');
+  const returnBtn = document.getElementById('btn-return');
   btn.disabled = true;
   if (btn2) btn2.disabled = true;
+  if (returnBtn) returnBtn.disabled = true; // 車に戻るボタン自体もロック
   const origLabel = btn.textContent;
   btn.textContent = '📤 送信中...';
 
@@ -1128,7 +1156,9 @@ async function confirmReturn(withPause) {
     alert('戻り報告に失敗しました。通信環境を確認してもう一度お試しください。\n\nエラー: ' + e.message);
     btn.disabled = false;
     if (btn2) btn2.disabled = false;
+    if (returnBtn) returnBtn.disabled = false;
     btn.textContent = origLabel;
+    isReturning = false;
     return;
   }
 
@@ -1136,6 +1166,8 @@ async function confirmReturn(withPause) {
   closeModal();
   btn.textContent = origLabel;
   showWaitingScreen();
+  // 少し待ってからフラグ解除（待機画面のポーリングが安定してから）
+  setTimeout(() => { isReturning = false; if (returnBtn) returnBtn.disabled = false; }, 3000);
 }
 
 async function reportReturn(withPause) {
@@ -1196,6 +1228,11 @@ function showWaitingScreen() {
 
 let pollTimer = null;
 async function pollAssignment() {
+  // 戻り処理中はスキップ（レース条件回避）
+  if (isReturning) {
+    pollTimer = setTimeout(pollAssignment, 2000);
+    return;
+  }
   try {
     const state = await getAssignState();
 
