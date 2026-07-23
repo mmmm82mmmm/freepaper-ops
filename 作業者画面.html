@@ -1123,6 +1123,15 @@ function showReturnModal() {
     w.style.display = 'none';
     s.textContent = '全件完了！次のグループに進みましょう 🎉';
   }
+  // ボタンを必ず有効な初期状態にリセット（前回のクリックでdisabledのままだったバグ対策）
+  const btn = document.getElementById('btn-modal-confirm');
+  const btn2 = document.getElementById('btn-modal-pause');
+  if (btn) { btn.disabled = false; btn.textContent = '🚐 車に戻る・次のグループを受け取る'; }
+  if (btn2) { btn2.disabled = false; btn2.textContent = '⏸️ 車に戻る・受付を停止する'; }
+  // 戻り中フラグもリセット（送信が終わってれば解除）
+  if (!isReturning || (Date.now() - (window.lastReturnAt || 0)) > 10000) {
+    isReturning = false;
+  }
   document.getElementById('return-modal').classList.add('show');
 }
 
@@ -1138,6 +1147,7 @@ async function confirmReturn(withPause) {
     return;
   }
   isReturning = true;
+  window.lastReturnAt = Date.now();
 
   const btn = document.getElementById('btn-modal-confirm');
   const btn2 = document.getElementById('btn-modal-pause');
