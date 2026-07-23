@@ -347,9 +347,8 @@ async function init() {
   const workerParam = getUrlParam('worker');
   if (workerParam) {
     currentWorker = workerParam;
-    const now = new Date();
-    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+    // kintone設定から作業号を取得（自動検出のフォールバック）
+    await setupWorkMonth();
     saveSession();
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('loading-screen').style.display = 'block';
@@ -361,7 +360,8 @@ async function init() {
   const session = loadSession();
   if (session.worker && session.month) {
     currentWorker = session.worker;
-    currentMonth = session.month;
+    // セッション復元でも kintone設定を確認して月号を上書き
+    await setupWorkMonth();
     // セッション復元でも作業者セレクトを更新しておく（ログイン画面に戻った場合のため）
     try {
       const sessionState = await getAssignState();
@@ -533,10 +533,14 @@ async function startWorkDirect() {
       }
     }
     if (records.length === 0) {
-      // データがなければ月選択画面を表示
+      // 担当がまだ割り当てられていない場合は待機画面を表示
       document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('login-screen').style.display = 'block';
-      initLoginScreen();
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = 'ようこそ！<br>運転手からのグループ割当を待っています...';
+      showWaitingScreen();
       return;
     }
     document.getElementById('loading-screen').style.display = 'none';
