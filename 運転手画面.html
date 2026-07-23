@@ -266,9 +266,19 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div id="route-car-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--card);border-radius:10px;"></div>
   </div>
 
+  <!-- 一括自動割当 -->
+  <div style="margin-bottom:16px">
+    <div class="section-title">🤖 一括自動割当</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">車編成・ルート設定完了後、未割当の作業者に対してグループを自動で振り分けます</div>
+    <button onclick="autoAssignAll()" style="width:100%;padding:14px;background:var(--green);color:#fff;border:none;border-radius:10px;font-weight:900;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;">
+      🤖 未割当の作業者を一括自動割当
+    </button>
+    <div id="auto-assign-result" style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center;"></div>
+  </div>
+
   <div style="background:#f0f7ff;border:1px solid var(--blue);border-radius:10px;padding:12px;font-size:11px;color:var(--blue);line-height:1.6;">
-    💡 「車の編成」「ルート設定」は配本開始前の準備段階で設定する項目です。<br>
-    設定が完了したら「👥 割当」タブで実際のグループ割当を行ってください。
+    💡 手順: ①車編成 → ②ルート設定 → ③一括自動割当（または「👥 割当」タブで手動）<br>
+    ※ 一括自動割当は既に担当を持っている作業者・受付停止中の作業者は対象外です。
   </div>
 </div>
 
@@ -1021,6 +1031,86 @@ function autoAssign(workerName, justAssigned = new Set()) {
 
   // 最も番号が若いグループを返す
   return candidates[0];
+}
+
+// ===== 一括自動割当（準備設定タブから呼び出し） =====
+async function autoAssignAll() {
+  const resultEl = document.getElementById('auto-assign-result');
+  resultEl.textContent = '';
+
+  // 前提チェック
+  const workersInCars = Object.entries(assignState.cars || {}).filter(([w, c]) => parseInt(c) > 0);
+  if (workersInCars.length === 0) {
+    alert('先に「🚐 車の編成」で作業者を1号車・2号車に振り分けてください。');
+    return;
+  }
+  const routeCount = Object.entries(assignState.routeCars || {}).filter(([r, c]) => parseInt(c) > 0).length;
+  if (routeCount === 0) {
+    alert('先に「🗺️ ルート設定」でルートと車を紐付けてください。');
+    return;
+  }
+
+  // 対象作業者を抽出
+  const targets = [];
+  const skipReasons = [];
+  for (const [worker, carNum] of workersInCars) {
+    // 既に割当あり
+    if (getWorkerGroups(worker).length > 0) {
+      skipReasons.push(`${worker}（既に担当中）`);
+      continue;
+    }
+    // 受付停止中
+    if ((assignState.paused || {})[worker] === true) {
+      skipReasons.push(`${worker}（受付停止中）`);
+      continue;
+    }
+    // 戻り報告中（車に戻る途中）は含める（初回自動割当は「戻り」を待たず割当てる）
+    targets.push(worker);
+  }
+
+  if (targets.length === 0) {
+    alert(
+      `自動割当対象の作業者がいません。\n\n${skipReasons.length > 0 ? '除外:\n' + skipReasons.join('\n') : '全員に既に担当があります。'}`
+    );
+    return;
+  }
+
+  if (!confirm(`${targets.length}名の作業者を自動割当します。\n\n対象:\n${targets.join('、')}\n\n${skipReasons.length > 0 ? '\n除外:\n' + skipReasons.join('、') : ''}\n\n実行しますか？`)) return;
+
+  // 最新の全レコード再取得（進捗を最新にするため）
+  try {
+    const latestQuery = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
+    allRecords = await kintoneGet(latestQuery);
+  } catch(e) { console.error('レコード再取得エラー:', e); }
+
+  // 自動割当実行
+  const justAssigned = new Set();
+  const results = [];
+  const failed = [];
+  for (const worker of targets) {
+    const group = autoAssign(worker, justAssigned);
+    if (group) {
+      setWorkerGroups(worker, [group]);
+      justAssigned.add(group);
+      // returnedから外す（初回割当だが念のため）
+      assignState.returned = (assignState.returned || []).filter(w => w !== worker);
+      results.push(`✅ ${worker} → ${group}`);
+    } else {
+      failed.push(`⚠️ ${worker}（対象ルートに空きグループなし）`);
+    }
+  }
+
+  if (results.length > 0) {
+    assignState.updatedAt = new Date().toISOString();
+    await saveAssign();
+  }
+
+  const msg = `【自動割当結果】\n\n${results.join('\n')}${failed.length > 0 ? '\n\n' + failed.join('\n') : ''}`;
+  resultEl.textContent = `✅ ${results.length}件割当完了${failed.length > 0 ? ` / ⚠️ ${failed.length}件未割当` : ''}`;
+  alert(msg);
+
+  renderCars();
+  renderAssign();
 }
 
 // ===== 不在再訪機能 =====
