@@ -413,8 +413,9 @@ async function setupWorkMonth() {
   // kintone設定から取得して上書き
   try {
     const q = `文字列__1行_ = "__settings__" limit 1`;
-    const params = new URLSearchParams({ subdomain: KINTONE_DOMAIN, app: APP_NABON, query: q });
-    const res = await fetch(`${BASE}/records.json?${params}`, {
+    // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
+    const paramStr = `subdomain=${KINTONE_DOMAIN}&app=${APP_NABON}&query=${encodeURIComponent(q)}`;
+    const res = await fetch(`${BASE}/records.json?${paramStr}`, {
       headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
     });
     const data = await res.json();
@@ -1060,14 +1061,14 @@ async function confirmReturn(withPause) {
 
 async function reportReturn(withPause) {
   // 1回のGETで取得してすぐPUT
-  const params = new URLSearchParams({
-    subdomain: 'white', app: APP_NABON,
-    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
-  });
-  const res = await fetch(`${PROXY}/kintone/v1/records.json?${params}`, {
+  const q = `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`;
+  // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
+  const paramStr = `subdomain=white&app=${APP_NABON}&query=${encodeURIComponent(q)}`;
+  const res = await fetch(`${PROXY}/kintone/v1/records.json?${paramStr}`, {
     headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
   });
   const data = await res.json();
+  if (!res.ok) throw new Error(`kintone取得エラー: ${JSON.stringify(data).slice(0, 200)}`);
   if (!data.records?.length) throw new Error('レコードが見つかりません');
   const recId = data.records[0]['$id'].value;
   const raw = data.records[0]['文字列__複数行__0']?.value || '';
@@ -1085,13 +1086,17 @@ async function reportReturn(withPause) {
   }
   state.updatedAt = new Date().toISOString();
 
-  await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
+  const putRes = await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
     method: 'PUT',
     headers: { 'X-Cybozu-API-Token': TOKEN_NABON, 'Content-Type': 'application/json' },
     body: JSON.stringify({ app: APP_NABON, id: recId, record: {
       '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
     }})
   });
+  if (!putRes.ok) {
+    const errData = await putRes.text();
+    throw new Error(`kintone更新エラー: ${errData.slice(0, 200)}`);
+  }
 
   // UI を即時更新
   if (withPause) updatePauseUI(true);
