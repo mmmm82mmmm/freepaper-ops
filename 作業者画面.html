@@ -854,8 +854,8 @@ function renderCard(r, container) {
       <div style="padding:10px 14px 0;display:flex;flex-wrap:wrap;gap:5px;">${badges}</div>
       <div class="input-area" id="input-area-${recId}" style="display:none">
         <div class="input-row">
-          <div class="input-group"><label>納本数</label><input type="number" id="nabon-${recId}" placeholder="0" min="0" inputmode="numeric" value="${nabonVal}"></div>
-          <div class="input-group"><label>返却数</label><input type="number" id="henkyaku-${recId}" placeholder="0" min="0" inputmode="numeric" value="${henkyakuVal}"></div>
+          <div class="input-group"><label>納本数</label><input type="number" id="nabon-${recId}" placeholder="未入力" min="0" inputmode="numeric" value="${nabonVal}"></div>
+          <div class="input-group"><label>返却数</label><input type="number" id="henkyaku-${recId}" placeholder="未入力" min="0" inputmode="numeric" value="${henkyakuVal}"></div>
         </div>
         <div class="btn-group">
           <button class="btn-action btn-absent" onclick="markAbsent('${recId}')">🚫 不在</button>
@@ -906,9 +906,28 @@ function openCard(recId) {
 const pendingUpdates = new Map();
 
 async function markDone(recId) {
-  const nabon = document.getElementById('nabon-' + recId)?.value || '';
-  const henkyaku = document.getElementById('henkyaku-' + recId)?.value || '';
+  const nabonRaw = document.getElementById('nabon-' + recId)?.value;
+  const henkyakuRaw = document.getElementById('henkyaku-' + recId)?.value;
   const memo = document.getElementById('memo-' + recId)?.value || '';
+
+  // 未入力チェック（空欄のまま完了しようとしていないか確認）
+  const nabonEmpty = (nabonRaw === undefined || nabonRaw === null || nabonRaw === '');
+  const henkyakuEmpty = (henkyakuRaw === undefined || henkyakuRaw === null || henkyakuRaw === '');
+  if (nabonEmpty || henkyakuEmpty) {
+    let msg = '⚠️ 未入力の項目があります。\n\n';
+    if (nabonEmpty) msg += '・納本数が入力されていません\n';
+    if (henkyakuEmpty) msg += '・返却数が入力されていません\n';
+    msg += '\n未入力の項目は「0冊」として記録されます。\nこのまま完了してよろしいですか？';
+    if (!confirm(msg)) {
+      // キャンセル → 未入力の欄にフォーカス
+      if (nabonEmpty) document.getElementById('nabon-' + recId)?.focus();
+      else if (henkyakuEmpty) document.getElementById('henkyaku-' + recId)?.focus();
+      return;
+    }
+  }
+
+  const nabon = nabonEmpty ? '0' : nabonRaw;
+  const henkyaku = henkyakuEmpty ? '0' : henkyakuRaw;
 
   // 動的項目の値を収集
   const dynamicFields = {};
