@@ -353,7 +353,24 @@ const BASE = `${PROXY}/kintone/v1`;
 const ASSIGN_RECORD_ID = 1; // 割当JSON保存用レコードID（作業月の最初のレコード）
 
 // ===== 今月の流動項目設定（メンバー管理画面で設定）=====
-let DYNAMIC_ITEMS = []; // kintoneから読み込む
+let HAIFU_ITEMS = []; // 配布物設定（[{name}, {name}, {name}]）kintoneから読み込む
+
+// 配布物設定を読み込む（名前が空でない枠だけを有効化。fieldキーはhaifu1〜3固定）
+function DYNAMIC_ITEMS_load(state) {
+  const raw = state.haifuItems || [];
+  HAIFU_ITEMS = [];
+  for (let i = 0; i < 3; i++) {
+    const name = raw[i]?.name || '';
+    if (name.trim()) {
+      HAIFU_ITEMS.push({
+        idx: i + 1,
+        name: name.trim(),
+        nameField: `haifu${i+1}_name`,
+        statusField: `haifu${i+1}_status`
+      });
+    }
+  }
+}
 
 // ===== 作業者リスト（毎月更新）=====
 const WORKERS = ['田中','鈴木','山田','佐藤','高橋','小林','伊藤','渡辺'];
@@ -581,7 +598,7 @@ async function startWorkDirect() {
     document.getElementById('loading-text').textContent = '担当場所を読み込んでいます...';
     // 割当グループ・配布物設定を取得
     const state = await getAssignState();
-    DYNAMIC_ITEMS = state.dynamicItems || [];
+    DYNAMIC_ITEMS_load(state);
     const assignedRaw = state.assignments?.[currentWorker];
     const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
     // 割当なしなら待機画面（担当者名で全レコード取得しないこと！過去の完了レコードが全部出てしまうため）
@@ -657,6 +674,7 @@ async function startWork() {
 
     // 割当グループを取得
     const state = await getAssignState();
+    DYNAMIC_ITEMS_load(state);
     const assignedRaw = state.assignments?.[currentWorker];
     const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
 
@@ -823,29 +841,28 @@ function renderCard(r, container) {
         <button onclick="reopenCard('${recId}')" style="flex:1;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
       </div>`;
   } else {
-    // 動的項目HTML
-    const dynamicHtml = DYNAMIC_ITEMS.length > 0 ? `
+    // 配布物HTML（haifu1〜3、既存値があれば選択状態を復元）
+    const dynamicHtml = HAIFU_ITEMS.length > 0 ? `
       <div class="dynamic-section">
-        <div class="dynamic-section-title">今月の配布物・アンケート</div>
-        ${DYNAMIC_ITEMS.map(item => `
+        <div class="dynamic-section-title">今月の配布物</div>
+        ${HAIFU_ITEMS.map(item => {
+          const currentStatus = r[item.statusField]?.value || '';
+          const btn = (label) => {
+            const sel = currentStatus === label ? (label==='配布済'?'sel-ok':'sel-ng') : '';
+            return `<button class="toggle-btn ${sel}" onclick="toggleHaifu(this,'${recId}','${item.statusField}','${label}')">${label}</button>`;
+          };
+          return `
           <div class="dynamic-item">
             <div>
-              <div class="dynamic-label">${item.label}</div>
-              ${item.sublabel ? `<div class="dynamic-sublabel">${item.sublabel}</div>` : ''}
+              <div class="dynamic-label">${item.name}</div>
             </div>
-            <div class="toggle-group" id="toggle-${recId}-${item.key}">
-              ${item.type === 'distribute' ? `
-                <button class="toggle-btn" onclick="toggleBtn(this,'ok')">配布済</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'ng')">未配布</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'ng')">対象外</button>
-              ` : `
-                <button class="toggle-btn" onclick="toggleBtn(this,'yes')">はい</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'no')">いいえ</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'later')">後日確認</button>
-              `}
+            <div class="toggle-group" id="haifu-${recId}-${item.statusField}">
+              ${btn('配布済')}
+              ${btn('未配布')}
+              ${btn('対象外')}
             </div>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
       </div>` : '';
 
     bodyHtml = `
@@ -929,11 +946,16 @@ async function markDone(recId) {
   const nabon = nabonEmpty ? '0' : nabonRaw;
   const henkyaku = henkyakuEmpty ? '0' : henkyakuRaw;
 
-  // 動的項目の値を収集
+  // 配布物の値を収集（haifu1〜3の名称と状態を保存）
   const dynamicFields = {};
-  DYNAMIC_ITEMS.forEach(item => {
-    const selected = document.querySelector(`#toggle-${recId}-${item.key} .toggle-btn[class*="sel-"]`);
-    if (selected) dynamicFields[item.key] = { value: selected.textContent.trim() };
+  HAIFU_ITEMS.forEach(item => {
+    const group = document.getElementById(`haifu-${recId}-${item.statusField}`);
+    const selected = group?.dataset.selected || '';
+    // 名称は常に保存（レコードにどの配布物だったか残す）、状態は選択があれば保存
+    dynamicFields[item.nameField] = { value: item.name };
+    if (selected) {
+      dynamicFields[item.statusField] = { value: selected };
+    }
   });
 
   const updateData = {
@@ -1094,6 +1116,14 @@ function resetInputCard(recId) {
 function toggleBtn(btn, type) {
   btn.closest('.toggle-group').querySelectorAll('.toggle-btn').forEach(b => b.className = 'toggle-btn');
   btn.classList.add('sel-' + type);
+}
+
+// 配布物のトグル（配布済=青、未配布/対象外=グレー）。data属性に選択値を保持
+function toggleHaifu(btn, recId, statusField, label) {
+  const group = btn.closest('.toggle-group');
+  group.querySelectorAll('.toggle-btn').forEach(b => b.className = 'toggle-btn');
+  btn.classList.add(label === '配布済' ? 'sel-ok' : 'sel-ng');
+  group.dataset.selected = label;
 }
 
 // ===== 運転手位置情報バー更新 =====

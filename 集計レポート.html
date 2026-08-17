@@ -114,6 +114,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div class="tab" onclick="switchTab('absent', this)">🚫 不在一覧</div>
     <div class="tab" onclick="switchTab('detail', this)">📋 明細</div>
     <div class="tab" onclick="switchTab('prevmon', this)">📊 前月号消化</div>
+    <div class="tab" onclick="switchTab('haifu', this)">📦 配布物</div>
     <div class="tab" onclick="switchTab('shouka', this)">🔥 消化分析</div>
   </div>
 </div>
@@ -216,6 +217,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <!-- 前月号消化 -->
 <div class="screen container" id="screen-prevmon">
   <div id="prevmon-content"></div>
+</div>
+
+<!-- 配布物 -->
+<div class="screen container" id="screen-haifu">
+  <div id="haifu-content"></div>
 </div>
 
 <!-- 消化分析 -->
@@ -363,6 +369,7 @@ async function loadData() {
     renderAbsent();
     renderDetailTable();
     renderPrevMonth();
+    renderHaifu();
     renderShouka();
 
   } catch(e) {
@@ -865,6 +872,144 @@ function switchPrevTab(id, el) {
   document.querySelectorAll('#prevmon-content .sub-panel').forEach(p => p.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('prev-' + id).classList.add('active');
+}
+
+// ===== 配布物集計（請負報告用） =====
+function renderHaifu() {
+  const el = document.getElementById('haifu-content');
+  if (!el) return;
+
+  // 3枠それぞれについて、名称と状態を集計
+  const slots = [1, 2, 3];
+  const haifuData = [];
+
+  slots.forEach(n => {
+    const nameField = `haifu${n}_name`;
+    const statusField = `haifu${n}_status`;
+    // この枠に名称が入っているレコードを対象
+    const withName = allRecords.filter(r => (getVal(r, nameField) || '').trim() !== '');
+    if (withName.length === 0) return;
+
+    // 配布物名（複数あり得るが通常1種類。最頻値を代表名に）
+    const nameCounts = {};
+    withName.forEach(r => {
+      const nm = getVal(r, nameField).trim();
+      nameCounts[nm] = (nameCounts[nm] || 0) + 1;
+    });
+    const repName = Object.entries(nameCounts).sort((a,b) => b[1]-a[1])[0][0];
+
+    // 状態別集計
+    let distributed = 0, notYet = 0, excluded = 0, blank = 0;
+    const stores = { '配布済': [], '未配布': [], '対象外': [] };
+    withName.forEach(r => {
+      const st = getVal(r, statusField);
+      const storeName = getVal(r, '文字列__1行__1') || '(店名不明)';
+      const route = getVal(r, '文字列__1行__4') || '';
+      const group = getVal(r, '文字列__1行__0') || '';
+      const entry = { storeName, route, group };
+      if (st === '配布済') { distributed++; stores['配布済'].push(entry); }
+      else if (st === '未配布') { notYet++; stores['未配布'].push(entry); }
+      else if (st === '対象外') { excluded++; stores['対象外'].push(entry); }
+      else blank++;
+    });
+
+    haifuData.push({ slot: n, name: repName, total: withName.length, distributed, notYet, excluded, blank, stores });
+  });
+
+  if (haifuData.length === 0) {
+    el.innerHTML = `<div style="padding:30px;text-align:center;color:var(--muted);">
+      <div style="font-size:32px;margin-bottom:10px;">📦</div>
+      今月は配布物の記録がありません。<br>
+      <span style="font-size:11px;">メンバー管理画面で配布物を設定し、作業者が記録すると集計されます。</span>
+    </div>`;
+    return;
+  }
+
+  el.innerHTML = haifuData.map(h => `
+    <div style="background:var(--card);border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
+      <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
+        <div style="font-size:16px;font-weight:900;">📦 ${escH(h.name)}</div>
+        <button class="export-btn" onclick="exportHaifuCSV(${h.slot})" style="font-size:11px;padding:6px 12px;">⬇️ CSV</button>
+      </div>
+      <div style="display:flex;gap:8px;margin-bottom:14px;flex-wrap:wrap;">
+        <div style="flex:1;min-width:70px;background:#e8f7ee;border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:24px;font-weight:900;color:var(--green);">${h.distributed}</div>
+          <div style="font-size:10px;color:var(--muted);">配布済</div>
+        </div>
+        <div style="flex:1;min-width:70px;background:#ffebeb;border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:24px;font-weight:900;color:var(--red);">${h.notYet}</div>
+          <div style="font-size:10px;color:var(--muted);">未配布</div>
+        </div>
+        <div style="flex:1;min-width:70px;background:#f0ede8;border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:24px;font-weight:900;color:var(--muted);">${h.excluded}</div>
+          <div style="font-size:10px;color:var(--muted);">対象外</div>
+        </div>
+        <div style="flex:1;min-width:70px;background:#faf8f4;border-radius:8px;padding:10px;text-align:center;">
+          <div style="font-size:24px;font-weight:900;color:#bbb;">${h.blank}</div>
+          <div style="font-size:10px;color:var(--muted);">未記録</div>
+        </div>
+      </div>
+
+      <div class="sub-tabs" style="margin-bottom:10px;">
+        <div class="sub-tab active" onclick="switchHaifuSub(${h.slot},'配布済',this)">配布済 (${h.distributed})</div>
+        <div class="sub-tab" onclick="switchHaifuSub(${h.slot},'未配布',this)">未配布 (${h.notYet})</div>
+        <div class="sub-tab" onclick="switchHaifuSub(${h.slot},'対象外',this)">対象外 (${h.excluded})</div>
+      </div>
+
+      <div id="haifu-stores-${h.slot}" style="max-height:400px;overflow:auto;">
+        ${renderHaifuStoreList(h.stores['配布済'])}
+      </div>
+    </div>
+  `).join('');
+
+  // データを保持（サブタブ切替・CSV用）
+  window._haifuData = haifuData;
+}
+
+function renderHaifuStoreList(stores) {
+  if (!stores || stores.length === 0) {
+    return '<div style="padding:20px;text-align:center;color:var(--muted);font-size:12px;">該当なし</div>';
+  }
+  return `<table class="data-table" style="width:100%;">
+    <thead><tr><th>店名</th><th style="width:60px;">ルート</th><th style="width:60px;">グループ</th></tr></thead>
+    <tbody>
+      ${stores.map(s => `<tr><td>${escH(s.storeName)}</td><td>${escH(s.route)}</td><td>${escH(s.group)}</td></tr>`).join('')}
+    </tbody>
+  </table>`;
+}
+
+function switchHaifuSub(slot, status, el) {
+  // サブタブのアクティブ切替
+  el.parentElement.querySelectorAll('.sub-tab').forEach(t => t.classList.remove('active'));
+  el.classList.add('active');
+  const h = (window._haifuData || []).find(x => x.slot === slot);
+  if (!h) return;
+  document.getElementById(`haifu-stores-${slot}`).innerHTML = renderHaifuStoreList(h.stores[status]);
+}
+
+function exportHaifuCSV(slot) {
+  const h = (window._haifuData || []).find(x => x.slot === slot);
+  if (!h) return;
+  let csv = '\uFEFF'; // BOM for Excel
+  csv += `配布物名,${h.name}\n`;
+  csv += `作業月,${currentMonth}\n\n`;
+  csv += '店名,ルート,グループ,状態\n';
+  ['配布済','未配布','対象外'].forEach(status => {
+    h.stores[status].forEach(s => {
+      csv += `"${(s.storeName||'').replace(/"/g,'""')}","${s.route}","${s.group}","${status}"\n`;
+    });
+  });
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `配布物_${h.name}_${currentMonth}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function escH(s) {
+  return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
 
 function renderShouka() {
