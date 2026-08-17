@@ -123,15 +123,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <button class="btn-print" onclick="window.print()">🖨️ QRコードを一括印刷</button>
   </div>
 
-  <!-- 今月の配布物・アンケート設定 -->
+  <!-- 今月の配布物設定 -->
   <div class="add-form" style="margin-top:20px;">
-    <div class="add-form-title">📋 今月の配布物・アンケート設定</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">作業者画面に表示される項目を設定します</div>
-    <div id="items-list"></div>
-    <div style="display:flex;gap:8px;margin-top:10px;">
-      <button onclick="addItem('distribute')" style="flex:1;padding:10px;background:var(--bg);border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">＋ 配布物を追加</button>
-      <button onclick="addItem('yesno')" style="flex:1;padding:10px;background:var(--bg);border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;">＋ アンケートを追加</button>
-    </div>
+    <div class="add-form-title">📋 今月の配布物設定</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">今月配る配布物を最大3つまで設定できます。名前を空欄にするとその枠は非表示になります。作業者は各店舗で「配布済／未配布／対象外」を選択します。</div>
+    <div id="haifu-list"></div>
     <button class="btn-save" onclick="saveItems()">💾 保存する</button>
     <div class="save-status" id="save-status"></div>
   </div>
@@ -157,11 +153,10 @@ async function determineWorkMonth() {
   let detected = `${next.getFullYear()}年${next.getMonth()+1}月号`;
   // kintone設定から取得して上書き
   try {
-    const params = new URLSearchParams({
-      subdomain: 'white', app: APP,
-      query: `文字列__1行_ = "__settings__" limit 1`
-    });
-    const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+    // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
+    const q = `文字列__1行_ = "__settings__" limit 1`;
+    const paramStr = `subdomain=white&app=${APP}&query=${encodeURIComponent(q)}`;
+    const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
       headers: { 'X-Cybozu-API-Token': TOKEN }
     });
     const data = await res.json();
@@ -181,15 +176,14 @@ async function determineWorkMonth() {
 }
 
 let members = [];
-let assignState = { members: [], cars: {}, assignments: {}, returned: [], dynamicItems: [], updatedAt: '' };
+let assignState = { members: [], cars: {}, assignments: {}, returned: [], haifuItems: [{name:''},{name:''},{name:''}], updatedAt: '' };
 
 // kintoneから割当JSONを取得
 async function loadAssignState() {
-  const params = new URLSearchParams({
-    subdomain: 'white', app: APP,
-    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
-  });
-  const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+  // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
+  const q = `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`;
+  const paramStr = `subdomain=white&app=${APP}&query=${encodeURIComponent(q)}`;
+  const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
     headers: { 'X-Cybozu-API-Token': TOKEN }
   });
   const data = await res.json();
@@ -197,7 +191,10 @@ async function loadAssignState() {
   const raw = data.records[0]['文字列__複数行__0']?.value || '';
   try {
     const parsed = JSON.parse(raw);
-    assignState = { members:[], cars:{}, assignments:{}, returned:[], dynamicItems:[], ...parsed };
+    assignState = { members:[], cars:{}, assignments:{}, returned:[], haifuItems:[{name:''},{name:''},{name:''}], ...parsed };
+    if (!assignState.haifuItems || !Array.isArray(assignState.haifuItems)) {
+      assignState.haifuItems = [{name:''},{name:''},{name:''}];
+    }
     members = assignState.members || [];
   } catch(e) {}
 }
@@ -206,14 +203,14 @@ async function saveAssignState() {
   assignState.members = members;
   assignState.updatedAt = new Date().toISOString();
 
-  const params = new URLSearchParams({
-    subdomain: 'white', app: APP,
-    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
-  });
-  const res = await fetch(`${PROXY}/k/v1/records.json?${params}`, {
+  // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
+  const q = `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`;
+  const paramStr = `subdomain=white&app=${APP}&query=${encodeURIComponent(q)}`;
+  const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
     headers: { 'X-Cybozu-API-Token': TOKEN }
   });
   const data = await res.json();
+  if (!res.ok) throw new Error(`取得エラー: ${JSON.stringify(data).slice(0,200)}`);
   if (!data.records?.length) throw new Error('レコードが見つかりません');
   const recId = data.records[0]['$id'].value;
 
@@ -351,45 +348,38 @@ document.getElementById('name-input').addEventListener('keypress', e => {
   if (e.key === 'Enter') addMember();
 });
 
-// ===== 配布物・アンケート設定 =====
+// ===== 配布物設定（3枠固定・haifu1〜3に対応） =====
+// assignState.haifuItems = [{name:'○○チラシ'}, {name:''}, {name:''}]  (最大3件)
+function getHaifuItems() {
+  const items = assignState.haifuItems || [];
+  // 常に3枠に正規化
+  const normalized = [];
+  for (let i = 0; i < 3; i++) {
+    normalized.push({ name: items[i]?.name || '' });
+  }
+  return normalized;
+}
+
 function renderItems() {
-  const items = assignState.dynamicItems || [];
-  const el = document.getElementById('items-list');
+  const items = getHaifuItems();
+  const el = document.getElementById('haifu-list');
   if (!el) return;
 
-  if (items.length === 0) {
-    el.innerHTML = '<div style="font-size:12px;color:var(--muted);padding:8px 0;">項目がありません</div>';
-    return;
-  }
-
   el.innerHTML = items.map((item, i) => `
-    <div class="item-card">
+    <div class="item-card" style="align-items:center;">
       <div style="flex:1;">
-        <div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;">
-          <span style="font-size:10px;padding:2px 6px;border-radius:4px;font-weight:700;background:${item.type==='distribute'?'#e0eaff':'#f5f0e8'};color:${item.type==='distribute'?'var(--blue)':'var(--amber)'};">${item.type==='distribute'?'配布物':'アンケート'}</span>
-          <input class="item-label-input" value="${item.label || ''}" placeholder="項目名を入力" oninput="updateItem(${i},'label',this.value)">
-          <button class="btn-item-delete" onclick="deleteItem(${i})">✕</button>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="font-size:11px;font-weight:900;color:var(--blue);white-space:nowrap;">配布物${i+1}</span>
+          <input class="item-label-input" style="flex:1;" value="${(item.name || '').replace(/"/g,'&quot;')}" placeholder="配布物名（空欄=非表示）" oninput="updateHaifu(${i}, this.value)">
         </div>
-        <input class="item-sublabel-input" style="width:100%;" value="${item.sublabel || ''}" placeholder="補足説明（任意）" oninput="updateItem(${i},'sublabel',this.value)">
       </div>
     </div>`).join('');
 }
 
-function addItem(type) {
-  if (!assignState.dynamicItems) assignState.dynamicItems = [];
-  assignState.dynamicItems.push({ key: 'item_' + Date.now(), label: '', sublabel: '', type });
-  renderItems();
-}
-
-function updateItem(i, field, value) {
-  if (assignState.dynamicItems?.[i]) {
-    assignState.dynamicItems[i][field] = value;
-  }
-}
-
-function deleteItem(i) {
-  assignState.dynamicItems.splice(i, 1);
-  renderItems();
+function updateHaifu(i, value) {
+  if (!assignState.haifuItems) assignState.haifuItems = [{name:''},{name:''},{name:''}];
+  while (assignState.haifuItems.length < 3) assignState.haifuItems.push({name:''});
+  assignState.haifuItems[i] = { name: value };
 }
 
 async function saveItems() {
