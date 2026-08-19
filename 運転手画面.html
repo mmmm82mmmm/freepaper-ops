@@ -1110,62 +1110,14 @@ async function loadAssignData() {
 
     if (!assignState.routeCars) assignState.routeCars = {};
 
-    // 戻ってきた作業者に自動割当
-    let autoAssigned = false;
-    const returned = [...(assignState.returned || [])];
-    if (returned.length > 0) {
-      // 最新の完了状況を取得するためallRecordsを再取得
-      try {
-        const latestQuery = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
-        allRecords = await kintoneGet(latestQuery);
-      } catch(e) { console.error('再取得エラー:', e); }
+    // ★重要: ここでは自動割当も保存も行わない（ポーリングで書き戻し事故を防ぐ）
+    // 自動割当は processReturnedWorkers() で、新鮮なデータを元にのみ実行する
+    renderCars();
+    renderAssign();
+    renderRevisit();
 
-      // ★自車データを最新化（同端末の二重ポーリング対策。他車とは別レコードなので競合しない）
-      try {
-        const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
-        if (fresh && !fresh._notfound) {
-          assignState.assignments = fresh.assignments || {};
-          assignState.returned = fresh.returned || [];
-          assignState.paused = fresh.paused || {};
-          assignState.revisitMap = fresh.revisitMap || assignState.revisitMap || {};
-        }
-      } catch(e) { console.warn('自車データ最新化に失敗:', e); }
-    }
-
-    // 二重割当を防ぐため、処理中に割当てたグループを記録
-    const justAssigned = new Set();
-    // 最新のreturnedで再ループ（排他制御後）
-    const returnedNow = [...(assignState.returned || [])];
-    for (const worker of returnedNow) {
-      if ((assignState.paused || {})[worker] === true) {
-        console.log(`⏸️ 受付停止中スキップ: ${worker}`);
-        continue;
-      }
-      // 既に割当があればスキップ（他端末が割り当てた可能性）
-      if (getWorkerGroups(worker).length > 0) {
-        // 割当があるならreturnedから外す
-        assignState.returned = (assignState.returned || []).filter(w => w !== worker);
-        autoAssigned = true;
-        continue;
-      }
-      const group = autoAssign(worker, justAssigned);
-      if (group) {
-        // ★確定直前チェック: このグループが既に誰かに取られていないか
-        if (getGroupWorker(group)) {
-          console.log(`⚠️ ${group} は既に${getGroupWorker(group)}に割当済み、スキップ`);
-          continue;
-        }
-        setWorkerGroups(worker, [group]);
-        justAssigned.add(group);
-        assignState.returned = assignState.returned.filter(w => w !== worker);
-        autoAssigned = true;
-        console.log(`🤖 自動割当: ${worker} → ${group}`);
-      }
-    }
-    if (autoAssigned) {
-      assignState.updatedAt = new Date().toISOString();
-      await saveAssign();
-    }
+    // 戻り作業者がいれば自動割当を試みる（内部で新鮮データを取得。メモリの古いデータは使わない）
+    await processReturnedWorkers();
 
     renderCars();
     renderRouteCars();
@@ -1173,6 +1125,82 @@ async function loadAssignData() {
     renderRevisit();
   } catch(e) { console.error('割当データ取得エラー:', e); }
 }
+
+// ===== 戻り作業者への自動割当（新鮮なデータのみ使用・書き戻し事故を防ぐ）=====
+async function processReturnedWorkers() {
+  if (!MY_CAR) return;
+
+  // ★必ずkintoneから新鮮な自車データを取得（メモリの古いデータは一切使わない）
+  let fresh;
+  try {
+    fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+  } catch(e) { console.warn('自車データ取得失敗:', e); return; }
+  if (fresh._notfound) return;
+
+  const returned = fresh.returned || [];
+  if (returned.length === 0) return; // 戻り作業者がいなければ何もしない（保存もしない）
+
+  // 最新の完了状況を取得
+  try {
+    allRecords = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`);
+  } catch(e) { console.error('レコード再取得エラー:', e); }
+
+  // 新鮮データを作業用stateに反映（メモリではなくkintoneの値を正とする）
+  const workState = {
+    assignments: fresh.assignments || {},
+    returned: [...returned],
+    paused: fresh.paused || {},
+    revisitMap: fresh.revisitMap || {},
+    driverLocation: fresh.driverLocation || null
+  };
+
+  let changed = false;
+  const justAssigned = new Set();
+  // autoAssignがworkStateを参照できるよう一時的にassignStateを差し替え
+  const savedAssignState = assignState;
+  assignState = { ...assignState, assignments: workState.assignments, returned: workState.returned, paused: workState.paused, revisitMap: workState.revisitMap };
+
+  for (const worker of [...workState.returned]) {
+    if ((workState.paused || {})[worker] === true) continue;
+    // 既に割当があれば returned から外すだけ
+    const cur = workState.assignments[worker];
+    const curGroups = Array.isArray(cur) ? cur : (cur ? [cur] : []);
+    if (curGroups.length > 0) {
+      workState.returned = workState.returned.filter(w => w !== worker);
+      assignState.returned = workState.returned;
+      changed = true;
+      continue;
+    }
+    const group = autoAssign(worker, justAssigned);
+    if (group) {
+      // 既に誰かに割り当たっていないか確認
+      let taken = false;
+      for (const [w, val] of Object.entries(workState.assignments)) {
+        const gs = Array.isArray(val) ? val : [val];
+        if (gs.includes(group)) { taken = true; break; }
+      }
+      if (taken) continue;
+      workState.assignments[worker] = group;
+      workState.returned = workState.returned.filter(w => w !== worker);
+      assignState.assignments = workState.assignments;
+      assignState.returned = workState.returned;
+      justAssigned.add(group);
+      changed = true;
+      console.log(`🤖 自動割当: ${worker} → ${group}`);
+    }
+  }
+
+  // 変更があった時だけ保存（楽観ロック付きsaveCarData）
+  if (changed) {
+    try {
+      await saveCarData();
+    } catch(e) { console.error('自動割当の保存失敗:', e); }
+  } else {
+    // 変更なし → 保存しない（書き戻し事故を防ぐ）。メモリは元に戻す
+    assignState = savedAssignState;
+  }
+}
+
 
 function renderCars() {
   // 全作業者を収集（割当JSONに含まれる人 + 戻り報告した人）
@@ -2237,6 +2265,10 @@ async function quickPollAssignState() {
         assignState.revisitMap = fresh.revisitMap || {};
         renderAssign();
         renderCars();
+      }
+      // 戻り作業者がいれば自動割当（新鮮データで処理・変更時のみ保存）
+      if ((fresh.returned || []).length > 0) {
+        await processReturnedWorkers();
       }
     }
   } catch(e) { console.warn('軽量ポーリングエラー:', e); }
