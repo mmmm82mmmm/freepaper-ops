@@ -1321,11 +1321,19 @@ async function saveAssign() {
 }
 
 // グループコードから純粋なルート文字（遅サフィックスなし）と番号を取得
-function getGroupLetter(g) {
-  return (g || '').replace(/[0-9.]/g, '').toLowerCase();
-}
 function getGroupNum(g) {
   return parseFloat((g || '').replace(/[^0-9.]/g, '')) || 0;
+}
+// グループの「ルートキー」を返す。遅フラグ付きグループは "b遅" のように遅サフィックスを付ける
+// （routeCars の "B遅" などのキーと一致させ、通常Bと遅Bを別ルートとして扱う）
+function getGroupLetter(g) {
+  const letter = (g || '').replace(/[0-9.]/g, '').toLowerCase();
+  // このグループに遅フラグ（チェックボックス_0）が付いた店舗があるか
+  const hasOsoi = allRecords.some(r =>
+    r['文字列__1行__0']?.value === g &&
+    (r['チェックボックス_0']?.value || []).length > 0
+  );
+  return hasOsoi ? letter + '遅' : letter;
 }
 
 function autoAssign(workerName, justAssigned = new Set()) {
@@ -1353,22 +1361,16 @@ function autoAssign(workerName, justAssigned = new Set()) {
     ...justAssigned
   ]);
 
-  // ルートごとの「到達済み最大番号」を計算
-  // = そのルートで「割当済み」または「1件でも完了/不在がある」グループの最大番号
-  const routeMaxReached = {}; // { 'e': 15, ... }
-  allGroups.forEach(g => {
+  // ルートごとの「現在の到達点」を計算
+  // ★重要: 過去の完了データ（昨日の本番など）ではなく、
+  //   「今まさに誰かに割当中のグループ」の最大番号だけを到達点とする。
+  //   これにより、過去に完了したグループが「前進の壁」にならない。
+  const routeMaxReached = {}; // { 'b': 6, ... }
+  assignedGroups.forEach(g => {
     const letter = getGroupLetter(g);
     const num = getGroupNum(g);
-    // このグループが「着手済み」か判定
-    const isAssigned = assignedGroups.has(g);
-    const hasProgress = allRecords.some(r =>
-      r['文字列__1行__0']?.value === g &&
-      ['完了','不在'].includes(r['ドロップダウン']?.value)
-    );
-    if (isAssigned || hasProgress) {
-      if (routeMaxReached[letter] === undefined || num > routeMaxReached[letter]) {
-        routeMaxReached[letter] = num;
-      }
+    if (routeMaxReached[letter] === undefined || num > routeMaxReached[letter]) {
+      routeMaxReached[letter] = num;
     }
   });
 
@@ -1378,14 +1380,16 @@ function autoAssign(workerName, justAssigned = new Set()) {
     if (!carRoutes.includes(letter)) return false;      // 担当ルート外
     if (assignedGroups.has(g)) return false;             // 既に割当済み
     const num = getGroupNum(g);
-    // ★前進のみ: 到達済み最大番号より大きいグループだけ（若い番号には戻らない）
+    // ★前進のみ: 割当中の最大番号より大きいグループだけ（若い番号には戻らない）
+    //   誰も割当中でないルートは maxReached=undefined なので、この制限は効かず
+    //   未完了の最小番号から始まる（過去完了は下の done<total 判定で自然に除外される）
     const maxReached = routeMaxReached[letter];
     if (maxReached !== undefined && num <= maxReached) return false;
-    // 定休日を除いた実作業対象が残っているか
+    // 定休日を除いた実作業対象が残っているか（＝未完了の店舗が残っているか）
     const grpRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g && !isClosedToday(r, workDay));
     if (grpRecs.length === 0) return false;
     const done = grpRecs.filter(r => ['完了','不在'].includes(r['ドロップダウン']?.value)).length;
-    return done < grpRecs.length;
+    return done < grpRecs.length; // 未完了が残っているグループだけが候補
   });
 
   if (!candidates.length) {
