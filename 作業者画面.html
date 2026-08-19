@@ -920,7 +920,9 @@ function renderCard(r, container) {
   const absent1 = r['文字列__1行__11']?.value || '';
   const absent2 = r['文字列__1行__12']?.value || '';
   const absent3 = r['文字列__1行__13']?.value || '';
-  const nabonVal = r['数値']?.value || '';
+  // 納本数の入力初期値: 既に実績入力があればその値、無ければ通常納本数（数値_2）を初期表示
+  const nabonEntered = r['数値']?.value;
+  const nabonVal = (nabonEntered !== undefined && nabonEntered !== '') ? nabonEntered : (r['数値_2']?.value || '');
   const henkyakuVal = r['数値_0']?.value || '';
 
   // 準備物バッジ（通常納本数・MAP冊数・ラック交換・POP交換）
