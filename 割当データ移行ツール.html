@@ -1,0 +1,245 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>🔧 割当データ移行ツール</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root { --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888; --border:#e0dbd0; --green:#1a8a4a; --amber:#c47a0a; --blue:#1a5cd4; --red:#d42020; }
+* { margin:0; padding:0; box-sizing:border-box; -webkit-tap-highlight-color:transparent; }
+body { font-family:'Noto Sans JP',sans-serif; background:var(--bg); color:var(--ink); min-height:100vh; }
+.header { background:var(--ink); color:#fff; padding:14px 16px; display:flex; align-items:center; gap:10px; position:sticky; top:0; z-index:10; }
+.back { color:#fff; text-decoration:none; font-size:18px; }
+.title { font-size:14px; font-weight:900; }
+.container { padding:20px; max-width:700px; margin:0 auto; }
+.card { background:var(--card); border-radius:12px; padding:18px; margin-bottom:14px; box-shadow:0 1px 4px rgba(0,0,0,.06); }
+.section-title { font-size:13px; font-weight:900; margin-bottom:10px; }
+label { font-size:12px; font-weight:700; display:block; margin-bottom:4px; color:var(--muted); }
+select { width:100%; padding:10px; border:2px solid var(--border); border-radius:8px; font-family:inherit; font-size:13px; margin-bottom:10px; background:#fff; }
+button { font-family:inherit; font-weight:700; cursor:pointer; border:none; }
+.btn-primary { width:100%; padding:14px; background:var(--blue); color:#fff; border-radius:10px; font-size:14px; margin-top:8px; }
+.btn-primary:disabled { opacity:0.5; cursor:not-allowed; }
+.warning { background:#fff8e8; border:1px solid #f0d090; border-radius:10px; padding:12px 14px; font-size:11px; color:#7a5a00; line-height:1.7; margin-bottom:14px; }
+.warning ul { margin-left:16px; }
+.log-box { background:#1a1a1a; color:#0f0; font-family:'DM Mono',monospace; font-size:11px; padding:10px; border-radius:6px; max-height:340px; overflow-y:auto; margin-top:10px; line-height:1.5; }
+.step { display:flex; align-items:center; gap:8px; padding:8px 0; font-size:12px; }
+.step-num { width:22px; height:22px; border-radius:50%; background:var(--blue); color:#fff; display:flex; align-items:center; justify-content:center; font-weight:900; font-size:11px; flex-shrink:0; }
+</style>
+</head>
+<body>
+
+<div class="header">
+  <a href="index.html" class="back">←</a>
+  <div class="title">🔧 割当データ移行ツール（新方式への移行）</div>
+</div>
+
+<div class="container">
+
+  <div class="warning">
+    ⚠️ <strong>このツールは、割当データを車ごとに分離する新方式へ移行します。</strong>
+    <ul>
+      <li>1号車と2号車が同時に作業しても競合しないようにします</li>
+      <li>既存の割当データ（メンバー・車編成・ルート設定）を新レコードにコピーします</li>
+      <li>元データは残るので安全です（消えません）</li>
+      <li>作業月ごとに1回実行してください</li>
+    </ul>
+  </div>
+
+  <div class="card">
+    <div class="section-title">📅 対象の作業月</div>
+    <select id="month-sel"></select>
+
+    <div style="font-size:11px;color:var(--muted);margin:10px 0;line-height:1.7;">
+      <div class="step"><span class="step-num">1</span> 既存の割当データ（先頭レコード）を読み込み</div>
+      <div class="step"><span class="step-num">2</span> __common__ レコードに共通設定をコピー</div>
+      <div class="step"><span class="step-num">3</span> __car1__ / __car2__ に車別の割当をコピー</div>
+    </div>
+
+    <button class="btn-primary" onclick="migrate()" id="btn-migrate">🔧 この月号を新方式に移行する</button>
+  </div>
+
+  <div class="log-box" id="log">[ログ] 起動中...</div>
+
+</div>
+
+<script>
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const APP = 269;
+
+function log(msg, type='info') {
+  const el = document.getElementById('log');
+  const time = new Date().toLocaleTimeString('ja-JP');
+  const color = type === 'error' ? '#f55' : type === 'success' ? '#5f5' : type === 'warn' ? '#fc5' : '#0f0';
+  el.innerHTML += `<div style="color:${color}">[${time}] ${msg}</div>`;
+  el.scrollTop = el.scrollHeight;
+}
+
+// 月号オプション
+function fillMonths() {
+  const now = new Date();
+  const sel = document.getElementById('month-sel');
+  for (let i = -3; i <= 3; i++) {
+    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+    const m = `${d.getFullYear()}年${d.getMonth()+1}月号`;
+    const o = document.createElement('option');
+    o.value = m; o.textContent = m;
+    if (i === 1) o.selected = true; // 来月号デフォルト
+    sel.appendChild(o);
+  }
+}
+
+async function kGet(query) {
+  const paramStr = `subdomain=white&app=${APP}&query=${encodeURIComponent(query)}`;
+  const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data).slice(0,200));
+  return data.records || [];
+}
+
+async function kFindSpecial(key) {
+  // 特殊レコード（作業月=key）を取得
+  const recs = await kGet(`文字列__1行_ = "${key}" limit 1`);
+  return recs.length ? recs[0] : null;
+}
+
+async function kCreate(record) {
+  const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=white`, {
+    method: 'POST',
+    headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app: APP, record })
+  });
+  const data = await res.json();
+  if (!res.ok) throw new Error(JSON.stringify(data).slice(0,200));
+  return data.id;
+}
+
+async function kUpdate(id, record) {
+  const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=white`, {
+    method: 'PUT',
+    headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app: APP, id, record })
+  });
+  if (!res.ok) { const t = await res.text(); throw new Error(t.slice(0,200)); }
+}
+
+// 特殊レコードにJSONを保存（なければ作成、あれば更新）
+async function saveSpecial(monthKey, jsonObj) {
+  const existing = await kFindSpecial(monthKey);
+  const record = {
+    '文字列__1行_': { value: monthKey },
+    '文字列__複数行__0': { value: JSON.stringify(jsonObj, null, 2) }
+  };
+  if (existing) {
+    await kUpdate(existing['$id'].value, { '文字列__複数行__0': record['文字列__複数行__0'] });
+    return 'updated';
+  } else {
+    await kCreate(record);
+    return 'created';
+  }
+}
+
+async function migrate() {
+  const month = document.getElementById('month-sel').value;
+  const btn = document.getElementById('btn-migrate');
+  btn.disabled = true;
+  btn.textContent = '移行中...';
+
+  try {
+    log(`🔧 ${month} の移行を開始`);
+
+    // 1. 既存の割当データ（先頭レコード）を読み込み
+    log('既存の割当データを読み込み中...');
+    const recs = await kGet(`文字列__1行_ = "${month}" order by レコード番号 asc limit 1`);
+    if (!recs.length) {
+      throw new Error(`${month} のレコードが見つかりません。先に月次納本データ作成ツールで作成してください。`);
+    }
+    let oldState = {};
+    try {
+      oldState = JSON.parse(recs[0]['文字列__複数行__0']?.value || '{}');
+    } catch(e) { oldState = {}; }
+    log(`✅ 既存データ読込: メンバー${(oldState.members||[]).length}名・車編成${Object.keys(oldState.cars||{}).length}件`, 'success');
+
+    // 2. __common__ に共通設定を保存
+    log('__common__ に共通設定をコピー中...');
+    const common = {
+      members: oldState.members || [],
+      cars: oldState.cars || {},
+      routeCars: oldState.routeCars || {},
+      drivers: oldState.drivers || {},  // 運転手（旧データには無いので空）
+      haifuItems: oldState.haifuItems || [{name:''},{name:''},{name:''}],
+      workDay: oldState.workDay || '',
+      updatedAt: new Date().toISOString()
+    };
+    const r1 = await saveSpecial(`__common__${monthSuffix(month)}`, common);
+    log(`✅ __common__ ${r1==='created'?'作成':'更新'}`, 'success');
+
+    // 3. 既存のassignments/returned/pausedを車別に振り分け
+    log('__car1__ / __car2__ に車別データをコピー中...');
+    const car1 = { assignments:{}, returned:[], paused:{}, revisitMap:{}, driverLocation:null, updatedAt:new Date().toISOString() };
+    const car2 = { assignments:{}, returned:[], paused:{}, revisitMap:{}, driverLocation:null, updatedAt:new Date().toISOString() };
+
+    // assignments を担当者の号車で振り分け
+    const cars = oldState.cars || {};
+    Object.entries(oldState.assignments || {}).forEach(([worker, grp]) => {
+      const c = parseInt(cars[worker]) || 0;
+      if (c === 1) car1.assignments[worker] = grp;
+      else if (c === 2) car2.assignments[worker] = grp;
+    });
+    // returned を振り分け
+    (oldState.returned || []).forEach(worker => {
+      const c = parseInt(cars[worker]) || 0;
+      if (c === 1) car1.returned.push(worker);
+      else if (c === 2) car2.returned.push(worker);
+    });
+    // paused を振り分け
+    Object.entries(oldState.paused || {}).forEach(([worker, v]) => {
+      const c = parseInt(cars[worker]) || 0;
+      if (c === 1) car1.paused[worker] = v;
+      else if (c === 2) car2.paused[worker] = v;
+    });
+    // revisitMap はグループのルート→車で振り分け
+    Object.entries(oldState.revisitMap || {}).forEach(([grp, ids]) => {
+      const letter = grp.replace(/[0-9.]/g,'').toLowerCase();
+      const c = parseInt((oldState.routeCars||{})[letter]) || parseInt((oldState.routeCars||{})[letter+'遅']) || 0;
+      if (c === 1) car1.revisitMap[grp] = ids;
+      else if (c === 2) car2.revisitMap[grp] = ids;
+    });
+    // driverLocation は両方にコピー（後で各車が上書き）
+    if (oldState.driverLocation) { car1.driverLocation = oldState.driverLocation; }
+
+    const r2 = await saveSpecial(`__car1__${monthSuffix(month)}`, car1);
+    log(`✅ __car1__ ${r2==='created'?'作成':'更新'}: 割当${Object.keys(car1.assignments).length}件`, 'success');
+    const r3 = await saveSpecial(`__car2__${monthSuffix(month)}`, car2);
+    log(`✅ __car2__ ${r3==='created'?'作成':'更新'}: 割当${Object.keys(car2.assignments).length}件`, 'success');
+
+    log('', 'info');
+    log('🎉 移行完了！新方式のデータが準備できました。', 'success');
+    log('次: メンバー管理で運転手を各車に設定してください。', 'warn');
+    alert('移行完了！\n\n__common__ / __car1__ / __car2__ の3レコードを作成しました。\n\n次にメンバー管理画面で「1号車の運転手」「2号車の運転手」を設定してください。');
+
+  } catch(e) {
+    log(`❌ エラー: ${e.message}`, 'error');
+    alert('移行に失敗しました: ' + e.message);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = '🔧 この月号を新方式に移行する';
+  }
+}
+
+// 月号を短いサフィックスに変換（例: "2026年8月号" → "_2026_8"）
+function monthSuffix(month) {
+  const m = month.match(/(\d{4})年(\d{1,2})月号/);
+  if (!m) return '';
+  return `_${m[1]}_${m[2]}`;
+}
+
+fillMonths();
+log('💡 対象の月号を選んで「移行する」を押してください。');
+</script>
+
+</body>
+</html>

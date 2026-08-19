@@ -573,23 +573,103 @@ async function kintoneUpdate(appId, token, id, fields) {
   return await res.json();
 }
 
-// ===== 割当JSON操作 =====
-async function getAssignState() {
-  const records = await kintoneGet(APP_NABON, TOKEN_NABON,
-    `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-  if (!records.length) return { assignments: {}, returned: [], updatedAt: '' };
-  const raw = records[0]['文字列__複数行__0']?.value || '';
-  try { return JSON.parse(raw); } catch(e) { return { assignments: {}, returned: [], updatedAt: '' }; }
+// ===== 分割データアクセス層（__common__ / __car1__ / __car2__）=====
+let MY_CAR = 0; // この作業者の号車（common.carsから判定）
+
+function monthSuffix(month) {
+  const m = (month || '').match(/(\d{4})年(\d{1,2})月号/);
+  return m ? `_${m[1]}_${m[2]}` : '';
+}
+function commonKey(month) { return `__common__${monthSuffix(month)}`; }
+function carKey(month, car) { return `__car${car}__${monthSuffix(month)}`; }
+
+async function loadSpecialRecord(monthKey) {
+  const q = `文字列__1行_ = "${monthKey}" limit 1`;
+  const paramStr = `subdomain=${KINTONE_DOMAIN}&app=${APP_NABON}&query=${encodeURIComponent(q)}`;
+  const res = await fetch(`${BASE}/records.json?${paramStr}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
+  });
+  if (!res.ok) throw new Error(`取得失敗: ${res.status}`);
+  const data = await res.json();
+  if (!data.records?.length) return { _notfound: true };
+  const raw = data.records[0]['文字列__複数行__0']?.value || '';
+  let obj = {};
+  try { obj = JSON.parse(raw); } catch(e) {}
+  obj._id = data.records[0]['$id'].value;
+  return obj;
 }
 
+async function saveSpecialRecord(monthKey, jsonObj) {
+  const existing = await loadSpecialRecord(monthKey);
+  const body = { value: JSON.stringify(jsonObj, null, 2) };
+  if (existing && !existing._notfound && existing._id) {
+    await kintoneUpdate(APP_NABON, TOKEN_NABON, existing._id, { '文字列__複数行__0': body });
+  } else {
+    const res = await fetch(`${BASE}/record.json?subdomain=${KINTONE_DOMAIN}`, {
+      method: 'POST',
+      headers: { 'X-Cybozu-API-Token': TOKEN_NABON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: APP_NABON, record: {
+        '文字列__1行_': { value: monthKey },
+        '文字列__複数行__0': body
+      }})
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(`作成失敗: ${t.slice(0,150)}`); }
+  }
+}
+
+function getCarOfWorker(common, name) {
+  const drivers = common.drivers || {};
+  for (const [car, drvName] of Object.entries(drivers)) {
+    if (drvName === name) return parseInt(car);
+  }
+  const car = (common.cars || {})[name];
+  return car ? parseInt(car) : 0;
+}
+
+// ===== 割当JSON操作（新方式：共通＋自車をマージ）=====
+async function getAssignState() {
+  // 共通データ
+  const common = await loadSpecialRecord(commonKey(currentMonth));
+  const commonData = common._notfound ? {} : common;
+  // MY_CARが未確定なら共通から判定
+  if (!MY_CAR && currentWorker) {
+    MY_CAR = getCarOfWorker(commonData, currentWorker);
+  }
+  // 自車データ
+  let carData = {};
+  if (MY_CAR) {
+    const c = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    if (!c._notfound) carData = c;
+  }
+  return {
+    members: commonData.members || [],
+    cars: commonData.cars || {},
+    routeCars: commonData.routeCars || {},
+    drivers: commonData.drivers || {},
+    haifuItems: commonData.haifuItems || [{name:''},{name:''},{name:''}],
+    workDay: commonData.workDay || '',
+    dynamicItems: commonData.dynamicItems || [],
+    assignments: carData.assignments || {},
+    returned: carData.returned || [],
+    paused: carData.paused || {},
+    revisitMap: carData.revisitMap || {},
+    driverLocation: carData.driverLocation || null,
+    updatedAt: carData.updatedAt || ''
+  };
+}
+
+// 自車データだけ保存（returned/paused/assignments/revisitMap）
 async function saveAssignState(state) {
-  const records = await kintoneGet(APP_NABON, TOKEN_NABON,
-    `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-  if (!records.length) throw new Error('割当レコードが見つかりません');
-  const recId = records[0]['$id'].value;
-  await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-    '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
-  });
+  if (!MY_CAR) throw new Error('号車が未確定です');
+  const carData = {
+    assignments: state.assignments || {},
+    returned: state.returned || [],
+    paused: state.paused || {},
+    revisitMap: state.revisitMap || {},
+    driverLocation: state.driverLocation || null,
+    updatedAt: new Date().toISOString()
+  };
+  await saveSpecialRecord(carKey(currentMonth, MY_CAR), carData);
 }
 
 // ===== 直接作業開始（URLパラメータから） =====
@@ -1229,46 +1309,75 @@ async function confirmReturn(withPause) {
   setTimeout(() => { isReturning = false; if (returnBtn) returnBtn.disabled = false; }, 3000);
 }
 
+// 自車データを「読み込み→変更→保存」する際、他の作業者の同時更新と衝突しても
+// リトライして安全にマージする（13人同時でも取りこぼさない）
+async function updateCarDataWithRetry(mutateFn, maxRetries = 6) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // 最新の自車データを取得
+    const carData = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    const recId = carData._notfound ? null : carData._id;
+    let state = carData._notfound
+      ? { assignments:{}, returned:[], paused:{}, revisitMap:{} }
+      : JSON.parse(JSON.stringify(carData));
+    delete state._id; delete state._notfound;
+    const beforeUpdatedAt = state.updatedAt || '';
+
+    // 変更を適用
+    mutateFn(state);
+    state.updatedAt = new Date().toISOString();
+
+    // 保存直前に再取得して、その間に他の人が更新していないか確認（楽観ロック）
+    try {
+      const check = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+      const checkUpdatedAt = check._notfound ? '' : (check.updatedAt || '');
+      if (checkUpdatedAt !== beforeUpdatedAt) {
+        // 他の人が先に更新した → 最新を取り込んで再試行
+        console.log(`[retry] 競合検知 (${attempt+1}回目)、再取得して再適用`);
+        continue;
+      }
+      // 衝突なし → 保存
+      const body = { value: JSON.stringify(state, null, 2) };
+      if (recId) {
+        await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, { '文字列__複数行__0': body });
+      } else {
+        const res = await fetch(`${BASE}/record.json?subdomain=${KINTONE_DOMAIN}`, {
+          method: 'POST',
+          headers: { 'X-Cybozu-API-Token': TOKEN_NABON, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app: APP_NABON, record: {
+            '文字列__1行_': { value: carKey(currentMonth, MY_CAR) },
+            '文字列__複数行__0': body
+          }})
+        });
+        if (!res.ok) { const t = await res.text(); throw new Error('作成失敗: ' + t.slice(0,150)); }
+      }
+      return state; // 成功
+    } catch(e) {
+      if (attempt === maxRetries - 1) throw e;
+      // エラーでも少し待って再試行
+      await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
+    }
+  }
+  throw new Error('保存が混み合っています。もう一度お試しください。');
+}
+
 async function reportReturn(withPause) {
-  // 1回のGETで取得してすぐPUT
-  const q = `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`;
-  // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
-  const paramStr = `subdomain=white&app=${APP_NABON}&query=${encodeURIComponent(q)}`;
-  const res = await fetch(`${PROXY}/kintone/v1/records.json?${paramStr}`, {
-    headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
-  });
-  const data = await res.json();
-  if (!res.ok) throw new Error(`kintone取得エラー: ${JSON.stringify(data).slice(0, 200)}`);
-  if (!data.records?.length) throw new Error('レコードが見つかりません');
-  const recId = data.records[0]['$id'].value;
-  const raw = data.records[0]['文字列__複数行__0']?.value || '';
-  let state;
-  try { state = JSON.parse(raw); } catch(e) { state = { assignments:{}, returned:[], updatedAt:'' }; }
-
-  if (!state.returned) state.returned = [];
-  if (!state.returned.includes(currentWorker)) state.returned.push(currentWorker);
-  delete state.assignments[currentWorker];
-
-  // 受付停止フラグを設定/解除
-  if (!state.paused) state.paused = {};
-  if (withPause) {
-    state.paused[currentWorker] = true;
-  }
-  state.updatedAt = new Date().toISOString();
-
-  const putRes = await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
-    method: 'PUT',
-    headers: { 'X-Cybozu-API-Token': TOKEN_NABON, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: APP_NABON, id: recId, record: {
-      '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
-    }})
-  });
-  if (!putRes.ok) {
-    const errData = await putRes.text();
-    throw new Error(`kintone更新エラー: ${errData.slice(0, 200)}`);
+  if (!MY_CAR) {
+    // 号車未確定なら共通から判定
+    const common = await loadSpecialRecord(commonKey(currentMonth));
+    if (!common._notfound) MY_CAR = getCarOfWorker(common, currentWorker);
+    if (!MY_CAR) throw new Error('号車が特定できません。運転手に確認してください。');
   }
 
-  // UI を即時更新
+  // 楽観ロック付きで「自分の戻り報告だけ」を追記（13人同時でも取りこぼさない）
+  await updateCarDataWithRetry(state => {
+    if (!state.returned) state.returned = [];
+    if (!state.assignments) state.assignments = {};
+    if (!state.returned.includes(currentWorker)) state.returned.push(currentWorker);
+    delete state.assignments[currentWorker];
+    if (!state.paused) state.paused = {};
+    if (withPause) state.paused[currentWorker] = true;
+  });
+
   if (withPause) updatePauseUI(true);
 }
 
@@ -1424,17 +1533,18 @@ async function togglePause() {
   const btn = document.getElementById('pause-toggle');
   btn.disabled = true;
   try {
-    const state = await getAssignState();
-    if (!state.paused) state.paused = {};
-    const isPaused = state.paused[currentWorker] === true;
-    if (isPaused) {
-      delete state.paused[currentWorker];
-    } else {
-      state.paused[currentWorker] = true;
+    if (!MY_CAR) {
+      const common = await loadSpecialRecord(commonKey(currentMonth));
+      if (!common._notfound) MY_CAR = getCarOfWorker(common, currentWorker);
     }
-    state.updatedAt = new Date().toISOString();
-    await saveAssignState(state);
-    updatePauseUI(!isPaused);
+    let nowPaused = false;
+    await updateCarDataWithRetry(state => {
+      if (!state.paused) state.paused = {};
+      const isPaused = state.paused[currentWorker] === true;
+      if (isPaused) { delete state.paused[currentWorker]; nowPaused = false; }
+      else { state.paused[currentWorker] = true; nowPaused = true; }
+    });
+    updatePauseUI(nowPaused);
   } catch(e) {
     alert('更新エラー: ' + e.message);
   }

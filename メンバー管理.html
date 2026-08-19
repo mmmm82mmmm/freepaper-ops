@@ -123,6 +123,22 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <button class="btn-print" onclick="window.print()">🖨️ QRコードを一括印刷</button>
   </div>
 
+  <!-- 運転手設定 -->
+  <div class="add-form" style="margin-top:20px;">
+    <div class="add-form-title">🚐 運転手設定</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">各号車の運転手を指名します。運転手はログイン時にこの設定で号車が自動判定されます。</div>
+    <div style="margin-bottom:10px;">
+      <label>1号車の運転手</label>
+      <select id="driver1-select" style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:#fff;"></select>
+    </div>
+    <div style="margin-bottom:10px;">
+      <label>2号車の運転手</label>
+      <select id="driver2-select" style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:#fff;"></select>
+    </div>
+    <button class="btn-save" onclick="saveDrivers()">💾 運転手を保存する</button>
+    <div class="save-status" id="driver-save-status"></div>
+  </div>
+
   <!-- 今月の配布物設定 -->
   <div class="add-form" style="margin-top:20px;">
     <div class="add-form-title">📋 今月の配布物設定</div>
@@ -176,11 +192,42 @@ async function determineWorkMonth() {
 }
 
 let members = [];
-let assignState = { members: [], cars: {}, assignments: {}, returned: [], haifuItems: [{name:''},{name:''},{name:''}], updatedAt: '' };
+let assignState = { members: [], cars: {}, routeCars: {}, drivers: {}, assignments: {}, returned: [], haifuItems: [{name:''},{name:''},{name:''}], updatedAt: '' };
 
-// kintoneから割当JSONを取得
+function monthSuffix(month) {
+  const m = (month || '').match(/(\d{4})年(\d{1,2})月号/);
+  return m ? `_${m[1]}_${m[2]}` : '';
+}
+function commonKey(month) { return `__common__${monthSuffix(month)}`; }
+
+// __common__ レコードを取得
 async function loadAssignState() {
-  // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
+  const key = commonKey(currentMonth);
+  const q = `文字列__1行_ = "${key}" limit 1`;
+  const paramStr = `subdomain=white&app=${APP}&query=${encodeURIComponent(q)}`;
+  const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  const data = await res.json();
+  if (!data.records?.length) {
+    // __common__ が無い場合、旧先頭レコードからの引き継ぎを試みる
+    await tryMigrateFromOld();
+    return;
+  }
+  const raw = data.records[0]['文字列__複数行__0']?.value || '';
+  try {
+    const parsed = JSON.parse(raw);
+    assignState = { members:[], cars:{}, routeCars:{}, drivers:{}, assignments:{}, returned:[], haifuItems:[{name:''},{name:''},{name:''}], ...parsed };
+    if (!assignState.haifuItems || !Array.isArray(assignState.haifuItems)) {
+      assignState.haifuItems = [{name:''},{name:''},{name:''}];
+    }
+    if (!assignState.drivers) assignState.drivers = {};
+    members = assignState.members || [];
+  } catch(e) {}
+}
+
+// __common__ が無い時、旧形式（先頭レコード）から読み込んで移行の土台にする
+async function tryMigrateFromOld() {
   const q = `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`;
   const paramStr = `subdomain=white&app=${APP}&query=${encodeURIComponent(q)}`;
   const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
@@ -191,7 +238,8 @@ async function loadAssignState() {
   const raw = data.records[0]['文字列__複数行__0']?.value || '';
   try {
     const parsed = JSON.parse(raw);
-    assignState = { members:[], cars:{}, assignments:{}, returned:[], haifuItems:[{name:''},{name:''},{name:''}], ...parsed };
+    assignState = { members:[], cars:{}, routeCars:{}, drivers:{}, assignments:{}, returned:[], haifuItems:[{name:''},{name:''},{name:''}], ...parsed };
+    if (!assignState.drivers) assignState.drivers = {};
     if (!assignState.haifuItems || !Array.isArray(assignState.haifuItems)) {
       assignState.haifuItems = [{name:''},{name:''},{name:''}];
     }
@@ -199,29 +247,50 @@ async function loadAssignState() {
   } catch(e) {}
 }
 
+// __common__ レコードに保存（なければ作成）
 async function saveAssignState() {
   assignState.members = members;
   assignState.updatedAt = new Date().toISOString();
+  // 共通データだけを保存（assignments等の稼働データは含めない）
+  const common = {
+    members: assignState.members || [],
+    cars: assignState.cars || {},
+    routeCars: assignState.routeCars || {},
+    drivers: assignState.drivers || {},
+    haifuItems: assignState.haifuItems || [{name:''},{name:''},{name:''}],
+    workDay: assignState.workDay || '',
+    updatedAt: new Date().toISOString()
+  };
 
-  // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
-  const q = `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`;
+  const key = commonKey(currentMonth);
+  const q = `文字列__1行_ = "${key}" limit 1`;
   const paramStr = `subdomain=white&app=${APP}&query=${encodeURIComponent(q)}`;
   const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
     headers: { 'X-Cybozu-API-Token': TOKEN }
   });
   const data = await res.json();
   if (!res.ok) throw new Error(`取得エラー: ${JSON.stringify(data).slice(0,200)}`);
-  if (!data.records?.length) throw new Error('レコードが見つかりません');
-  const recId = data.records[0]['$id'].value;
 
-  const putRes = await fetch(`${PROXY}/k/v1/record.json?subdomain=white`, {
-    method: 'PUT',
-    headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: APP, id: recId, record: {
-      '文字列__複数行__0': { value: JSON.stringify(assignState, null, 2) }
-    }})
-  });
-  if (!putRes.ok) throw new Error('保存失敗');
+  const body = { value: JSON.stringify(common, null, 2) };
+  if (data.records?.length) {
+    const recId = data.records[0]['$id'].value;
+    const putRes = await fetch(`${PROXY}/k/v1/record.json?subdomain=white`, {
+      method: 'PUT',
+      headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: APP, id: recId, record: { '文字列__複数行__0': body } })
+    });
+    if (!putRes.ok) throw new Error('保存失敗');
+  } else {
+    const postRes = await fetch(`${PROXY}/k/v1/record.json?subdomain=white`, {
+      method: 'POST',
+      headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: APP, record: {
+        '文字列__1行_': { value: key },
+        '文字列__複数行__0': body
+      }})
+    });
+    if (!postRes.ok) { const t = await postRes.text(); throw new Error('作成失敗: ' + t.slice(0,150)); }
+  }
 }
 
 // 読み込み
@@ -231,6 +300,54 @@ async function loadMembers() {
   } catch(e) { console.error(e); }
   renderMembers();
   renderItems();
+  renderDrivers();
+}
+
+// 運転手セレクトを描画
+function renderDrivers() {
+  const d1 = document.getElementById('driver1-select');
+  const d2 = document.getElementById('driver2-select');
+  if (!d1 || !d2) return;
+  const opts = '<option value="">-- 未設定 --</option>' +
+    members.map(m => `<option value="${m.replace(/"/g,'&quot;')}">${m}</option>`).join('');
+  d1.innerHTML = opts;
+  d2.innerHTML = opts;
+  const drivers = assignState.drivers || {};
+  if (drivers[1]) d1.value = drivers[1];
+  if (drivers[2]) d2.value = drivers[2];
+}
+
+// 運転手を保存
+async function saveDrivers() {
+  const d1 = document.getElementById('driver1-select').value;
+  const d2 = document.getElementById('driver2-select').value;
+  const status = document.getElementById('driver-save-status');
+  if (d1 && d2 && d1 === d2) {
+    status.textContent = '❌ 1号車と2号車に同じ人は指定できません';
+    status.style.color = 'var(--red)';
+    return;
+  }
+  if (!assignState.drivers) assignState.drivers = {};
+  assignState.drivers = {};
+  if (d1) assignState.drivers[1] = d1;
+  if (d2) assignState.drivers[2] = d2;
+  // 運転手も車編成(cars)に号車を登録しておく（作業者画面の号車判定にも使えるように）
+  if (!assignState.cars) assignState.cars = {};
+  if (d1) assignState.cars[d1] = 1;
+  if (d2) assignState.cars[d2] = 2;
+
+  const btn = event.target;
+  btn.disabled = true;
+  try {
+    await saveAssignState();
+    status.textContent = '✅ 運転手を保存しました';
+    status.style.color = 'var(--green)';
+    setTimeout(() => { status.textContent = ''; }, 3000);
+  } catch(e) {
+    status.textContent = '❌ 保存失敗: ' + e.message;
+    status.style.color = 'var(--red)';
+  }
+  btn.disabled = false;
 }
 
 async function saveMembers() {

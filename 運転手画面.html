@@ -203,11 +203,28 @@ body.text-xlarge .error-box{font-size:19px;}
 </head>
 <body>
 
+<!-- 運転手ログイン画面（名前選択→号車判定） -->
+<div id="driver-login" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;">
+  <div style="background:var(--card);border-radius:16px;padding:28px 24px;max-width:400px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.1);">
+    <div style="font-size:40px;text-align:center;margin-bottom:10px;">🚐</div>
+    <div style="font-size:18px;font-weight:900;text-align:center;margin-bottom:6px;">運転手ログイン</div>
+    <div style="font-size:12px;color:var(--muted);text-align:center;margin-bottom:20px;">お名前を選んでください</div>
+    <label style="font-size:12px;font-weight:700;color:var(--muted);">運転手名</label>
+    <select id="driver-name-select" style="width:100%;padding:12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:15px;font-weight:700;margin:6px 0 14px;background:#fff;">
+      <option value="">-- 選択してください --</option>
+    </select>
+    <div id="driver-car-preview" style="text-align:center;font-size:13px;margin-bottom:14px;min-height:20px;"></div>
+    <button id="driver-login-btn" onclick="doDriverLogin()" disabled style="width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:15px;font-weight:900;cursor:pointer;">運転を開始する →</button>
+    <div id="driver-login-error" style="color:var(--red);font-size:12px;margin-top:10px;text-align:center;display:none;"></div>
+  </div>
+</div>
+
 <div class="app-header">
   <div class="app-header-top">
     <a href="index.html" style="color:#fff;text-decoration:none;font-size:18px;margin-right:6px;">←</a>
     <div class="app-title">🚐 運転手画面</div>
     <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span id="driver-car-badge" style="font-size:11px;background:var(--green);color:#fff;padding:4px 10px;border-radius:20px;font-weight:900;display:none;">1号車</span>
       <button class="text-size-btn" onclick="cycleTextSize()" title="文字サイズ変更" style="font-size:12px;background:rgba(255,255,255,.15);color:#fff;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:900;cursor:pointer;min-width:40px;">A</button>
       <select id="work-day-select" onchange="changeWorkDay(this.value)" style="font-size:11px;background:#c47a0a;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;">
         <option value="">📅 作業日</option>
@@ -468,6 +485,189 @@ const APP = 269;
 const DOMAIN = 'white';
 
 const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d42020','#5c4a1a'];
+
+// ============================================================
+// 分割データアクセス層（__common__ / __car1__ / __car2__）
+// 1号車と2号車が別レコードなので同時保存しても競合しない
+// ============================================================
+let MY_CAR = 0; // この端末が担当する号車（1 or 2）。ログイン後に確定
+
+function monthSuffix(month) {
+  const m = (month || '').match(/(\d{4})年(\d{1,2})月号/);
+  return m ? `_${m[1]}_${m[2]}` : '';
+}
+function commonKey(month) { return `__common__${monthSuffix(month)}`; }
+function carKey(month, car) { return `__car${car}__${monthSuffix(month)}`; }
+
+// 特殊レコードを取得（JSONパースして返す。無ければnull）
+async function loadSpecialRecord(monthKey) {
+  const q = `文字列__1行_ = "${monthKey}" limit 1`;
+  const paramStr = `subdomain=${DOMAIN}&app=${APP}&query=${encodeURIComponent(q)}`;
+  const res = await fetch(`${BASE}/records.json?${paramStr}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  if (!res.ok) throw new Error(`取得失敗: ${res.status}`);
+  const data = await res.json();
+  if (!data.records?.length) return { _notfound: true };
+  const raw = data.records[0]['文字列__複数行__0']?.value || '';
+  let obj = {};
+  try { obj = JSON.parse(raw); } catch(e) {}
+  obj._id = data.records[0]['$id'].value;
+  return obj;
+}
+
+// 特殊レコードにJSON保存（なければ作成）
+async function saveSpecialRecord(monthKey, jsonObj) {
+  const existing = await loadSpecialRecord(monthKey);
+  const body = { value: JSON.stringify(jsonObj, null, 2) };
+  if (existing && !existing._notfound && existing._id) {
+    const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+      method: 'PUT',
+      headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: APP, id: existing._id, record: { '文字列__複数行__0': body } })
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(`保存失敗: ${t.slice(0,150)}`); }
+  } else {
+    const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+      method: 'POST',
+      headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: APP, record: {
+        '文字列__1行_': { value: monthKey },
+        '文字列__複数行__0': body
+      }})
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(`作成失敗: ${t.slice(0,150)}`); }
+  }
+}
+
+// 名前から号車を判定（運転手優先→作業者）
+function getCarOfWorker(common, name) {
+  const drivers = common.drivers || {};
+  for (const [car, drvName] of Object.entries(drivers)) {
+    if (drvName === name) return parseInt(car);
+  }
+  const car = (common.cars || {})[name];
+  return car ? parseInt(car) : 0;
+}
+
+// 共通＋この車のデータをマージしてassignStateを構築
+function mergeState(common, carData) {
+  return {
+    members: common.members || [],
+    cars: common.cars || {},
+    routeCars: common.routeCars || {},
+    drivers: common.drivers || {},
+    haifuItems: common.haifuItems || [{name:''},{name:''},{name:''}],
+    workDay: common.workDay || '',
+    assignments: carData.assignments || {},
+    returned: carData.returned || [],
+    paused: carData.paused || {},
+    revisitMap: carData.revisitMap || {},
+    driverLocation: carData.driverLocation || null,
+    updatedAt: carData.updatedAt || ''
+  };
+}
+// 共通データだけ抽出
+function extractCommon(state) {
+  return {
+    members: state.members || [],
+    cars: state.cars || {},
+    routeCars: state.routeCars || {},
+    drivers: state.drivers || {},
+    haifuItems: state.haifuItems || [{name:''},{name:''},{name:''}],
+    workDay: state.workDay || '',
+    updatedAt: new Date().toISOString()
+  };
+}
+// 車データだけ抽出
+function extractCar(state) {
+  return {
+    assignments: state.assignments || {},
+    returned: state.returned || [],
+    paused: state.paused || {},
+    revisitMap: state.revisitMap || {},
+    driverLocation: state.driverLocation || null,
+    updatedAt: new Date().toISOString()
+  };
+}
+
+// 【運転手用】共通＋自車データを読み込んでassignStateに反映
+async function loadSplitState() {
+  const common = await loadSpecialRecord(commonKey(currentMonth));
+  if (common._notfound) {
+    throw new Error(`${currentMonth} の共通データ(__common__)がありません。\n「割当データ移行ツール」を先に実行してください。`);
+  }
+  const carData = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+  const car = carData._notfound ? {} : carData;
+  assignState = mergeState(common, car);
+}
+
+// 【運転手用】自車データだけ保存（楽観ロック＋リトライで作業者の同時更新と衝突しない）
+async function saveCarData() {
+  const maxRetries = 6;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // 保存直前に最新を取得
+    const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    const recId = fresh._notfound ? null : fresh._id;
+    const freshUpdatedAt = fresh._notfound ? '' : (fresh.updatedAt || '');
+
+    // 作業者が追記した returned / paused を取り込んでからassignStateを反映
+    // （運転手はassignments/revisitMap/driverLocationを担当、returned/pausedは作業者と共同）
+    if (!fresh._notfound) {
+      // 作業者側の最新 returned / paused をベースに、運転手の割当結果をマージ
+      const freshReturned = fresh.returned || [];
+      const freshPaused = fresh.paused || {};
+      // 運転手が割当済みの作業者は returned から除外（割当したので戻り待ちではない）
+      const assignedWorkers = new Set(Object.keys(assignState.assignments || {}));
+      assignState.returned = freshReturned.filter(w => !assignedWorkers.has(w));
+      // paused は作業者側の最新を尊重（運転手は通常触らない）
+      assignState.paused = freshPaused;
+    }
+
+    const payload = extractCar(assignState);
+
+    // 保存直前の再確認（楽観ロック）
+    const check = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    const checkUpdatedAt = check._notfound ? '' : (check.updatedAt || '');
+    if (checkUpdatedAt !== freshUpdatedAt) {
+      console.log(`[driver retry] 競合検知 (${attempt+1}回目)`);
+      continue;
+    }
+
+    try {
+      const body = { value: JSON.stringify(payload, null, 2) };
+      if (recId) {
+        const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+          method: 'PUT',
+          headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app: APP, id: recId, record: { '文字列__複数行__0': body } })
+        });
+        if (!res.ok) throw new Error('保存失敗');
+      } else {
+        const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+          method: 'POST',
+          headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app: APP, record: {
+            '文字列__1行_': { value: carKey(currentMonth, MY_CAR) },
+            '文字列__複数行__0': body
+          }})
+        });
+        if (!res.ok) throw new Error('作成失敗');
+      }
+      return; // 成功
+    } catch(e) {
+      if (attempt === maxRetries - 1) throw e;
+      await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
+    }
+  }
+  throw new Error('保存が混み合っています');
+}
+
+// 【運転手用】共通データを保存（準備時のみ。運転手は通常触らない）
+async function saveCommonData() {
+  await saveSpecialRecord(commonKey(currentMonth), extractCommon(assignState));
+}
+
 
 // ===== 文字サイズ切替（老眼対応） =====
 const TEXT_SIZE_STORAGE = 'fp_driver_text_size';
@@ -846,12 +1046,19 @@ function changeMonth(month) {
 // ===== グループ割当 =====
 async function loadAssignData() {
   try {
-    const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-    if (recs.length) {
-      const raw = recs[0]['文字列__複数行__0']?.value || '';
-      try { assignState = JSON.parse(raw); } catch(e) { assignState = { cars:{}, assignments:{}, returned:[], updatedAt:'' }; }
-      if (!assignState.cars) assignState.cars = {};
+    // 新方式: 共通＋自車データを読み込み（MY_CARが確定している前提）
+    if (MY_CAR) {
+      try {
+        await loadSplitState();
+      } catch(e) {
+        console.error('分割データ読込エラー:', e);
+        // 共通データが無い等 → エラー表示
+        const errBox = document.getElementById('assign-error');
+        if (errBox) { errBox.style.display = 'block'; errBox.textContent = e.message; }
+        return;
+      }
     }
+    if (!assignState.cars) assignState.cars = {};
 
     // グループ・作業者一覧を収集
     const groupSet = new Set();
@@ -904,7 +1111,6 @@ async function loadAssignData() {
     if (!assignState.routeCars) assignState.routeCars = {};
 
     // 戻ってきた作業者に自動割当
-    // ※ 自動割当前にallRecordsが最新であることを確認
     let autoAssigned = false;
     const returned = [...(assignState.returned || [])];
     if (returned.length > 0) {
@@ -913,24 +1119,47 @@ async function loadAssignData() {
         const latestQuery = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
         allRecords = await kintoneGet(latestQuery);
       } catch(e) { console.error('再取得エラー:', e); }
+
+      // ★自車データを最新化（同端末の二重ポーリング対策。他車とは別レコードなので競合しない）
+      try {
+        const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+        if (fresh && !fresh._notfound) {
+          assignState.assignments = fresh.assignments || {};
+          assignState.returned = fresh.returned || [];
+          assignState.paused = fresh.paused || {};
+          assignState.revisitMap = fresh.revisitMap || assignState.revisitMap || {};
+        }
+      } catch(e) { console.warn('自車データ最新化に失敗:', e); }
     }
+
     // 二重割当を防ぐため、処理中に割当てたグループを記録
     const justAssigned = new Set();
-    for (const worker of returned) {
-      // 受付停止中の作業者はスキップ
+    // 最新のreturnedで再ループ（排他制御後）
+    const returnedNow = [...(assignState.returned || [])];
+    for (const worker of returnedNow) {
       if ((assignState.paused || {})[worker] === true) {
         console.log(`⏸️ 受付停止中スキップ: ${worker}`);
         continue;
       }
-      if (!assignState.assignments[worker]) {
-        const group = autoAssign(worker, justAssigned);
-        if (group) {
-          assignState.assignments[worker] = group;
-          justAssigned.add(group);
-          assignState.returned = assignState.returned.filter(w => w !== worker);
-          autoAssigned = true;
-          console.log(`🤖 自動割当: ${worker} → ${group}`);
+      // 既に割当があればスキップ（他端末が割り当てた可能性）
+      if (getWorkerGroups(worker).length > 0) {
+        // 割当があるならreturnedから外す
+        assignState.returned = (assignState.returned || []).filter(w => w !== worker);
+        autoAssigned = true;
+        continue;
+      }
+      const group = autoAssign(worker, justAssigned);
+      if (group) {
+        // ★確定直前チェック: このグループが既に誰かに取られていないか
+        if (getGroupWorker(group)) {
+          console.log(`⚠️ ${group} は既に${getGroupWorker(group)}に割当済み、スキップ`);
+          continue;
         }
+        setWorkerGroups(worker, [group]);
+        justAssigned.add(group);
+        assignState.returned = assignState.returned.filter(w => w !== worker);
+        autoAssigned = true;
+        console.log(`🤖 自動割当: ${worker} → ${group}`);
       }
     }
     if (autoAssigned) {
@@ -999,7 +1228,7 @@ async function addWorkerFromSelect() {
   }
   assignState.cars[name] = 0;
   assignState.updatedAt = new Date().toISOString();
-  await saveAssign();
+  await saveCommonData();
   sel.value = '';
   renderCars();
 }
@@ -1036,14 +1265,14 @@ async function changeRouteCar(route, carNum) {
   if (!assignState.routeCars) assignState.routeCars = {};
   assignState.routeCars[route] = parseInt(carNum);
   assignState.updatedAt = new Date().toISOString();
-  await saveAssign();
+  await saveCommonData();
 }
 
 async function moveCar(workerName, carNum) {
   if (!assignState.cars) assignState.cars = {};
   assignState.cars[workerName] = carNum;
   assignState.updatedAt = new Date().toISOString();
-  await saveAssign();
+  await saveCommonData();
   renderCars();
   renderAssign();
 }
@@ -1054,21 +1283,21 @@ async function addWorker(name) {
   if (!assignState.cars) assignState.cars = {};
   assignState.cars[name] = 0; // 未割当
   assignState.updatedAt = new Date().toISOString();
-  await saveAssign();
+  await saveCommonData();
   renderCars();
 }
 
 async function saveAssign() {
-  const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-  if (!recs.length) throw new Error('レコードが見つかりません');
-  const id = recs[0]['$id'].value;
-  const params = new URLSearchParams({ subdomain: 'white' });
-  const res = await fetch(`${PROXY}/k/v1/record.json?${params}`, {
-    method: 'PUT',
-    headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: APP, id, record: { '文字列__複数行__0': { value: JSON.stringify(assignState, null, 2) } } })
-  });
-  if (!res.ok) throw new Error('保存失敗');
+  // 自車データ(__carN__)だけ保存。共通データには触らないので2号車と競合しない
+  await saveCarData();
+}
+
+// グループコードから純粋なルート文字（遅サフィックスなし）と番号を取得
+function getGroupLetter(g) {
+  return (g || '').replace(/[0-9.]/g, '').toLowerCase();
+}
+function getGroupNum(g) {
+  return parseFloat((g || '').replace(/[^0-9.]/g, '')) || 0;
 }
 
 function autoAssign(workerName, justAssigned = new Set()) {
@@ -1088,44 +1317,61 @@ function autoAssign(workerName, justAssigned = new Set()) {
     return null;
   }
 
-  // グループごとの完了状況を集計
-  const groupCounts = {}, groupDone = {};
-  allRecords.forEach(r => {
-    const g = r['文字列__1行__0']?.value;
-    if (!g) return;
-    groupCounts[g] = (groupCounts[g] || 0) + 1;
-    if (r['ドロップダウン']?.value === '完了' || r['ドロップダウン']?.value === '不在') {
-      groupDone[g] = (groupDone[g] || 0) + 1;
-    }
-  });
+  const workDay = document.getElementById('work-day-select')?.value || '';
 
-  // 既に割当済みのグループ（今回のループで割当てられたものも含む）
+  // 既に割当済みのグループ（他の作業者＋今回のループ分）
   const assignedGroups = new Set([
     ...getAllAssignedGroups(),
     ...justAssigned
   ]);
 
-  // 作業日取得
-  const workDay = document.getElementById('work-day-select')?.value || '';
+  // ルートごとの「到達済み最大番号」を計算
+  // = そのルートで「割当済み」または「1件でも完了/不在がある」グループの最大番号
+  const routeMaxReached = {}; // { 'e': 15, ... }
+  allGroups.forEach(g => {
+    const letter = getGroupLetter(g);
+    const num = getGroupNum(g);
+    // このグループが「着手済み」か判定
+    const isAssigned = assignedGroups.has(g);
+    const hasProgress = allRecords.some(r =>
+      r['文字列__1行__0']?.value === g &&
+      ['完了','不在'].includes(r['ドロップダウン']?.value)
+    );
+    if (isAssigned || hasProgress) {
+      if (routeMaxReached[letter] === undefined || num > routeMaxReached[letter]) {
+        routeMaxReached[letter] = num;
+      }
+    }
+  });
 
-  // 対象ルートの未完了・未割当グループを取得（定休日除く）
+  // 候補グループを絞り込む
   const candidates = allGroups.filter(g => {
-    const route = getGroupRoute(g).toLowerCase();
-    if (!carRoutes.includes(route)) return false;
-    if (assignedGroups.has(g)) return false;
-    // 定休日を除いた件数で判定
+    const letter = getGroupLetter(g);
+    if (!carRoutes.includes(letter)) return false;      // 担当ルート外
+    if (assignedGroups.has(g)) return false;             // 既に割当済み
+    const num = getGroupNum(g);
+    // ★前進のみ: 到達済み最大番号より大きいグループだけ（若い番号には戻らない）
+    const maxReached = routeMaxReached[letter];
+    if (maxReached !== undefined && num <= maxReached) return false;
+    // 定休日を除いた実作業対象が残っているか
     const grpRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g && !isClosedToday(r, workDay));
-    if (grpRecs.length === 0) return false; // 全店舗が定休日ならスキップ
+    if (grpRecs.length === 0) return false;
     const done = grpRecs.filter(r => ['完了','不在'].includes(r['ドロップダウン']?.value)).length;
     return done < grpRecs.length;
   });
 
   if (!candidates.length) {
-    console.log(`[autoAssign] ${workerName}: 対象ルート(${carRoutes.join(',')})に未完了グループなし`);
+    console.log(`[autoAssign] ${workerName}: ルート(${carRoutes.join(',')})に前方の未割当グループなし`);
     return null;
   }
 
-  // 最も番号が若いグループを返す
+  // 候補の中で「最も番号が小さい」= 現在地から一番近い前方のグループを返す
+  candidates.sort((a, b) => {
+    // ルートが複数ある場合はルート文字順、同一ルート内は番号順
+    const la = getGroupLetter(a), lb = getGroupLetter(b);
+    if (la !== lb) return la.localeCompare(lb);
+    return getGroupNum(a) - getGroupNum(b);
+  });
   return candidates[0];
 }
 
@@ -1810,7 +2056,7 @@ async function changeWorkDay(workDay) {
   if (!assignState) return;
   assignState.workDay = workDay === '' ? null : parseInt(workDay);
   assignState.updatedAt = new Date().toISOString();
-  await saveAssign();
+  await saveCommonData();
   localStorage.setItem('fp_work_day', workDay);
   renderAssign();
   renderRevisit();
@@ -1834,23 +2080,9 @@ async function shareLocation() {
     const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
 
     try {
-      // 割当JSONに位置情報を保存
-      const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-      if (!recs.length) throw new Error('レコードが見つかりません');
-      const recId = recs[0]['$id'].value;
-      const raw = recs[0]['文字列__複数行__0']?.value || '';
-      let state;
-      try { state = JSON.parse(raw); } catch(e) { state = {}; }
-      state.driverLocation = { lat, lng, url: mapsUrl, updatedAt: new Date().toISOString() };
-
-      const params = new URLSearchParams({ subdomain: 'white' });
-      await fetch(`${PROXY}/k/v1/record.json?${params}`, {
-        method: 'PUT',
-        headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app: APP, id: recId, record: {
-          '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
-        }})
-      });
+      // 自車データに位置情報を保存
+      assignState.driverLocation = { lat, lng, url: mapsUrl, updatedAt: new Date().toISOString() };
+      await saveCarData();
 
       btn.textContent = '📍 共有済み ✓';
       btn.style.background = '#1a8a4a';
@@ -1891,44 +2123,121 @@ function restoreTab() {
 }
 
 // 起動時に読み込み
+let MY_DRIVER_NAME = '';
+let COMMON_CACHE = null; // ログイン画面用の共通データキャッシュ
+
 (async function init() {
-  // kintone設定から作業号を取得（あれば上書き）
+  // kintone設定から作業号を取得
   const forced = await getWorkMonthFromSettings();
   if (forced) {
     currentMonth = forced;
     console.log(`📌 管理者設定により作業号を ${forced} に固定`);
   }
   initMonthSelect();
-  loadData();
-  setTimeout(restoreTab, 500);
+
+  // 共通データを読んで運転手リストを作る
+  try {
+    COMMON_CACHE = await loadSpecialRecord(commonKey(currentMonth));
+  } catch(e) { COMMON_CACHE = { _notfound: true }; }
+
+  // セッション復元（前回ログインした運転手）
+  const savedDriver = localStorage.getItem('fp_driver_name');
+  if (savedDriver && COMMON_CACHE && !COMMON_CACHE._notfound) {
+    const car = getCarOfWorker(COMMON_CACHE, savedDriver);
+    if (car) {
+      MY_DRIVER_NAME = savedDriver;
+      MY_CAR = car;
+      startDriverUI();
+      return;
+    }
+  }
+  // ログイン画面を表示
+  showDriverLogin();
 })();
 
+function showDriverLogin() {
+  const login = document.getElementById('driver-login');
+  login.style.display = 'flex';
+  const sel = document.getElementById('driver-name-select');
+  sel.innerHTML = '<option value="">-- 選択してください --</option>';
+
+  if (!COMMON_CACHE || COMMON_CACHE._notfound) {
+    const err = document.getElementById('driver-login-error');
+    err.style.display = 'block';
+    err.innerHTML = `${currentMonth} の準備データがありません。<br>先に「割当データ移行ツール」を実行してください。`;
+    return;
+  }
+
+  // 運転手として登録されている人＋全メンバーを候補に
+  const drivers = COMMON_CACHE.drivers || {};
+  const driverNames = Object.values(drivers).filter(Boolean);
+  const members = COMMON_CACHE.members || [];
+  // 運転手を先頭に、その後その他メンバー
+  const listed = [...driverNames, ...members.filter(m => !driverNames.includes(m))];
+  listed.forEach(name => {
+    const car = getCarOfWorker(COMMON_CACHE, name);
+    const o = document.createElement('option');
+    o.value = name;
+    o.textContent = car ? `${name}（${car}号車）` : name;
+    sel.appendChild(o);
+  });
+
+  sel.onchange = () => {
+    const name = sel.value;
+    const preview = document.getElementById('driver-car-preview');
+    const btn = document.getElementById('driver-login-btn');
+    if (!name) { preview.textContent = ''; btn.disabled = true; return; }
+    const car = getCarOfWorker(COMMON_CACHE, name);
+    if (car) {
+      preview.innerHTML = `<span style="color:var(--green);font-weight:900;">✓ ${car}号車</span> として運転します`;
+      btn.disabled = false;
+    } else {
+      preview.innerHTML = `<span style="color:var(--red);">この方は号車が設定されていません。<br>メンバー管理で運転手・車編成を設定してください。</span>`;
+      btn.disabled = true;
+    }
+  };
+}
+
+function doDriverLogin() {
+  const name = document.getElementById('driver-name-select').value;
+  const car = getCarOfWorker(COMMON_CACHE, name);
+  if (!name || !car) return;
+  MY_DRIVER_NAME = name;
+  MY_CAR = car;
+  localStorage.setItem('fp_driver_name', name);
+  document.getElementById('driver-login').style.display = 'none';
+  startDriverUI();
+}
+
+function startDriverUI() {
+  // 号車バッジ表示
+  const badge = document.getElementById('driver-car-badge');
+  if (badge) {
+    badge.style.display = 'inline-block';
+    badge.textContent = `${MY_CAR}号車`;
+    badge.style.background = MY_CAR === 1 ? '#1a8a4a' : '#1a5cd4';
+  }
+  loadData();
+  setTimeout(restoreTab, 500);
+}
+
 // ===== ポーリング =====
-// 軽量ポーリング: assignStateのみ取得（1レコード・即応性重視）
+// 軽量ポーリング: 自車の稼働データのみ取得（即応性重視・競合しない）
 async function quickPollAssignState() {
+  if (!MY_CAR) return;
   try {
-    const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-    if (recs.length) {
-      const raw = recs[0]['文字列__複数行__0']?.value || '';
-      try {
-        const newState = JSON.parse(raw);
-        // assignState差分検知して更新
-        const oldStateStr = JSON.stringify({
-          a: assignState.assignments, r: assignState.returned, p: assignState.paused
-        });
-        const newStateStr = JSON.stringify({
-          a: newState.assignments, r: newState.returned, p: newState.paused
-        });
-        if (oldStateStr !== newStateStr) {
-          assignState.assignments = newState.assignments || {};
-          assignState.returned = newState.returned || [];
-          assignState.paused = newState.paused || {};
-          assignState.revisitMap = newState.revisitMap || {};
-          // assign系・cars系UIだけ更新
-          renderAssign();
-          renderCars();
-        }
-      } catch(e) {}
+    const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    if (fresh && !fresh._notfound) {
+      const oldStr = JSON.stringify({ a: assignState.assignments, r: assignState.returned, p: assignState.paused });
+      const newStr = JSON.stringify({ a: fresh.assignments, r: fresh.returned, p: fresh.paused });
+      if (oldStr !== newStr) {
+        assignState.assignments = fresh.assignments || {};
+        assignState.returned = fresh.returned || [];
+        assignState.paused = fresh.paused || {};
+        assignState.revisitMap = fresh.revisitMap || {};
+        renderAssign();
+        renderCars();
+      }
     }
   } catch(e) { console.warn('軽量ポーリングエラー:', e); }
 }
