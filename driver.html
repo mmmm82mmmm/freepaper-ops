@@ -2229,6 +2229,13 @@ let COMMON_CACHE = null; // ログイン画面用の共通データキャッシ�
 
   // セッション復元（前回ログインした運転手）
   const savedDriver = localStorage.getItem('fp_driver_name');
+  if (savedDriver === '__admin__') {
+    IS_ADMIN_MODE = true;
+    MY_CAR = 1;
+    MY_DRIVER_NAME = '管理者';
+    startDriverUI();
+    return;
+  }
   if (savedDriver && COMMON_CACHE && !COMMON_CACHE._notfound) {
     const car = getCarOfWorker(COMMON_CACHE, savedDriver);
     if (car) {
@@ -2273,6 +2280,11 @@ function showDriverLogin() {
   prepOpt.value = '__prep__';
   prepOpt.textContent = '🔧 準備担当（号車なし・設定のみ）';
   sel.appendChild(prepOpt);
+  // 管理者（全権限）の選択肢
+  const adminOpt = document.createElement('option');
+  adminOpt.value = '__admin__';
+  adminOpt.textContent = '🔑 管理者（全画面・号車切替可）';
+  sel.appendChild(adminOpt);
 
   sel.onchange = () => {
     const name = sel.value;
@@ -2283,6 +2295,12 @@ function showDriverLogin() {
       preview.innerHTML = `<span style="color:var(--amber);font-weight:900;">🔧 準備担当</span> として設定を行います<br><span style="font-size:11px;color:var(--muted);">メンバー・車編成・ルート設定ができます</span>`;
       btn.disabled = false;
       btn.textContent = '準備設定を開く →';
+      return;
+    }
+    if (name === '__admin__') {
+      preview.innerHTML = `<span style="color:#9c1a8a;font-weight:900;">🔑 管理者モード</span><br><span style="font-size:11px;color:var(--muted);">全機能・両号車の表示と操作ができます</span>`;
+      btn.disabled = false;
+      btn.textContent = '管理者として開く →';
       return;
     }
     const car = getCarOfWorker(COMMON_CACHE, name);
@@ -2298,6 +2316,7 @@ function showDriverLogin() {
 }
 
 let IS_PREP_MODE = false; // 準備担当モード（号車なし・設定タブのみ）
+let IS_ADMIN_MODE = false; // 管理者モード（全機能・号車切替可）
 
 function doDriverLogin() {
   const name = document.getElementById('driver-name-select').value;
@@ -2309,6 +2328,17 @@ function doDriverLogin() {
     MY_DRIVER_NAME = '準備担当';
     document.getElementById('driver-login').style.display = 'none';
     startPrepUI();
+    return;
+  }
+  // 管理者モード（全機能・号車切替可）
+  if (name === '__admin__') {
+    IS_ADMIN_MODE = true;
+    IS_PREP_MODE = false;
+    MY_CAR = 1; // 初期は1号車（後で切り替え可能）
+    MY_DRIVER_NAME = '管理者';
+    localStorage.setItem('fp_driver_name', '__admin__');
+    document.getElementById('driver-login').style.display = 'none';
+    startDriverUI();
     return;
   }
   const car = getCarOfWorker(COMMON_CACHE, name);
@@ -2357,11 +2387,29 @@ function startDriverUI() {
   const badge = document.getElementById('driver-car-badge');
   if (badge) {
     badge.style.display = 'inline-block';
-    badge.textContent = `${MY_DRIVER_NAME}（${MY_CAR}号車）`;
-    badge.style.background = MY_CAR === 1 ? '#1a8a4a' : '#1a5cd4';
+    if (IS_ADMIN_MODE) {
+      badge.textContent = `🔑 管理者（${MY_CAR}号車を表示中・タップで切替）`;
+      badge.style.background = '#9c1a8a';
+      badge.onclick = adminSwitchCar; // 管理者は号車切替
+    } else {
+      badge.textContent = `${MY_DRIVER_NAME}（${MY_CAR}号車）`;
+      badge.style.background = MY_CAR === 1 ? '#1a8a4a' : '#1a5cd4';
+      badge.onclick = confirmSwitchDriver;
+    }
   }
   loadData();
   setTimeout(restoreTab, 500);
+}
+
+// 管理者モード: 号車を切り替える（1号車⇔2号車）
+function adminSwitchCar() {
+  MY_CAR = (MY_CAR === 1) ? 2 : 1;
+  const badge = document.getElementById('driver-car-badge');
+  if (badge) badge.textContent = `🔑 管理者（${MY_CAR}号車を表示中・タップで切替）`;
+  // 表示する車フィルターも合わせる
+  const carFilter = document.getElementById('car-filter');
+  if (carFilter) { carFilter.value = String(MY_CAR); }
+  loadData(); // その号車のデータを読み込み直す
 }
 
 // ===== ポーリング =====
