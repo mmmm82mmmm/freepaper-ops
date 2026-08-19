@@ -1593,11 +1593,20 @@ function renderRevisit() {
   }
 
   // フィルタ適用
-  const filteredPending = currentFilter
+  let filteredPending = currentFilter
     ? pending.filter(r => (r['文字列__1行__4']?.value || '').toUpperCase() === currentFilter)
     : pending;
 
-  if (summaryEl) summaryEl.textContent = `待機 ${filteredPending.length}件 / 全体 ${pending.length}件`;
+  // 作業日が定休日の店は再訪しても無駄なので除外（別枠で件数表示）
+  const workDay = document.getElementById('work-day-select')?.value || '';
+  const closedToday = filteredPending.filter(r => isClosedToday(r, workDay));
+  filteredPending = filteredPending.filter(r => !isClosedToday(r, workDay));
+
+  if (summaryEl) {
+    let txt = `待機 ${filteredPending.length}件 / 全体 ${pending.length}件`;
+    if (closedToday.length > 0) txt += ` （本日定休 ${closedToday.length}件は非表示）`;
+    summaryEl.textContent = txt;
+  }
   if (doneCountEl) doneCountEl.textContent = done.length > 0 ? `${done.length}件` : '';
 
   // 振り分け待ちリスト
@@ -1613,6 +1622,16 @@ function renderRevisit() {
       const comment = r['文字列__1行__9']?.value || '';
       const route = (r['文字列__1行__4']?.value || '').toLowerCase();
       const groupCode = r['文字列__1行__0']?.value || '';
+
+      // ① この店が遅フラグ付きか
+      const isOsoi = (r['チェックボックス_0']?.value || []).length > 0;
+      // ② 定休日（作業日以外も含めて表示）
+      const teikyu = r['チェックボックス_2']?.value || [];
+      // ③ 不在時間（1/2/3）
+      const fuzai1 = r['文字列__1行__11']?.value || '';
+      const fuzai2 = r['文字列__1行__12']?.value || '';
+      const fuzai3 = r['文字列__1行__13']?.value || '';
+      const fuzaiList = [fuzai1, fuzai2, fuzai3].filter(Boolean);
 
       // 同じルートの遅グループを抽出（自分自身のグループは除外）
       const osoiGroups = allGroups.filter(g => {
@@ -1644,13 +1663,21 @@ function renderRevisit() {
           </div>`;
       }).join('');
 
+      // バッジ類
+      const osoiBadge = isOsoi ? `<span style="font-size:10px;color:#fff;font-weight:900;background:#d42020;padding:2px 6px;border-radius:4px;">⏰遅</span>` : '';
+      const teikyuBadge = teikyu.length > 0 ? `<span style="font-size:10px;color:#7a3dc4;font-weight:700;background:#f0e8ff;padding:2px 6px;border-radius:4px;">🛑定休:${teikyu.join('・')}</span>` : '';
+      const fuzaiInfo = fuzaiList.length > 0 ? `<div style="font-size:11px;color:#1a5cd4;background:#e8f0ff;padding:4px 8px;border-radius:4px;margin-bottom:6px;">🕐 不在時間: ${fuzaiList.join(' / ')}</div>` : '';
+
       return `
-        <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:10px;border:2px solid var(--amber);">
-          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+        <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:10px;border:2px solid ${isOsoi ? '#d42020' : 'var(--amber)'};">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
             <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:2px 6px;border-radius:4px;">${groupCode} 不在</span>
+            ${osoiBadge}
+            ${teikyuBadge}
             <span style="font-size:14px;font-weight:900;">${shop}</span>
           </div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
+          ${fuzaiInfo}
           ${comment ? `<div style="font-size:11px;color:#7a5a00;background:#fff8e8;padding:4px 8px;border-radius:4px;margin-bottom:6px;">💬 ${comment}</div>` : ''}
           <div style="font-size:10px;font-weight:700;color:var(--muted);margin-top:8px;">▼ 振り分け先を選択：</div>
           ${groupButtons || '<div style="font-size:11px;color:var(--muted);padding:8px;">遅グループなし</div>'}
