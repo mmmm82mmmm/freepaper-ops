@@ -1996,17 +1996,26 @@ function renderAssign() {
     });
   }
 
-  // アクティブ（未完了）と完了に分離
-  const activeGroups = filtered.filter(g => {
-    const count = groupCounts[g] || 0;
-    const done = groupDone[g] || 0;
-    return !(count > 0 && done >= count);
-  });
-  const doneGroups = filtered.filter(g => {
+  // グループの完了判定（仮想グループはrevisitMapの中身で判定）
+  const revisitMapForSplit = assignState.revisitMap || {};
+  function isGroupComplete(g) {
+    // 実レコードがあるか
+    const hasRealRecs = allRecords.some(r => r['文字列__1行__0']?.value === g);
+    if (!hasRealRecs && revisitMapForSplit[g]) {
+      // 仮想グループ: revisitMapのレコードで完了判定
+      const ids = (revisitMapForSplit[g] || []).map(String);
+      const recs = allRecords.filter(r => ids.includes(String(r['$id'].value)));
+      return recs.length > 0 && recs.every(r => ['完了','不在'].includes(r['ドロップダウン']?.value));
+    }
+    // 通常グループ
     const count = groupCounts[g] || 0;
     const done = groupDone[g] || 0;
     return count > 0 && done >= count;
-  });
+  }
+
+  // アクティブ（未完了）と完了に分離
+  const activeGroups = filtered.filter(g => !isGroupComplete(g));
+  const doneGroups = filtered.filter(g => isGroupComplete(g));
 
   function renderGroup(g, isDone) {
     const assignedWorker = getGroupWorker(g);
