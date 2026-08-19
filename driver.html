@@ -1421,21 +1421,33 @@ function autoAssign(workerName, justAssigned = new Set()) {
   });
 
   // 候補グループを絞り込む
+  const revisitMapAuto = assignState.revisitMap || {};
   const candidates = allGroups.filter(g => {
     const letter = getGroupLetter(g);
     if (!carRoutes.includes(letter)) return false;      // 担当ルート外
     if (assignedGroups.has(g)) return false;             // 既に割当済み
     const num = getGroupNum(g);
     // ★前進のみ: 割当中の最大番号より大きいグループだけ（若い番号には戻らない）
-    //   誰も割当中でないルートは maxReached=undefined なので、この制限は効かず
-    //   未完了の最小番号から始まる（過去完了は下の done<total 判定で自然に除外される）
     const maxReached = routeMaxReached[letter];
     if (maxReached !== undefined && num <= maxReached) return false;
-    // 定休日を除いた実作業対象が残っているか（＝未完了の店舗が残っているか）
-    const grpRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g && !isClosedToday(r, workDay));
-    if (grpRecs.length === 0) return false;
-    const done = grpRecs.filter(r => ['完了','不在'].includes(r['ドロップダウン']?.value)).length;
-    return done < grpRecs.length; // 未完了が残っているグループだけが候補
+
+    // 実レコードを持つグループか、仮想グループ（個別訪問）かで判定を分ける
+    const realRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g && !isClosedToday(r, workDay));
+    if (realRecs.length > 0) {
+      // 通常グループ: 未完了が残っているか
+      const done = realRecs.filter(r => ['完了','不在'].includes(r['ドロップダウン']?.value)).length;
+      return done < realRecs.length;
+    }
+    // 仮想グループ（個別訪問）: revisitMapの中身が未完了か
+    if (revisitMapAuto[g]) {
+      const ids = (revisitMapAuto[g] || []).map(String);
+      const recs = allRecords.filter(r => ids.includes(String(r['$id'].value)) && !isClosedToday(r, workDay));
+      if (recs.length === 0) return false;
+      // 再訪対象は「完了」になって初めて済み。「不在」はまだ再訪が必要（未完了扱い）
+      const done = recs.filter(r => r['ドロップダウン']?.value === '完了').length;
+      return done < recs.length; // 完了していない再訪店が残っていれば候補
+    }
+    return false;
   });
 
   if (!candidates.length) {
@@ -2029,10 +2041,11 @@ function renderAssign() {
     // 実レコードがあるか
     const hasRealRecs = allRecords.some(r => r['文字列__1行__0']?.value === g);
     if (!hasRealRecs && revisitMapForSplit[g]) {
-      // 仮想グループ: revisitMapのレコードで完了判定
+      // 仮想グループ（個別再訪）: 再訪対象なので「完了」になって初めて済み
+      // （「不在」はまだ再訪が必要なので未完了扱い）
       const ids = (revisitMapForSplit[g] || []).map(String);
       const recs = allRecords.filter(r => ids.includes(String(r['$id'].value)));
-      return recs.length > 0 && recs.every(r => ['完了','不在'].includes(r['ドロップダウン']?.value));
+      return recs.length > 0 && recs.every(r => r['ドロップダウン']?.value === '完了');
     }
     // 通常グループ
     const count = groupCounts[g] || 0;
