@@ -626,6 +626,17 @@ function getCarOfWorker(common, name) {
   return car ? parseInt(car) : 0;
 }
 
+// 今日の日付（YYYY-MM-DD、ローカル）
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+// 車データが今日のものか（昨日以前の残骸を無視するため）
+function isCarDataFresh(carData) {
+  if (!carData || carData._notfound) return false;
+  return carData.sessionDate === todayStr();
+}
+
 // ===== 割当JSON操作（新方式：共通＋自車をマージ）=====
 async function getAssignState() {
   // 共通データ
@@ -641,6 +652,8 @@ async function getAssignState() {
     const c = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
     if (!c._notfound) carData = c;
   }
+  // ★今日のデータのみ採用。昨日以前の残骸なら空にする
+  const fresh = isCarDataFresh(carData);
   return {
     members: commonData.members || [],
     cars: commonData.cars || {},
@@ -649,11 +662,11 @@ async function getAssignState() {
     haifuItems: commonData.haifuItems || [{name:''},{name:''},{name:''}],
     workDay: commonData.workDay || '',
     dynamicItems: commonData.dynamicItems || [],
-    assignments: carData.assignments || {},
-    returned: carData.returned || [],
-    paused: carData.paused || {},
-    revisitMap: carData.revisitMap || {},
-    driverLocation: carData.driverLocation || null,
+    assignments: fresh ? (carData.assignments || {}) : {},
+    returned: fresh ? (carData.returned || []) : [],
+    paused: fresh ? (carData.paused || {}) : {},
+    revisitMap: fresh ? (carData.revisitMap || {}) : {},
+    driverLocation: fresh ? (carData.driverLocation || null) : null,
     updatedAt: carData.updatedAt || ''
   };
 }
@@ -667,6 +680,7 @@ async function saveAssignState(state) {
     paused: state.paused || {},
     revisitMap: state.revisitMap || {},
     driverLocation: state.driverLocation || null,
+    sessionDate: todayStr(),
     updatedAt: new Date().toISOString()
   };
   await saveSpecialRecord(carKey(currentMonth, MY_CAR), carData);
@@ -1316,14 +1330,19 @@ async function updateCarDataWithRetry(mutateFn, maxRetries = 6) {
     // 最新の自車データを取得
     const carData = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
     const recId = carData._notfound ? null : carData._id;
-    let state = carData._notfound
-      ? { assignments:{}, returned:[], paused:{}, revisitMap:{} }
-      : JSON.parse(JSON.stringify(carData));
-    delete state._id; delete state._notfound;
-    const beforeUpdatedAt = state.updatedAt || '';
+    // ★昨日以前の残骸なら空から始める（今日のデータのみ引き継ぐ）
+    let state;
+    if (carData._notfound || !isCarDataFresh(carData)) {
+      state = { assignments:{}, returned:[], paused:{}, revisitMap:{}, driverLocation:null };
+    } else {
+      state = JSON.parse(JSON.stringify(carData));
+      delete state._id; delete state._notfound;
+    }
+    const beforeUpdatedAt = carData._notfound ? '' : (carData.updatedAt || '');
 
     // 変更を適用
     mutateFn(state);
+    state.sessionDate = todayStr();
     state.updatedAt = new Date().toISOString();
 
     // 保存直前に再取得して、その間に他の人が更新していないか確認（楽観ロック）

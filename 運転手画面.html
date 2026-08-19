@@ -550,8 +550,22 @@ function getCarOfWorker(common, name) {
   return car ? parseInt(car) : 0;
 }
 
+// 今日の日付（YYYY-MM-DD、ローカル）
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// 車データが「今日のもの」かどうか。違えば昨日以前の残骸なので無視する
+function isCarDataFresh(carData) {
+  if (!carData || carData._notfound) return false;
+  return carData.sessionDate === todayStr();
+}
+
 // 共通＋この車のデータをマージしてassignStateを構築
+// ★車データが今日のものでなければ（昨日の残骸なら）稼働データは空にする
 function mergeState(common, carData) {
+  const fresh = isCarDataFresh(carData);
   return {
     members: common.members || [],
     cars: common.cars || {},
@@ -559,11 +573,13 @@ function mergeState(common, carData) {
     drivers: common.drivers || {},
     haifuItems: common.haifuItems || [{name:''},{name:''},{name:''}],
     workDay: common.workDay || '',
-    assignments: carData.assignments || {},
-    returned: carData.returned || [],
-    paused: carData.paused || {},
-    revisitMap: carData.revisitMap || {},
-    driverLocation: carData.driverLocation || null,
+    // 今日のデータのみ採用。昨日以前なら空（＝昨日のゴミを読み込まない）
+    assignments: fresh ? (carData.assignments || {}) : {},
+    returned: fresh ? (carData.returned || []) : [],
+    paused: fresh ? (carData.paused || {}) : {},
+    revisitMap: fresh ? (carData.revisitMap || {}) : {},
+    driverLocation: fresh ? (carData.driverLocation || null) : null,
+    sessionDate: todayStr(),
     updatedAt: carData.updatedAt || ''
   };
 }
@@ -579,14 +595,27 @@ function extractCommon(state) {
     updatedAt: new Date().toISOString()
   };
 }
-// 車データだけ抽出
+// 車データだけ抽出（現在の車編成に居ないメンバーの割当は捨てる＝ゴミ除去）
 function extractCar(state) {
+  const validWorkers = new Set(Object.keys(state.cars || {}));
+  // driversも有効メンバーに含める
+  Object.values(state.drivers || {}).forEach(n => { if (n) validWorkers.add(n); });
+  const cleanAssignments = {};
+  Object.entries(state.assignments || {}).forEach(([w, g]) => {
+    if (validWorkers.has(w)) cleanAssignments[w] = g;
+  });
+  const cleanReturned = (state.returned || []).filter(w => validWorkers.has(w));
+  const cleanPaused = {};
+  Object.entries(state.paused || {}).forEach(([w, v]) => {
+    if (validWorkers.has(w)) cleanPaused[w] = v;
+  });
   return {
-    assignments: state.assignments || {},
-    returned: state.returned || [],
-    paused: state.paused || {},
+    assignments: cleanAssignments,
+    returned: cleanReturned,
+    paused: cleanPaused,
     revisitMap: state.revisitMap || {},
     driverLocation: state.driverLocation || null,
+    sessionDate: todayStr(),
     updatedAt: new Date().toISOString()
   };
 }
@@ -613,14 +642,12 @@ async function saveCarData() {
 
     // 作業者が追記した returned / paused を取り込んでからassignStateを反映
     // （運転手はassignments/revisitMap/driverLocationを担当、returned/pausedは作業者と共同）
-    if (!fresh._notfound) {
-      // 作業者側の最新 returned / paused をベースに、運転手の割当結果をマージ
+    // ★ただし今日のデータのみ採用。昨日の残骸は無視
+    if (!fresh._notfound && isCarDataFresh(fresh)) {
       const freshReturned = fresh.returned || [];
       const freshPaused = fresh.paused || {};
-      // 運転手が割当済みの作業者は returned から除外（割当したので戻り待ちではない）
       const assignedWorkers = new Set(Object.keys(assignState.assignments || {}));
       assignState.returned = freshReturned.filter(w => !assignedWorkers.has(w));
-      // paused は作業者側の最新を尊重（運転手は通常触らない）
       assignState.paused = freshPaused;
     }
 
@@ -1136,6 +1163,8 @@ async function processReturnedWorkers() {
     fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
   } catch(e) { console.warn('自車データ取得失敗:', e); return; }
   if (fresh._notfound) return;
+  // 昨日以前の残骸なら処理しない（今日のデータのみ）
+  if (!isCarDataFresh(fresh)) return;
 
   const returned = fresh.returned || [];
   if (returned.length === 0) return; // 戻り作業者がいなければ何もしない（保存もしない）
@@ -2260,18 +2289,22 @@ async function quickPollAssignState() {
   try {
     const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
     if (fresh && !fresh._notfound) {
+      // 昨日以前の残骸は無視（今日のデータのみ反映）
+      const useAssignments = isCarDataFresh(fresh) ? (fresh.assignments || {}) : {};
+      const useReturned = isCarDataFresh(fresh) ? (fresh.returned || []) : [];
+      const usePaused = isCarDataFresh(fresh) ? (fresh.paused || {}) : {};
       const oldStr = JSON.stringify({ a: assignState.assignments, r: assignState.returned, p: assignState.paused });
-      const newStr = JSON.stringify({ a: fresh.assignments, r: fresh.returned, p: fresh.paused });
+      const newStr = JSON.stringify({ a: useAssignments, r: useReturned, p: usePaused });
       if (oldStr !== newStr) {
-        assignState.assignments = fresh.assignments || {};
-        assignState.returned = fresh.returned || [];
-        assignState.paused = fresh.paused || {};
-        assignState.revisitMap = fresh.revisitMap || {};
+        assignState.assignments = useAssignments;
+        assignState.returned = useReturned;
+        assignState.paused = usePaused;
+        assignState.revisitMap = isCarDataFresh(fresh) ? (fresh.revisitMap || {}) : {};
         renderAssign();
         renderCars();
       }
       // 戻り作業者がいれば自動割当（新鮮データで処理・変更時のみ保存）
-      if ((fresh.returned || []).length > 0) {
+      if (useReturned.length > 0) {
         await processReturnedWorkers();
       }
     }
