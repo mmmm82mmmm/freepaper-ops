@@ -847,6 +847,37 @@ function renderCards() {
 
   updateProgress();
 
+  // 総冊数を集計（通常納本数=数値_2、MAP冊数=数値_3）
+  let totalNabon = 0, totalMap = 0;
+  records.forEach(r => {
+    totalNabon += parseFloat(r['数値_2']?.value) || 0;
+    totalMap += parseFloat(r['数値_3']?.value) || 0;
+  });
+
+  const container = document.getElementById('cards-container');
+  container.innerHTML = '';
+
+  updateDriverLocationBar();
+
+  // ★総冊数サマリー（一番上に表示）
+  const summary = document.createElement('div');
+  summary.style.cssText = 'background:linear-gradient(135deg,#1a5cd4,#1a8ac4);color:#fff;border-radius:12px;padding:14px 16px;margin:12px 12px 4px;box-shadow:0 2px 8px rgba(26,92,212,.25);';
+  summary.innerHTML = `
+    <div style="font-size:11px;opacity:.85;font-weight:700;margin-bottom:6px;">📦 今回のグループ 総冊数</div>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:baseline;gap:4px;">
+        <span style="font-size:32px;font-weight:900;line-height:1;">${totalNabon}</span>
+        <span style="font-size:14px;font-weight:700;">冊</span>
+      </div>
+      ${totalMap > 0 ? `<div style="display:flex;align-items:baseline;gap:4px;opacity:.9;">
+        <span style="font-size:11px;">うちMAP</span>
+        <span style="font-size:20px;font-weight:900;line-height:1;">${totalMap}</span>
+        <span style="font-size:12px;font-weight:700;">冊</span>
+      </div>` : ''}
+      <div style="margin-left:auto;font-size:11px;opacity:.85;">${records.length}店舗</div>
+    </div>`;
+  container.appendChild(summary);
+
   // グループ別にまとめる
   const groups = {};
   records.forEach(r => {
@@ -855,19 +886,17 @@ function renderCards() {
     groups[g].push(r);
   });
 
-  const container = document.getElementById('cards-container');
-  container.innerHTML = '';
-
-  updateDriverLocationBar();
-
   Object.entries(groups).forEach(([groupName, recs]) => {
+    // グループごとの総冊数
+    let grpNabon = 0;
+    recs.forEach(r => { grpNabon += parseFloat(r['数値_2']?.value) || 0; });
     // グループヘッダー
     const gh = document.createElement('div');
     gh.className = 'group-header';
     gh.innerHTML = `
       <div class="group-badge">${recs[0]['ルート']?.value || ''}${recs[0]['ルート順']?.value || ''}</div>
       <div class="group-name">${groupName}</div>
-      <div class="group-count">${recs.length}件</div>`;
+      <div class="group-count">${grpNabon}冊 / ${recs.length}件</div>`;
     container.appendChild(gh);
 
     // 各店舗カード
