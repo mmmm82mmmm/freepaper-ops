@@ -1,0 +1,2402 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>運転手画面</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root {
+  --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888;
+  --border:#e0dbd0; --green:#1a8a4a; --amber:#c47a0a;
+  --blue:#1a5cd4; --red:#d42020;
+}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);min-height:100vh;padding-bottom:80px;}
+
+/* HEADER */
+.app-header{background:var(--ink);color:white;padding:14px 16px 0;position:sticky;top:0;z-index:100;}
+.app-header-top{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;}
+.app-title{font-size:15px;font-weight:900;}
+.month-badge{font-size:11px;background:#333;padding:4px 10px;border-radius:20px;}
+
+/* ===== 大きい文字モード（老眼対応） ===== */
+/* サイズ大 (+30%) */
+body.text-large .app-title{font-size:19px;}
+body.text-large .tab{font-size:16px;padding:14px;}
+body.text-large .kpi-label{font-size:13px;}
+body.text-large .kpi-val{font-size:36px;}
+body.text-large .kpi-sub{font-size:14px;}
+body.text-large .progress-label{font-size:14px;}
+body.text-large .section-title{font-size:15px;}
+body.text-large .worker-name{font-size:19px;}
+body.text-large .worker-status{font-size:14px;}
+body.text-large .worker-stat .val{font-size:22px;}
+body.text-large .worker-stat .lbl{font-size:12px;}
+body.text-large .route-badge{font-size:14px;padding:4px 10px;}
+body.text-large .route-name{font-size:17px;}
+body.text-large .route-stats{font-size:14px;}
+body.text-large .route-toggle{font-size:15px;}
+body.text-large .item-name{font-size:16px;}
+body.text-large .item-meta{font-size:13px;}
+body.text-large .item-worker{font-size:13px;}
+body.text-large .item-nabon{font-size:14px;}
+body.text-large .assign-group-code{font-size:15px;padding:4px 10px;}
+body.text-large .assign-group-info{font-size:15px;}
+body.text-large .assign-group-worker{font-size:15px;}
+body.text-large .assign-worker-btn{font-size:14px;padding:8px 12px;}
+body.text-large .car-panel-title{font-size:16px;}
+body.text-large .car-worker-name{font-size:15px;}
+body.text-large .move-btn{font-size:12px;padding:5px 9px;}
+body.text-large .last-update{font-size:14px;}
+body.text-large .error-box{font-size:16px;}
+
+/* サイズ特大 (+60%) */
+body.text-xlarge .app-title{font-size:22px;}
+body.text-xlarge .tab{font-size:19px;padding:16px;}
+body.text-xlarge .kpi-label{font-size:15px;}
+body.text-xlarge .kpi-val{font-size:44px;}
+body.text-xlarge .kpi-sub{font-size:17px;}
+body.text-xlarge .progress-label{font-size:17px;}
+body.text-xlarge .section-title{font-size:17px;}
+body.text-xlarge .worker-name{font-size:22px;}
+body.text-xlarge .worker-status{font-size:17px;}
+body.text-xlarge .worker-stat .val{font-size:26px;}
+body.text-xlarge .worker-stat .lbl{font-size:14px;}
+body.text-xlarge .route-badge{font-size:16px;padding:5px 12px;}
+body.text-xlarge .route-name{font-size:20px;}
+body.text-xlarge .route-stats{font-size:17px;}
+body.text-xlarge .route-toggle{font-size:18px;}
+body.text-xlarge .item-name{font-size:19px;}
+body.text-xlarge .item-meta{font-size:16px;}
+body.text-xlarge .item-worker{font-size:16px;}
+body.text-xlarge .item-nabon{font-size:17px;}
+body.text-xlarge .assign-group-code{font-size:18px;padding:5px 12px;}
+body.text-xlarge .assign-group-info{font-size:18px;}
+body.text-xlarge .assign-group-worker{font-size:18px;}
+body.text-xlarge .assign-worker-btn{font-size:17px;padding:10px 14px;}
+body.text-xlarge .car-panel-title{font-size:19px;}
+body.text-xlarge .car-worker-name{font-size:18px;}
+body.text-xlarge .move-btn{font-size:14px;padding:6px 11px;}
+body.text-xlarge .last-update{font-size:16px;}
+body.text-xlarge .error-box{font-size:19px;}
+
+.text-size-btn:active{opacity:.7;}
+
+
+/* TABS */
+.tabs{display:flex;border-top:1px solid #333;}
+.tab{flex:1;padding:11px;text-align:center;font-size:13px;font-weight:700;color:#888;cursor:pointer;border-bottom:3px solid transparent;transition:all .2s;}
+.tab.active{color:white;border-bottom-color:var(--green);}
+
+/* LOADING */
+.loading{display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:60vh;gap:16px;}
+.spinner{width:36px;height:36px;border:3px solid var(--border);border-top-color:var(--ink);border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.loading-text{font-size:13px;color:var(--muted);}
+
+/* SCREEN */
+.screen{display:none;padding:16px;}
+.screen.active{display:block;}
+
+/* KPI */
+.kpi-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:16px;}
+.kpi-card{background:var(--card);border-radius:12px;padding:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.kpi-label{font-size:10px;font-weight:700;letter-spacing:.08em;text-transform:uppercase;color:var(--muted);margin-bottom:6px;}
+.kpi-val{font-family:'DM Mono',monospace;font-size:28px;font-weight:500;}
+.kpi-sub{font-size:11px;color:var(--muted);margin-top:4px;}
+.kpi-card.green .kpi-val{color:var(--green);}
+.kpi-card.amber .kpi-val{color:var(--amber);}
+.kpi-card.blue .kpi-val{color:var(--blue);}
+.kpi-card.muted .kpi-val{color:var(--muted);}
+
+/* PROGRESS BAR */
+.progress-section{background:var(--card);border-radius:12px;padding:14px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.progress-label{font-size:11px;font-weight:700;color:var(--muted);margin-bottom:8px;display:flex;justify-content:space-between;}
+.progress-bar-bg{height:10px;background:var(--bg);border-radius:5px;overflow:hidden;}
+.progress-bar-fill{height:100%;background:linear-gradient(90deg,var(--green),#2dd472);border-radius:5px;transition:width 1s ease;}
+.progress-segments{display:flex;height:10px;border-radius:5px;overflow:hidden;gap:1px;}
+.seg-done{background:var(--green);}
+.seg-absent{background:var(--amber);}
+.seg-todo{background:var(--border);}
+
+/* WORKER LIST */
+.section-title{font-size:12px;font-weight:900;letter-spacing:.06em;text-transform:uppercase;color:var(--muted);margin-bottom:10px;margin-top:16px;}
+
+.worker-card{background:var(--card);border-radius:12px;padding:14px;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:4px solid var(--border);}
+.worker-card.has-done{border-left-color:var(--green);}
+.worker-header{display:flex;align-items:center;gap:10px;margin-bottom:10px;}
+.worker-avatar{width:36px;height:36px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:900;color:white;flex-shrink:0;}
+.worker-name{font-size:15px;font-weight:900;}
+.worker-status{font-size:11px;color:var(--muted);}
+.worker-stats{display:flex;gap:8px;}
+.worker-stat{flex:1;text-align:center;background:var(--bg);border-radius:8px;padding:8px 4px;}
+.worker-stat .val{font-family:'DM Mono',monospace;font-size:18px;font-weight:500;display:block;}
+.worker-stat .lbl{font-size:9px;color:var(--muted);margin-top:2px;}
+.worker-stat.green .val{color:var(--green);}
+.worker-stat.amber .val{color:var(--amber);}
+.worker-stat.muted .val{color:var(--muted);}
+
+/* ROUTE LIST */
+.route-section{background:var(--card);border-radius:12px;overflow:hidden;margin-bottom:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.route-header{display:flex;align-items:center;gap:8px;padding:12px 14px;border-bottom:1px solid var(--border);cursor:pointer;}
+.route-badge{font-family:'DM Mono',monospace;font-size:11px;font-weight:700;background:var(--ink);color:white;padding:3px 8px;border-radius:4px;}
+.route-name{font-size:13px;font-weight:700;flex:1;}
+.route-stats{display:flex;gap:8px;font-size:11px;}
+.route-stat-done{color:var(--green);font-weight:700;}
+.route-stat-absent{color:var(--amber);font-weight:700;}
+.route-stat-todo{color:var(--muted);}
+.route-toggle{font-size:12px;color:var(--muted);}
+
+.route-items{display:none;}
+.route-items.open{display:block;}
+
+.route-item{display:flex;align-items:center;gap:10px;padding:10px 14px;border-bottom:1px solid var(--border);}
+.route-item:last-child{border-bottom:none;}
+.item-status{width:8px;height:8px;border-radius:50%;flex-shrink:0;}
+.item-status.done{background:var(--green);}
+.item-status.absent{background:var(--amber);}
+.item-status.todo{background:var(--border);}
+.item-info{flex:1;min-width:0;}
+.item-name{font-size:13px;font-weight:700;white-space:nowrap;overflow:hidden;text-overflow:ellipsis;}
+.item-meta{font-size:10px;color:var(--muted);margin-top:2px;}
+.item-worker{font-size:10px;color:var(--blue);font-weight:700;}
+.item-nabon{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
+
+/* REFRESH BTN */
+.refresh-btn{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:var(--ink);color:white;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;transition:all .2s;z-index:200;}
+.refresh-btn:active{transform:scale(.95);}
+.refresh-btn.spinning{animation:spin .8s linear infinite;}
+
+/* ERROR */
+.error-box{margin:20px 0;padding:16px;background:#fde8e8;border:1px solid #f0a0a0;border-radius:10px;font-size:13px;color:var(--red);line-height:1.6;}
+
+/* LAST UPDATE */
+.last-update{text-align:center;font-size:11px;color:var(--muted);margin-top:8px;}
+
+/* ASSIGN */
+.assign-group{background:var(--card);border-radius:10px;margin-bottom:8px;overflow:hidden;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.assign-group-header{display:flex;align-items:center;gap:8px;padding:10px 14px;border-bottom:1px solid var(--border);}
+.assign-group-code{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;background:var(--ink);color:white;padding:3px 8px;border-radius:4px;min-width:36px;text-align:center;}
+.assign-group-info{flex:1;font-size:12px;color:var(--muted);}
+.assign-group-worker{font-size:12px;font-weight:700;color:var(--blue);}
+.assign-btn-row{display:flex;flex-wrap:wrap;gap:6px;padding:10px 14px;}
+.assign-worker-btn{padding:8px 14px;border-radius:20px;border:2px solid var(--border);font-family:'Noto Sans JP',sans-serif;font-size:12px;font-weight:700;cursor:pointer;background:white;color:var(--ink);transition:all .15s;}
+.assign-worker-btn:active{transform:scale(.95);}
+.assign-worker-btn.assigned{background:var(--blue);color:white;border-color:var(--blue);}
+.assign-worker-btn.returned{background:#e8f5e9;color:var(--green);border-color:var(--green);}
+.returned-chip{padding:8px 14px;border-radius:20px;background:#e8f5e9;border:2px solid var(--green);font-size:12px;font-weight:700;color:var(--green);cursor:default;}
+
+/* CAR PANEL */
+.car-panel{background:var(--card);border-radius:10px;padding:10px;box-shadow:0 1px 4px rgba(0,0,0,.06);min-height:80px;}
+.car-panel-title{font-size:11px;font-weight:900;margin-bottom:8px;color:var(--ink);}
+.car-worker-list{display:flex;flex-direction:column;gap:4px;}
+.car-worker-chip{display:flex;align-items:center;justify-content:space-between;padding:6px 8px;border-radius:6px;background:var(--bg);font-size:11px;font-weight:700;}
+.car-worker-chip .move-btn{font-size:10px;padding:2px 6px;border:1px solid var(--border);border-radius:4px;background:white;cursor:pointer;color:var(--muted);}
+.car-worker-chip.returned{background:#e8f5e9;color:var(--green);}
+
+/* ROUTE CAR */
+.route-car-chip{display:flex;align-items:center;gap:6px;padding:6px 10px;background:var(--bg);border-radius:8px;border:2px solid var(--border);}
+.route-car-label{font-family:'DM Mono',monospace;font-size:12px;font-weight:700;}
+.route-car-select{padding:4px 6px;border:1px solid var(--border);border-radius:4px;font-size:11px;background:white;font-family:'Noto Sans JP',sans-serif;}
+</style>
+</head>
+<body>
+
+<!-- 運転手ログイン画面（名前選択→号車判定） -->
+<div id="driver-login" style="position:fixed;inset:0;background:var(--bg);z-index:9999;display:none;flex-direction:column;align-items:center;justify-content:center;padding:24px;">
+  <div style="background:var(--card);border-radius:16px;padding:28px 24px;max-width:400px;width:100%;box-shadow:0 4px 20px rgba(0,0,0,.1);">
+    <div style="font-size:40px;text-align:center;margin-bottom:10px;">🚐</div>
+    <div style="font-size:18px;font-weight:900;text-align:center;margin-bottom:6px;">運転手ログイン</div>
+    <div style="font-size:12px;color:var(--muted);text-align:center;margin-bottom:20px;">お名前を選んでください</div>
+    <label style="font-size:12px;font-weight:700;color:var(--muted);">運転手名</label>
+    <select id="driver-name-select" style="width:100%;padding:12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:15px;font-weight:700;margin:6px 0 14px;background:#fff;">
+      <option value="">-- 選択してください --</option>
+    </select>
+    <div id="driver-car-preview" style="text-align:center;font-size:13px;margin-bottom:14px;min-height:20px;"></div>
+    <button id="driver-login-btn" onclick="doDriverLogin()" disabled style="width:100%;padding:14px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-family:'Noto Sans JP',sans-serif;font-size:15px;font-weight:900;cursor:pointer;">運転を開始する →</button>
+    <div id="driver-login-error" style="color:var(--red);font-size:12px;margin-top:10px;text-align:center;display:none;"></div>
+  </div>
+</div>
+
+<div class="app-header">
+  <div class="app-header-top">
+    <a href="index.html" style="color:#fff;text-decoration:none;font-size:18px;margin-right:6px;">←</a>
+    <div class="app-title">🚐 運転手画面</div>
+    <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+      <span id="driver-car-badge" onclick="confirmSwitchDriver()" style="font-size:11px;background:var(--green);color:#fff;padding:4px 10px;border-radius:20px;font-weight:900;display:none;cursor:pointer;" title="別の人に切り替え">1号車</span>
+      <button class="text-size-btn" onclick="cycleTextSize()" title="文字サイズ変更" style="font-size:12px;background:rgba(255,255,255,.15);color:#fff;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:900;cursor:pointer;min-width:40px;">A</button>
+      <select id="work-day-select" onchange="changeWorkDay(this.value)" style="font-size:11px;background:#c47a0a;color:white;border:none;padding:4px 8px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;">
+        <option value="">📅 作業日</option>
+        <option value="0">日曜日</option>
+        <option value="1">月曜日</option>
+        <option value="2">火曜日</option>
+        <option value="3">水曜日</option>
+        <option value="4">木曜日</option>
+        <option value="5">金曜日</option>
+        <option value="6">土曜日</option>
+      </select>
+      <button id="location-btn" onclick="shareLocation()" style="font-size:11px;background:#1a5cd4;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;cursor:pointer;">📍 現在地を共有</button>
+      <div id="month-badge" style="font-size:11px;background:#333;color:white;border:none;padding:4px 10px;border-radius:20px;font-family:'Noto Sans JP',sans-serif;font-weight:700;">📅 読込中...</div>
+    </div>
+  </div>
+  <div class="tabs">
+    <div class="tab active" onclick="switchTab('progress')">📊 進捗確認</div>
+    <div class="tab" onclick="switchTab('route')">🗺️ ルート別</div>
+    <div class="tab" onclick="switchTab('setup')">⚙️ 準備設定</div>
+    <div class="tab" onclick="switchTab('assign')">👥 割当</div>
+    <div class="tab" onclick="switchTab('revisit')">🔄 不在再訪<span id="revisit-tab-badge" style="display:none;background:#d42020;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:3px;font-weight:900;">0</span></div>
+  </div>
+</div>
+
+<!-- 進捗タブ -->
+<div class="screen active" id="screen-progress">
+  <div class="loading" id="loading-progress">
+    <div class="spinner"></div>
+    <div class="loading-text">データを読み込んでいます...</div>
+  </div>
+  <div id="progress-content" style="display:none">
+    <div class="error-box" id="progress-error" style="display:none"></div>
+
+    <!-- KPI -->
+    <div class="kpi-grid">
+      <div class="kpi-card green">
+        <div class="kpi-label">完了</div>
+        <div class="kpi-val" id="kpi-done">0</div>
+        <div class="kpi-sub">件</div>
+      </div>
+      <div class="kpi-card amber">
+        <div class="kpi-label">不在</div>
+        <div class="kpi-val" id="kpi-absent">0</div>
+        <div class="kpi-sub">件</div>
+      </div>
+      <div class="kpi-card muted">
+        <div class="kpi-label">未着手</div>
+        <div class="kpi-val" id="kpi-todo">0</div>
+        <div class="kpi-sub">件</div>
+      </div>
+      <div class="kpi-card blue">
+        <div class="kpi-label">総件数</div>
+        <div class="kpi-val" id="kpi-total">0</div>
+        <div class="kpi-sub">件</div>
+      </div>
+    </div>
+
+    <!-- 進捗バー -->
+    <div class="progress-section">
+      <div class="progress-label">
+        <span>全体進捗</span>
+        <span id="progress-pct">0%</span>
+      </div>
+      <div class="progress-segments" id="progress-segments"></div>
+    </div>
+
+    <!-- 作業者別 -->
+    <div class="section-title">作業者別</div>
+    <div id="worker-list"></div>
+
+    <div class="last-update" id="last-update"></div>
+  </div>
+</div>
+
+<!-- ルート別タブ -->
+<div class="screen" id="screen-route">
+  <div class="loading" id="loading-route" style="display:none">
+    <div class="spinner"></div>
+    <div class="loading-text">読み込み中...</div>
+  </div>
+  <div id="route-content"></div>
+</div>
+
+<!-- グループ割当スクリーン -->
+<!-- 準備設定タブ -->
+<div class="screen" id="screen-setup">
+
+  <!-- 車の編成 -->
+  <div style="margin-bottom:16px">
+    <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px">
+      <div class="section-title" style="margin:0">🚐 車の編成</div>
+      <button onclick="loadAssignData()" style="padding:6px 12px;background:var(--ink);color:white;border:none;border-radius:6px;font-weight:700;font-size:11px;cursor:pointer;">🔄 更新</button>
+    </div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">作業者をどの車に乗せるか設定します</div>
+    <div style="display:flex;gap:8px;margin-bottom:10px">
+      <select id="new-worker-select" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:var(--card);">
+        <option value="">-- 作業者を選択 --</option>
+      </select>
+      <button onclick="addWorkerFromSelect()" style="padding:8px 14px;background:var(--green);color:white;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">追加</button>
+    </div>
+    <div style="display:grid;grid-template-columns:1fr 1fr 1fr;gap:8px">
+      <div class="car-panel" id="car-panel-1">
+        <div class="car-panel-title">🚐 1号車</div>
+        <div class="car-worker-list" id="car-1"></div>
+      </div>
+      <div class="car-panel" id="car-panel-2">
+        <div class="car-panel-title">🚐 2号車</div>
+        <div class="car-worker-list" id="car-2"></div>
+      </div>
+      <div class="car-panel" id="car-panel-0">
+        <div class="car-panel-title" style="color:var(--muted)">未割当</div>
+        <div class="car-worker-list" id="car-0"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ルート↔車の紐付け設定 -->
+  <div style="margin-bottom:16px">
+    <div class="section-title">🗺️ ルート設定</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">どの車がどのルートを担当するか設定します</div>
+    <div id="route-car-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--card);border-radius:10px;"></div>
+  </div>
+
+  <!-- 一括自動割当 -->
+  <div style="margin-bottom:16px">
+    <div class="section-title">🤖 一括自動割当</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">車編成・ルート設定完了後、未割当の作業者に対してグループを自動で振り分けます</div>
+    <button onclick="autoAssignAll()" style="width:100%;padding:14px;background:var(--green);color:#fff;border:none;border-radius:10px;font-weight:900;font-size:14px;cursor:pointer;font-family:'Noto Sans JP',sans-serif;">
+      🤖 未割当の作業者を一括自動割当
+    </button>
+    <div id="auto-assign-result" style="font-size:11px;color:var(--muted);margin-top:8px;text-align:center;"></div>
+  </div>
+
+  <div style="background:#f0f7ff;border:1px solid var(--blue);border-radius:10px;padding:12px;font-size:11px;color:var(--blue);line-height:1.6;">
+    💡 手順: ①車編成 → ②ルート設定 → ③一括自動割当（または「👥 割当」タブで手動）<br>
+    ※ 一括自動割当は既に担当を持っている作業者・受付停止中の作業者は対象外です。
+  </div>
+</div>
+
+<!-- 割当タブ -->
+<div class="screen" id="screen-assign">
+
+  <!-- 車フィルタ (画面上部に大きく) -->
+  <div style="background:var(--card);border-radius:10px;padding:12px 14px;margin-bottom:14px;display:flex;align-items:center;gap:10px;">
+    <div style="font-size:12px;font-weight:900;color:var(--muted);">表示する車:</div>
+    <select id="car-filter" onchange="onCarFilterChange()" style="flex:1;padding:8px 12px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:14px;font-weight:700;background:#fff;">
+      <option value="">全車</option>
+      <option value="1">🚐 1号車のみ</option>
+      <option value="2">🚐 2号車のみ</option>
+    </select>
+  </div>
+
+  <!-- 戻り報告 -->
+  <div style="margin-bottom:16px">
+    <div class="section-title">戻り待ち作業者</div>
+    <div id="returned-area" style="display:grid;grid-template-columns:1fr 1fr;gap:8px">
+      <div data-car="1">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">1号車</div>
+        <div id="returned-list-1" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:var(--card);border-radius:8px;border:2px dashed var(--border);"></div>
+      </div>
+      <div data-car="2">
+        <div style="font-size:10px;font-weight:700;color:var(--muted);margin-bottom:6px">2号車</div>
+        <div id="returned-list-2" style="display:flex;flex-wrap:wrap;gap:6px;min-height:36px;padding:8px;background:var(--card);border-radius:8px;border:2px dashed var(--border);"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 不在再訪バナー（割当タブには件数バッジのみ表示） -->
+  <div id="revisit-banner" style="display:none;background:#fff8e8;border:2px solid var(--amber);border-radius:10px;padding:10px 14px;margin-bottom:16px;cursor:pointer;" onclick="switchTab('revisit', document.querySelectorAll('.tab')[4])">
+    <div style="display:flex;align-items:center;gap:8px;">
+      <span style="font-size:18px">🔔</span>
+      <div style="flex:1;">
+        <div style="font-size:13px;font-weight:900;color:var(--amber);">不在再訪の振り分けが <span id="revisit-banner-count">0</span>件 待機中</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;">タップして「🔄 不在再訪」タブで処理 → 休憩時にまとめて操作可能</div>
+      </div>
+      <span style="color:var(--amber);font-size:18px;">›</span>
+    </div>
+  </div>
+
+  <!-- グループ割当 -->
+  <div>
+    <div class="section-title">グループ割当</div>
+    <div id="assign-list"></div>
+  </div>
+</div>
+
+<!-- 不在再訪タブ -->
+<div class="screen" id="screen-revisit">
+  <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:900;margin-bottom:4px;">🔄 不在再訪の振り分け</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+      通常ルートで不在になった店舗を、A遅・B遅などの遅グループに振り分けます。<br>
+      <strong>休憩中など、落ち着いて操作できる時にまとめて設定するのがおすすめ。</strong>
+    </div>
+  </div>
+
+  <!-- フィルタ -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+    <div style="font-size:11px;color:var(--muted);font-weight:700;">ルートで絞り込み:</div>
+    <select id="revisit-filter" onchange="renderRevisit()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:11px;background:var(--card);">
+      <option value="">全ルート</option>
+    </select>
+    <div style="flex:1"></div>
+    <div style="font-size:11px;font-weight:700;color:var(--amber);" id="revisit-summary"></div>
+  </div>
+
+  <!-- 振り分け待ちリスト -->
+  <div id="revisit-list-main"></div>
+
+  <!-- 振り分け済みセクション -->
+  <div style="margin-top:24px;">
+    <div class="section-title" style="display:flex;align-items:center;gap:8px;">
+      ✅ 振り分け済み <span id="revisit-done-count" style="font-size:10px;color:var(--muted);font-weight:700;"></span>
+    </div>
+    <div id="revisit-done-list"></div>
+  </div>
+</div>
+
+<!-- 更新ボタン -->
+<button class="refresh-btn" id="refresh-btn" onclick="loadData()">🔄</button>
+
+<!-- 個別訪問の位置選択モーダル -->
+<div id="solo-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:12px;padding:20px;max-width:400px;width:100%;max-height:90vh;overflow-y:auto;">
+    <div style="font-size:16px;font-weight:900;margin-bottom:8px;">📍 個別訪問として追加</div>
+    <div style="font-size:12px;color:var(--muted);margin-bottom:14px;line-height:1.6;">
+      この店舗を、どこのグループにも追加せず、単独訪問グループとして追加します。<br>
+      <strong>挿入位置を指定してください。</strong>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">ルート</div>
+      <select id="solo-route" onchange="updateSoloPositions()" style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:#fff;"></select>
+    </div>
+
+    <div style="margin-bottom:14px;">
+      <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">挿入位置</div>
+      <select id="solo-position" style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:#fff;"></select>
+    </div>
+
+    <div style="font-size:10px;color:#7a3dc4;background:#f0e8ff;padding:8px 10px;border-radius:6px;margin-bottom:14px;">
+      💡 例:「A31の後」を選ぶと、A31グループとA32グループの間に「A31.5」という単独グループが作成されます。<br>
+      運転手はこの単独グループを通常通り作業者に割り当てます。
+    </div>
+
+    <div style="display:flex;gap:8px;">
+      <button onclick="closeSoloModal()" style="flex:1;padding:11px;background:#fff;color:#888;border:1px solid var(--border);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">キャンセル</button>
+      <button onclick="confirmSoloRevisit()" style="flex:1;padding:11px;background:#7a3dc4;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">追加する</button>
+    </div>
+  </div>
+</div>
+
+<script>
+const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
+const BASE = `${PROXY}/kintone/v1`;
+const TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const APP = 269;
+const DOMAIN = 'white';
+
+const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d42020','#5c4a1a'];
+
+// ============================================================
+// 分割データアクセス層（__common__ / __car1__ / __car2__）
+// 1号車と2号車が別レコードなので同時保存しても競合しない
+// ============================================================
+let MY_CAR = 0; // この端末が担当する号車（1 or 2）。ログイン後に確定
+
+function monthSuffix(month) {
+  const m = (month || '').match(/(\d{4})年(\d{1,2})月号/);
+  return m ? `_${m[1]}_${m[2]}` : '';
+}
+function commonKey(month) { return `__common__${monthSuffix(month)}`; }
+function carKey(month, car) { return `__car${car}__${monthSuffix(month)}`; }
+
+// 特殊レコードを取得（JSONパースして返す。無ければnull）
+async function loadSpecialRecord(monthKey) {
+  const q = `文字列__1行_ = "${monthKey}" limit 1`;
+  const paramStr = `subdomain=${DOMAIN}&app=${APP}&query=${encodeURIComponent(q)}`;
+  const res = await fetch(`${BASE}/records.json?${paramStr}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  if (!res.ok) throw new Error(`取得失敗: ${res.status}`);
+  const data = await res.json();
+  if (!data.records?.length) return { _notfound: true };
+  const raw = data.records[0]['文字列__複数行__0']?.value || '';
+  let obj = {};
+  try { obj = JSON.parse(raw); } catch(e) {}
+  obj._id = data.records[0]['$id'].value;
+  return obj;
+}
+
+// 特殊レコードにJSON保存（なければ作成）
+async function saveSpecialRecord(monthKey, jsonObj) {
+  const existing = await loadSpecialRecord(monthKey);
+  const body = { value: JSON.stringify(jsonObj, null, 2) };
+  if (existing && !existing._notfound && existing._id) {
+    const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+      method: 'PUT',
+      headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: APP, id: existing._id, record: { '文字列__複数行__0': body } })
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(`保存失敗: ${t.slice(0,150)}`); }
+  } else {
+    const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+      method: 'POST',
+      headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: APP, record: {
+        '文字列__1行_': { value: monthKey },
+        '文字列__複数行__0': body
+      }})
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(`作成失敗: ${t.slice(0,150)}`); }
+  }
+}
+
+// 名前から号車を判定（運転手優先→作業者）
+function getCarOfWorker(common, name) {
+  const drivers = common.drivers || {};
+  for (const [car, drvName] of Object.entries(drivers)) {
+    if (drvName === name) return parseInt(car);
+  }
+  const car = (common.cars || {})[name];
+  return car ? parseInt(car) : 0;
+}
+
+// 今日の日付（YYYY-MM-DD、ローカル）
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+
+// 車データが「今日のもの」かどうか。違えば昨日以前の残骸なので無視する
+function isCarDataFresh(carData) {
+  if (!carData || carData._notfound) return false;
+  return carData.sessionDate === todayStr();
+}
+
+// 共通＋この車のデータをマージしてassignStateを構築
+// ★車データが今日のものでなければ（昨日の残骸なら）稼働データは空にする
+function mergeState(common, carData) {
+  const fresh = isCarDataFresh(carData);
+  return {
+    members: common.members || [],
+    cars: common.cars || {},
+    routeCars: common.routeCars || {},
+    drivers: common.drivers || {},
+    haifuItems: common.haifuItems || [{name:''},{name:''},{name:''}],
+    workDay: common.workDay || '',
+    // 今日のデータのみ採用。昨日以前なら空（＝昨日のゴミを読み込まない）
+    assignments: fresh ? (carData.assignments || {}) : {},
+    returned: fresh ? (carData.returned || []) : [],
+    paused: fresh ? (carData.paused || {}) : {},
+    revisitMap: fresh ? (carData.revisitMap || {}) : {},
+    driverLocation: fresh ? (carData.driverLocation || null) : null,
+    sessionDate: todayStr(),
+    updatedAt: carData.updatedAt || ''
+  };
+}
+// 共通データだけ抽出
+function extractCommon(state) {
+  return {
+    members: state.members || [],
+    cars: state.cars || {},
+    routeCars: state.routeCars || {},
+    drivers: state.drivers || {},
+    haifuItems: state.haifuItems || [{name:''},{name:''},{name:''}],
+    workDay: state.workDay || '',
+    updatedAt: new Date().toISOString()
+  };
+}
+// 車データだけ抽出（現在の車編成に居ないメンバーの割当は捨てる＝ゴミ除去）
+function extractCar(state) {
+  const validWorkers = new Set(Object.keys(state.cars || {}));
+  // driversも有効メンバーに含める
+  Object.values(state.drivers || {}).forEach(n => { if (n) validWorkers.add(n); });
+  const cleanAssignments = {};
+  Object.entries(state.assignments || {}).forEach(([w, g]) => {
+    if (validWorkers.has(w)) cleanAssignments[w] = g;
+  });
+  const cleanReturned = (state.returned || []).filter(w => validWorkers.has(w));
+  const cleanPaused = {};
+  Object.entries(state.paused || {}).forEach(([w, v]) => {
+    if (validWorkers.has(w)) cleanPaused[w] = v;
+  });
+  return {
+    assignments: cleanAssignments,
+    returned: cleanReturned,
+    paused: cleanPaused,
+    revisitMap: state.revisitMap || {},
+    driverLocation: state.driverLocation || null,
+    sessionDate: todayStr(),
+    updatedAt: new Date().toISOString()
+  };
+}
+
+// 【運転手用】共通＋自車データを読み込んでassignStateに反映
+async function loadSplitState() {
+  const common = await loadSpecialRecord(commonKey(currentMonth));
+  if (common._notfound) {
+    throw new Error(`${currentMonth} の共通データ(__common__)がありません。\n「割当データ移行ツール」を先に実行してください。`);
+  }
+  const carData = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+  const car = carData._notfound ? {} : carData;
+  assignState = mergeState(common, car);
+}
+
+// 【運転手用】自車データだけ保存（楽観ロック＋リトライで作業者の同時更新と衝突しない）
+async function saveCarData() {
+  const maxRetries = 6;
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // 保存直前に最新を取得
+    const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    const recId = fresh._notfound ? null : fresh._id;
+    const freshUpdatedAt = fresh._notfound ? '' : (fresh.updatedAt || '');
+
+    // 作業者が追記した returned / paused を取り込んでからassignStateを反映
+    // （運転手はassignments/revisitMap/driverLocationを担当、returned/pausedは作業者と共同）
+    // ★ただし今日のデータのみ採用。昨日の残骸は無視
+    if (!fresh._notfound && isCarDataFresh(fresh)) {
+      const freshReturned = fresh.returned || [];
+      const freshPaused = fresh.paused || {};
+      const assignedWorkers = new Set(Object.keys(assignState.assignments || {}));
+      assignState.returned = freshReturned.filter(w => !assignedWorkers.has(w));
+      assignState.paused = freshPaused;
+    }
+
+    const payload = extractCar(assignState);
+
+    // 保存直前の再確認（楽観ロック）
+    const check = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    const checkUpdatedAt = check._notfound ? '' : (check.updatedAt || '');
+    if (checkUpdatedAt !== freshUpdatedAt) {
+      console.log(`[driver retry] 競合検知 (${attempt+1}回目)`);
+      continue;
+    }
+
+    try {
+      const body = { value: JSON.stringify(payload, null, 2) };
+      if (recId) {
+        const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+          method: 'PUT',
+          headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app: APP, id: recId, record: { '文字列__複数行__0': body } })
+        });
+        if (!res.ok) throw new Error('保存失敗');
+      } else {
+        const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+          method: 'POST',
+          headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app: APP, record: {
+            '文字列__1行_': { value: carKey(currentMonth, MY_CAR) },
+            '文字列__複数行__0': body
+          }})
+        });
+        if (!res.ok) throw new Error('作成失敗');
+      }
+      return; // 成功
+    } catch(e) {
+      if (attempt === maxRetries - 1) throw e;
+      await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
+    }
+  }
+  throw new Error('保存が混み合っています');
+}
+
+// 【運転手用】共通データを保存（準備時のみ。運転手は通常触らない）
+async function saveCommonData() {
+  await saveSpecialRecord(commonKey(currentMonth), extractCommon(assignState));
+}
+
+
+// ===== 文字サイズ切替（老眼対応） =====
+const TEXT_SIZE_STORAGE = 'fp_driver_text_size';
+const TEXT_SIZES = ['normal', 'large', 'xlarge'];
+const TEXT_SIZE_LABELS = { normal: 'A', large: 'A+', xlarge: 'A++' };
+
+function applyTextSize(size) {
+  document.body.classList.remove('text-large', 'text-xlarge');
+  if (size === 'large') document.body.classList.add('text-large');
+  else if (size === 'xlarge') document.body.classList.add('text-xlarge');
+  const label = TEXT_SIZE_LABELS[size] || 'A';
+  document.querySelectorAll('.text-size-btn').forEach(b => b.textContent = label);
+  localStorage.setItem(TEXT_SIZE_STORAGE, size);
+}
+
+function cycleTextSize() {
+  const current = localStorage.getItem(TEXT_SIZE_STORAGE) || 'normal';
+  const idx = TEXT_SIZES.indexOf(current);
+  const next = TEXT_SIZES[(idx + 1) % TEXT_SIZES.length];
+  applyTextSize(next);
+  if (!localStorage.getItem('fp_driver_text_size_hinted')) {
+    setTimeout(() => alert('💡 文字サイズを変更しました\n\n通常(A) → 大(A+) → 特大(A++) の順に切替できます。\nもう一度タップで次のサイズになります。'), 100);
+    localStorage.setItem('fp_driver_text_size_hinted', '1');
+  }
+}
+
+// 起動時に前回設定を適用
+(function initTextSize() {
+  const saved = localStorage.getItem(TEXT_SIZE_STORAGE) || 'normal';
+  applyTextSize(saved);
+})();
+
+// ===== 複数グループ担当のためのヘルパー関数 =====
+// assignments[worker] は文字列（単一）または配列（複数）。両方をサポート。
+function getWorkerGroups(worker) {
+  const v = (assignState.assignments || {})[worker];
+  if (!v) return [];
+  return Array.isArray(v) ? [...v] : [v];
+}
+
+function getGroupWorker(group) {
+  for (const [w, val] of Object.entries(assignState.assignments || {})) {
+    const groups = Array.isArray(val) ? val : [val];
+    if (groups.includes(group)) return w;
+  }
+  return '';
+}
+
+function getAllAssignedGroups() {
+  const all = [];
+  Object.values(assignState.assignments || {}).forEach(v => {
+    if (Array.isArray(v)) all.push(...v);
+    else if (v) all.push(v);
+  });
+  return all;
+}
+
+function setWorkerGroups(worker, groups) {
+  if (!groups || groups.length === 0) {
+    delete assignState.assignments[worker];
+  } else if (groups.length === 1) {
+    assignState.assignments[worker] = groups[0];
+  } else {
+    assignState.assignments[worker] = groups;
+  }
+}
+
+let allRecords = [];
+let currentMonth = '';
+let assignState = { cars: {}, routeCars: {}, assignments: {}, returned: [], revisitMap: {}, updatedAt: '' };
+let allGroups = []; // 全グループコード一覧
+let workerList = []; // 作業者一覧
+
+// 作業月を選択（画面上部に選択肢を表示）
+const now = new Date();
+const months = [];
+for (let i = -1; i <= 2; i++) {
+  const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
+  months.push(`${d.getFullYear()}年${d.getMonth()+1}月号`);
+}
+// デフォルトは来月（通常は翌月号を配布）
+currentMonth = months[2];
+
+async function kintoneGet(query) {
+  // limit/offsetが既に含まれている場合はそのまま単発実行
+  if (/limit\s+\d+/i.test(query)) {
+    const q = encodeURIComponent(query);
+    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || `APIエラー: ${res.status}`);
+    }
+    const data = await res.json();
+    return data.records;
+  }
+  // ページング対応で全件取得
+  let all = [], offset = 0;
+  while (true) {
+    const pagedQuery = `${query} limit 500 offset ${offset}`;
+    const q = encodeURIComponent(pagedQuery);
+    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    if (!res.ok) {
+      const err = await res.json();
+      throw new Error(err.message || `APIエラー: ${res.status}`);
+    }
+    const data = await res.json();
+    all = all.concat(data.records);
+    if (data.records.length < 500) break;
+    offset += 500;
+  }
+  return all;
+}
+
+async function loadData() {
+  const btn = document.getElementById('refresh-btn');
+  btn.classList.add('spinning');
+
+  try {
+    // 今月のデータを全件取得（自動ページング）
+    const query = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
+    allRecords = await kintoneGet(query);
+
+    // 月号セレクトの選択値を更新（textContentは設定しない！optionsが消える）
+    const monthSel = document.getElementById('month-badge');
+    if (monthSel) monthSel.value = currentMonth;
+    renderProgress();
+    renderRoute();
+    await loadAssignData();
+
+    document.getElementById('last-update').textContent =
+      `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`;
+
+  } catch(e) {
+    document.getElementById('progress-error').style.display = 'block';
+    document.getElementById('progress-error').textContent = `⚠️ ${e.message}`;
+  } finally {
+    btn.classList.remove('spinning');
+    document.getElementById('loading-progress').style.display = 'none';
+    document.getElementById('progress-content').style.display = 'block';
+  }
+}
+
+function getStatus(r) {
+  return r['ドロップダウン']?.value || '未着手';
+}
+
+function renderProgress() {
+  const done = allRecords.filter(r => getStatus(r) === '完了').length;
+  const absent = allRecords.filter(r => getStatus(r) === '不在').length;
+  const todo = allRecords.filter(r => getStatus(r) === '未着手').length;
+  const total = allRecords.length;
+
+  document.getElementById('kpi-done').textContent = done;
+  document.getElementById('kpi-absent').textContent = absent;
+  document.getElementById('kpi-todo').textContent = todo;
+  document.getElementById('kpi-total').textContent = total;
+
+  const pct = total > 0 ? Math.round((done + absent) / total * 100) : 0;
+  document.getElementById('progress-pct').textContent = `${pct}%`;
+
+  // 進捗バー
+  const seg = document.getElementById('progress-segments');
+  seg.innerHTML = '';
+  if (total > 0) {
+    const donePct = done / total * 100;
+    const absentPct = absent / total * 100;
+    const todoPct = todo / total * 100;
+    if (donePct > 0) seg.innerHTML += `<div class="seg-done" style="flex:${donePct}" title="完了:${done}件"></div>`;
+    if (absentPct > 0) seg.innerHTML += `<div class="seg-absent" style="flex:${absentPct}" title="不在:${absent}件"></div>`;
+    if (todoPct > 0) seg.innerHTML += `<div class="seg-todo" style="flex:${todoPct}" title="未着手:${todo}件"></div>`;
+  }
+
+  // 作業者別集計
+  const workerMap = {};
+  allRecords.forEach(r => {
+    const worker = r['文字列__1行__10']?.value || '未割当';
+    if (!workerMap[worker]) workerMap[worker] = { done:0, absent:0, todo:0 };
+    const s = getStatus(r);
+    if (s === '完了') workerMap[worker].done++;
+    else if (s === '不在') workerMap[worker].absent++;
+    else workerMap[worker].todo++;
+  });
+
+  const workerList = document.getElementById('worker-list');
+  workerList.innerHTML = '';
+
+  Object.entries(workerMap)
+    .sort((a,b) => (b[1].done + b[1].absent) - (a[1].done + a[1].absent))
+    .forEach(([name, stats], idx) => {
+      const color = WORKER_COLORS[idx % WORKER_COLORS.length];
+      const total = stats.done + stats.absent + stats.todo;
+      const hasDone = stats.done > 0 || stats.absent > 0;
+      workerList.innerHTML += `
+        <div class="worker-card ${hasDone ? 'has-done' : ''}">
+          <div class="worker-header">
+            <div class="worker-avatar" style="background:${color}">${name[0]}</div>
+            <div>
+              <div class="worker-name">${name}</div>
+              <div class="worker-status">${total}件担当</div>
+            </div>
+          </div>
+          <div class="worker-stats">
+            <div class="worker-stat green"><span class="val">${stats.done}</span><div class="lbl">完了</div></div>
+            <div class="worker-stat amber"><span class="val">${stats.absent}</span><div class="lbl">不在</div></div>
+            <div class="worker-stat muted"><span class="val">${stats.todo}</span><div class="lbl">未着手</div></div>
+          </div>
+        </div>`;
+    });
+}
+
+function renderRoute() {
+  const routeMap = {};
+  allRecords.forEach(r => {
+    const route = r['文字列__1行__4']?.value || '未設定';
+    if (!routeMap[route]) routeMap[route] = [];
+    routeMap[route].push(r);
+  });
+
+  const content = document.getElementById('route-content');
+  content.innerHTML = '';
+
+  Object.entries(routeMap).sort().forEach(([route, records]) => {
+    const done = records.filter(r => getStatus(r) === '完了').length;
+    const absent = records.filter(r => getStatus(r) === '不在').length;
+    const todo = records.filter(r => getStatus(r) === '未着手').length;
+    // 未着手店舗の納本数合計（運転手が車に積むべき冊数）
+    const todoBooks = records
+      .filter(r => getStatus(r) === '未着手')
+      .reduce((s, r) => s + (parseFloat(r['数値']?.value) || 0), 0);
+    // 未着手店舗のMAP冊数合計（MAP冊数は毎月配本）
+    const todoMapBooks = records
+      .filter(r => getStatus(r) === '未着手')
+      .reduce((s, r) => s + (parseFloat(r['数値_3']?.value) || 0), 0);
+
+    // 未着手店舗のラック交換・POP交換件数
+    const todoRack = records.filter(r => getStatus(r) === '未着手' && (r['チェックボックス_1']?.value || []).length > 0).length;
+    const todoPop = records.filter(r => getStatus(r) === '未着手' && (r['チェックボックス_3']?.value || []).length > 0).length;
+
+    const items = records.map(r => {
+      const status = getStatus(r);
+      const statusClass = status === '完了' ? 'done' : status === '不在' ? 'absent' : 'todo';
+      const worker = r['文字列__1行__10']?.value || '';
+      const shop = r['文字列__1行__1']?.value || '';
+      const floor = r['文字列__1行__3']?.value || '';
+      const nabon = r['数値']?.value || '';
+      const mapNum = parseFloat(r['数値_3']?.value) || 0;
+      const rackChange = (r['チェックボックス_1']?.value || []).length > 0;
+      const popChange = (r['チェックボックス_3']?.value || []).length > 0;
+      return `
+        <div class="route-item">
+          <div class="item-status ${statusClass}"></div>
+          <div class="item-info">
+            <div class="item-name">${shop}</div>
+            <div class="item-meta" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
+              ${floor ? `<span>${floor}階</span>` : ''}
+              ${worker ? `<span class="item-worker">${worker}</span>` : ''}
+              ${nabon ? `<span style="background:#e8f0ff;color:var(--blue);padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">📦${nabon}冊</span>` : ''}
+              ${mapNum > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🗺️MAP${mapNum}冊</span>` : ''}
+              ${rackChange ? `<span style="background:#ffebeb;color:#d42020;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🔧ラック交換</span>` : ''}
+              ${popChange ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🏷️POP貼替</span>` : ''}
+            </div>
+          </div>
+        </div>`;
+    }).join('');
+
+    content.innerHTML += `
+      <div class="route-section">
+        <div class="route-header" onclick="toggleRoute('route-${route}')">
+          <div class="route-badge">ルート${route}</div>
+          <div class="route-name">${records.length}件</div>
+          <div class="route-stats">
+            <span class="route-stat-done">✓${done}</span>
+            <span class="route-stat-absent">不在${absent}</span>
+            <span class="route-stat-todo">未${todo}${todoBooks > 0 ? `<span style="font-size:10px;color:var(--blue);font-weight:700;margin-left:3px">📦${todoBooks}冊</span>` : ''}${todoMapBooks > 0 ? `<span style="font-size:10px;color:#c47a0a;font-weight:700;margin-left:3px">🗺️マップ${todoMapBooks}冊</span>` : ''}${todoRack > 0 ? `<span style="font-size:10px;color:#d42020;font-weight:700;margin-left:3px">🔧${todoRack}</span>` : ''}${todoPop > 0 ? `<span style="font-size:10px;color:#7a3dc4;font-weight:700;margin-left:3px">🏷️${todoPop}</span>` : ''}</span>
+          </div>
+          <div class="route-toggle" id="toggle-${route}">▼</div>
+        </div>
+        <div class="route-items" id="route-${route}">
+          ${items}
+        </div>
+      </div>`;
+  });
+}
+
+function toggleGroupDetail(id) {
+  const el = document.getElementById(id);
+  if (!el) return;
+  el.style.display = el.style.display === 'none' ? 'block' : 'none';
+}
+
+function toggleRoute(id) {
+  const el = document.getElementById(id);
+  const route = id.replace('route-', '');
+  const toggle = document.getElementById('toggle-' + route);
+  if (el.classList.contains('open')) {
+    el.classList.remove('open');
+    toggle.textContent = '▼';
+  } else {
+    el.classList.add('open');
+    toggle.textContent = '▲';
+  }
+}
+
+function switchTab(tab, el) {
+  document.querySelectorAll('.tab').forEach(t => t.classList.remove('active'));
+  document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
+  let target = el;
+  if (!target && typeof event !== 'undefined' && event && event.target) {
+    target = event.target.closest('.tab');
+  }
+  // プログラム呼び出しでtargetが無い場合、タブ名から該当タブを探す
+  if (!target) {
+    document.querySelectorAll('.tab').forEach(t => {
+      if ((t.getAttribute('onclick') || '').includes(`'${tab}'`)) target = t;
+    });
+  }
+  if (target) target.classList.add('active');
+  document.getElementById('screen-' + tab).classList.add('active');
+  localStorage.setItem('fp_driver_tab', tab);
+  if (tab === 'assign') { renderAssign(); applyCarFilter(); }
+  if (tab === 'revisit') renderRevisit();
+  if (tab === 'setup') { renderCars(); renderRouteCars(); }
+}
+
+// 車フィルタを戻り待ちエリアにも適用
+function onCarFilterChange() {
+  const v = document.getElementById('car-filter').value;
+  localStorage.setItem('fp_car_filter', v);
+  applyCarFilter();
+  renderAssign();
+}
+
+function applyCarFilter() {
+  const v = document.getElementById('car-filter')?.value || '';
+  // 戻り待ちエリアの車別ボックスを表示/非表示
+  document.querySelectorAll('#returned-area > [data-car]').forEach(box => {
+    if (!v || box.dataset.car === v) {
+      box.style.display = '';
+    } else {
+      box.style.display = 'none';
+    }
+  });
+  // グリッドカラム数を調整
+  const area = document.getElementById('returned-area');
+  if (area) area.style.gridTemplateColumns = v ? '1fr' : '1fr 1fr';
+}
+
+// 月選択セレクトを初期化
+// 作業号数の設定をkintoneから読み込み（共有設定）
+async function getWorkMonthFromSettings() {
+  try {
+    const q = `文字列__1行_ = "__settings__" limit 1`;
+    const params = new URLSearchParams({ subdomain: DOMAIN, app: APP, query: q });
+    const res = await fetch(`${BASE}/records.json?${params}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    const data = await res.json();
+    if (!res.ok || !data.records?.length) return null;
+    const raw = data.records[0]['文字列__複数行__0']?.value || '';
+    const obj = JSON.parse(raw);
+    return obj.forceWorkMonth || null;
+  } catch(e) {
+    console.warn('設定取得失敗（自動検出にフォールバック）:', e);
+    return null;
+  }
+}
+
+function initMonthSelect() {
+  const el = document.getElementById('month-badge');
+  if (!el) return;
+  el.textContent = `📅 ${currentMonth}`;
+}
+
+function changeMonth(month) {
+  // 静的表示なので呼ばれることはないが念のため
+  currentMonth = month;
+  initMonthSelect();
+  loadData();
+}
+
+// ===== グループ割当 =====
+async function loadAssignData() {
+  try {
+    // 新方式: 共通＋自車データを読み込み（MY_CARが確定している前提）
+    if (MY_CAR) {
+      try {
+        await loadSplitState();
+      } catch(e) {
+        console.error('分割データ読込エラー:', e);
+        // 共通データが無い等 → エラー表示
+        const errBox = document.getElementById('assign-error');
+        if (errBox) { errBox.style.display = 'block'; errBox.textContent = e.message; }
+        return;
+      }
+    } else if (IS_PREP_MODE) {
+      // 準備担当モード: 共通データだけ読み込む（稼働データは読まない）
+      try {
+        const common = await loadSpecialRecord(commonKey(currentMonth));
+        if (!common._notfound) {
+          assignState = mergeState(common, {}); // 稼働データ空で共通のみ反映
+        }
+      } catch(e) { console.error('共通データ読込エラー:', e); }
+    }
+    if (!assignState.cars) assignState.cars = {};
+
+    // グループ・作業者一覧を収集
+    const groupSet = new Set();
+    const workerSet = new Set();
+    allRecords.forEach(r => {
+      const g = r['文字列__1行__0']?.value;
+      if (g) groupSet.add(g);
+    });
+    // 仮想グループ（個別訪問）を追加: revisitMapにあるが実レコードにないキー
+    const revisitKeys = Object.keys(assignState.revisitMap || {});
+    revisitKeys.forEach(k => groupSet.add(k));
+
+    allGroups = [...groupSet].sort((a, b) => {
+      const routeA = a.replace(/[0-9.]/g, '');
+      const routeB = b.replace(/[0-9.]/g, '');
+      if (routeA !== routeB) return routeA.localeCompare(routeB);
+      const numA = parseFloat(a.replace(/[^0-9.]/g, '')) || 0;
+      const numB = parseFloat(b.replace(/[^0-9.]/g, '')) || 0;
+      return numA - numB;
+    });
+
+    // 作業者はWORKER_COLORSベースで全員リストアップ
+    // ルートフィルタ更新
+    const routes = [...new Set(allGroups.map(g => g.replace(/[0-9.]/g,'')))].sort();
+    const sel = document.getElementById('route-filter');
+    const cur = sel?.value || '';
+    if (sel) {
+      sel.innerHTML = '<option value="">全ルート</option>';
+      routes.forEach(r => {
+        const o = document.createElement('option');
+        o.value = r; o.textContent = `ルート${r.toUpperCase()}`;
+        if (r === cur) o.selected = true;
+        sel.appendChild(o);
+      });
+    }
+
+    // 作業者セレクトを更新
+    const memberSel = document.getElementById('new-worker-select');
+    if (memberSel) {
+      const memberList = assignState.members || [];
+      const existingWorkers = Object.keys(assignState.cars || {});
+      memberSel.innerHTML = '<option value="">-- 作業者を選択 --</option>';
+      memberList.filter(m => !existingWorkers.includes(m)).forEach(m => {
+        const o = document.createElement('option');
+        o.value = m; o.textContent = m;
+        memberSel.appendChild(o);
+      });
+    }
+
+    if (!assignState.routeCars) assignState.routeCars = {};
+
+    // ★重要: ここでは自動割当も保存も行わない（ポーリングで書き戻し事故を防ぐ）
+    // 自動割当は processReturnedWorkers() で、新鮮なデータを元にのみ実行する
+    renderCars();
+    renderAssign();
+    renderRevisit();
+
+    // 戻り作業者がいれば自動割当を試みる（内部で新鮮データを取得。メモリの古いデータは使わない）
+    await processReturnedWorkers();
+
+    renderCars();
+    renderRouteCars();
+    renderAssign();
+    renderRevisit();
+  } catch(e) { console.error('割当データ取得エラー:', e); }
+}
+
+// ===== 戻り作業者への自動割当（新鮮なデータのみ使用・書き戻し事故を防ぐ）=====
+async function processReturnedWorkers() {
+  if (!MY_CAR) return;
+
+  // ★必ずkintoneから新鮮な自車データを取得（メモリの古いデータは一切使わない）
+  let fresh;
+  try {
+    fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+  } catch(e) { console.warn('自車データ取得失敗:', e); return; }
+  if (fresh._notfound) return;
+  // 昨日以前の残骸なら処理しない（今日のデータのみ）
+  if (!isCarDataFresh(fresh)) return;
+
+  const returned = fresh.returned || [];
+  if (returned.length === 0) return; // 戻り作業者がいなければ何もしない（保存もしない）
+
+  // 最新の完了状況を取得
+  try {
+    allRecords = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`);
+  } catch(e) { console.error('レコード再取得エラー:', e); }
+
+  // 新鮮データを作業用stateに反映（メモリではなくkintoneの値を正とする）
+  const workState = {
+    assignments: fresh.assignments || {},
+    returned: [...returned],
+    paused: fresh.paused || {},
+    revisitMap: fresh.revisitMap || {},
+    driverLocation: fresh.driverLocation || null
+  };
+
+  let changed = false;
+  const justAssigned = new Set();
+  // autoAssignがworkStateを参照できるよう一時的にassignStateを差し替え
+  const savedAssignState = assignState;
+  assignState = { ...assignState, assignments: workState.assignments, returned: workState.returned, paused: workState.paused, revisitMap: workState.revisitMap };
+
+  for (const worker of [...workState.returned]) {
+    if ((workState.paused || {})[worker] === true) continue;
+    // 既に割当があれば returned から外すだけ
+    const cur = workState.assignments[worker];
+    const curGroups = Array.isArray(cur) ? cur : (cur ? [cur] : []);
+    if (curGroups.length > 0) {
+      workState.returned = workState.returned.filter(w => w !== worker);
+      assignState.returned = workState.returned;
+      changed = true;
+      continue;
+    }
+    const group = autoAssign(worker, justAssigned);
+    if (group) {
+      // 既に誰かに割り当たっていないか確認
+      let taken = false;
+      for (const [w, val] of Object.entries(workState.assignments)) {
+        const gs = Array.isArray(val) ? val : [val];
+        if (gs.includes(group)) { taken = true; break; }
+      }
+      if (taken) continue;
+      workState.assignments[worker] = group;
+      workState.returned = workState.returned.filter(w => w !== worker);
+      assignState.assignments = workState.assignments;
+      assignState.returned = workState.returned;
+      justAssigned.add(group);
+      changed = true;
+      console.log(`🤖 自動割当: ${worker} → ${group}`);
+    }
+  }
+
+  // 変更があった時だけ保存（楽観ロック付きsaveCarData）
+  if (changed) {
+    try {
+      await saveCarData();
+    } catch(e) { console.error('自動割当の保存失敗:', e); }
+  } else {
+    // 変更なし → 保存しない（書き戻し事故を防ぐ）。メモリは元に戻す
+    assignState = savedAssignState;
+  }
+}
+
+
+function renderCars() {
+  // 全作業者を収集（割当JSONに含まれる人 + 戻り報告した人）
+  const allWorkers = [...new Set([
+    ...Object.keys(assignState.cars || {}),
+    ...(assignState.returned || []),
+    ...Object.keys(assignState.assignments || {}),
+  ])].filter(w => w);
+
+  // 未登録の作業者も「未割当」として表示
+  [1, 2, 0].forEach(carNum => {
+    const el = document.getElementById('car-' + carNum);
+    if (!el) return;
+    const workers = allWorkers.filter(w => (assignState.cars[w] || 0) === carNum);
+    if (workers.length === 0) {
+      el.innerHTML = '<div style="font-size:11px;color:var(--muted)">なし</div>';
+      return;
+    }
+    el.innerHTML = workers.map(w => {
+      const isReturned = (assignState.returned || []).includes(w);
+      const isPaused = (assignState.paused || {})[w] === true;
+      const otherCar = carNum === 1 ? 2 : 1;
+      const moveBtn = carNum !== 0
+        ? `<button class="move-btn" onclick="moveCar('${w}',${otherCar})">${otherCar}号車へ</button><button class="move-btn" onclick="moveCar('${w}',0)" style="margin-left:2px;background:#aaa">未割当へ</button>`
+        : `<button class="move-btn" onclick="moveCar('${w}',1)">1号車</button><button class="move-btn" onclick="moveCar('${w}',2)" style="margin-left:2px">2号車</button>`;
+      const pausedTag = isPaused ? '<span style="font-size:9px;background:#d42020;color:#fff;padding:1px 5px;border-radius:3px;margin-left:4px;font-weight:700">受付停止</span>' : '';
+      return `<div class="car-worker-chip ${isReturned ? 'returned' : ''}" ${isPaused ? 'style="opacity:.6"' : ''}>
+        <span>${isReturned ? '🏃 ' : ''}${w}${pausedTag}</span>
+        <span style="display:flex;gap:2px">${moveBtn}</span>
+      </div>`;
+    }).join('');
+  });
+
+  // 戻り待ちリスト（車別）
+  [1, 2].forEach(carNum => {
+    const el = document.getElementById('returned-list-' + carNum);
+    if (!el) return;
+    const returned = (assignState.returned || []).filter(w => (assignState.cars[w] || 0) === carNum);
+    el.innerHTML = returned.length
+      ? returned.map(w => `<div class="returned-chip">🏃 ${w}</div>`).join('')
+      : '<div style="color:var(--muted);font-size:11px;align-self:center">なし</div>';
+  });
+}
+
+async function addWorkerFromSelect() {
+  const sel = document.getElementById('new-worker-select');
+  const name = sel.value;
+  if (!name) return;
+  if (!assignState.cars) assignState.cars = {};
+  if (assignState.cars[name] !== undefined) {
+    alert(`「${name}」はすでに追加されています`);
+    return;
+  }
+  assignState.cars[name] = 0;
+  assignState.updatedAt = new Date().toISOString();
+  await saveCommonData();
+  sel.value = '';
+  renderCars();
+}
+
+function renderRouteCars() {
+  const routes = [...new Set(allGroups.map(g => {
+    // 遅グループを判定（グループ内に遅レコードがあるか）
+    const hasOsoi = allRecords.some(r => 
+      r['文字列__1行__0']?.value === g && 
+      (r['チェックボックス_0']?.value || []).length > 0
+    );
+    const routeLetter = g.replace(/[0-9.]/g, '');
+    return hasOsoi ? routeLetter + '遅' : routeLetter;
+  }))].sort();
+
+  const el = document.getElementById('route-car-list');
+  if (!el) return;
+
+  el.innerHTML = routes.map(route => {
+    const carNum = assignState.routeCars?.[route] || 0;
+    return `
+      <div class="route-car-chip">
+        <span class="route-car-label">ルート${route.toUpperCase()}</span>
+        <select class="route-car-select" onchange="changeRouteCar('${route}', this.value)">
+          <option value="0" ${carNum == 0 ? 'selected' : ''}>未割当</option>
+          <option value="1" ${carNum == 1 ? 'selected' : ''}>🚐 1号車</option>
+          <option value="2" ${carNum == 2 ? 'selected' : ''}>🚐 2号車</option>
+        </select>
+      </div>`;
+  }).join('');
+}
+
+async function changeRouteCar(route, carNum) {
+  if (!assignState.routeCars) assignState.routeCars = {};
+  assignState.routeCars[route] = parseInt(carNum);
+  assignState.updatedAt = new Date().toISOString();
+  await saveCommonData();
+}
+
+async function moveCar(workerName, carNum) {
+  if (!assignState.cars) assignState.cars = {};
+  assignState.cars[workerName] = carNum;
+  assignState.updatedAt = new Date().toISOString();
+  await saveCommonData();
+  renderCars();
+  renderAssign();
+}
+
+// 作業者を新規追加
+async function addWorker(name) {
+  if (!name) return;
+  if (!assignState.cars) assignState.cars = {};
+  assignState.cars[name] = 0; // 未割当
+  assignState.updatedAt = new Date().toISOString();
+  await saveCommonData();
+  renderCars();
+}
+
+async function saveAssign() {
+  // 自車データ(__carN__)だけ保存。共通データには触らないので2号車と競合しない
+  await saveCarData();
+}
+
+// グループコードから純粋なルート文字（遅サフィックスなし）と番号を取得
+function getGroupNum(g) {
+  return parseFloat((g || '').replace(/[^0-9.]/g, '')) || 0;
+}
+// グループの「ルートキー」を返す。遅フラグ付きグループは "b遅" のように遅サフィックスを付ける
+// （routeCars の "B遅" などのキーと一致させ、通常Bと遅Bを別ルートとして扱う）
+function getGroupLetter(g) {
+  const letter = (g || '').replace(/[0-9.]/g, '').toLowerCase();
+  // このグループに遅フラグ（チェックボックス_0）が付いた店舗があるか
+  const hasOsoi = allRecords.some(r =>
+    r['文字列__1行__0']?.value === g &&
+    (r['チェックボックス_0']?.value || []).length > 0
+  );
+  return hasOsoi ? letter + '遅' : letter;
+}
+
+function autoAssign(workerName, justAssigned = new Set()) {
+  // 作業者の車番号を取得
+  const carNum = assignState.cars?.[workerName] || 0;
+  if (!carNum) {
+    console.warn(`[autoAssign] ${workerName} に車番号が設定されていません`);
+    return null;
+  }
+
+  // 車に紐付いたルートを取得（大文字小文字を吸収）
+  const carRoutes = Object.entries(assignState.routeCars || {})
+    .filter(([r, c]) => parseInt(c) === parseInt(carNum))
+    .map(([r]) => r.toLowerCase());
+  if (!carRoutes.length) {
+    console.warn(`[autoAssign] ${carNum}号車にルートが紐付いていません`);
+    return null;
+  }
+
+  const workDay = document.getElementById('work-day-select')?.value || '';
+
+  // 既に割当済みのグループ（他の作業者＋今回のループ分）
+  const assignedGroups = new Set([
+    ...getAllAssignedGroups(),
+    ...justAssigned
+  ]);
+
+  // ルートごとの「現在の到達点」を計算
+  // ★重要: 過去の完了データ（昨日の本番など）ではなく、
+  //   「今まさに誰かに割当中のグループ」の最大番号だけを到達点とする。
+  //   これにより、過去に完了したグループが「前進の壁」にならない。
+  const routeMaxReached = {}; // { 'b': 6, ... }
+  assignedGroups.forEach(g => {
+    const letter = getGroupLetter(g);
+    const num = getGroupNum(g);
+    if (routeMaxReached[letter] === undefined || num > routeMaxReached[letter]) {
+      routeMaxReached[letter] = num;
+    }
+  });
+
+  // 候補グループを絞り込む
+  const candidates = allGroups.filter(g => {
+    const letter = getGroupLetter(g);
+    if (!carRoutes.includes(letter)) return false;      // 担当ルート外
+    if (assignedGroups.has(g)) return false;             // 既に割当済み
+    const num = getGroupNum(g);
+    // ★前進のみ: 割当中の最大番号より大きいグループだけ（若い番号には戻らない）
+    //   誰も割当中でないルートは maxReached=undefined なので、この制限は効かず
+    //   未完了の最小番号から始まる（過去完了は下の done<total 判定で自然に除外される）
+    const maxReached = routeMaxReached[letter];
+    if (maxReached !== undefined && num <= maxReached) return false;
+    // 定休日を除いた実作業対象が残っているか（＝未完了の店舗が残っているか）
+    const grpRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g && !isClosedToday(r, workDay));
+    if (grpRecs.length === 0) return false;
+    const done = grpRecs.filter(r => ['完了','不在'].includes(r['ドロップダウン']?.value)).length;
+    return done < grpRecs.length; // 未完了が残っているグループだけが候補
+  });
+
+  if (!candidates.length) {
+    console.log(`[autoAssign] ${workerName}: ルート(${carRoutes.join(',')})に前方の未割当グループなし`);
+    return null;
+  }
+
+  // 候補の中で「最も番号が小さい」= 現在地から一番近い前方のグループを返す
+  candidates.sort((a, b) => {
+    // ルートが複数ある場合はルート文字順、同一ルート内は番号順
+    const la = getGroupLetter(a), lb = getGroupLetter(b);
+    if (la !== lb) return la.localeCompare(lb);
+    return getGroupNum(a) - getGroupNum(b);
+  });
+  return candidates[0];
+}
+
+// ===== 一括自動割当（準備設定タブから呼び出し） =====
+async function autoAssignAll() {
+  const resultEl = document.getElementById('auto-assign-result');
+  resultEl.textContent = '';
+
+  // 前提チェック
+  const workersInCars = Object.entries(assignState.cars || {}).filter(([w, c]) => parseInt(c) > 0);
+  if (workersInCars.length === 0) {
+    alert('先に「🚐 車の編成」で作業者を1号車・2号車に振り分けてください。');
+    return;
+  }
+  const routeCount = Object.entries(assignState.routeCars || {}).filter(([r, c]) => parseInt(c) > 0).length;
+  if (routeCount === 0) {
+    alert('先に「🗺️ ルート設定」でルートと車を紐付けてください。');
+    return;
+  }
+
+  // 対象作業者を抽出
+  const targets = [];
+  const skipReasons = [];
+  for (const [worker, carNum] of workersInCars) {
+    // 既に割当あり
+    if (getWorkerGroups(worker).length > 0) {
+      skipReasons.push(`${worker}（既に担当中）`);
+      continue;
+    }
+    // 受付停止中
+    if ((assignState.paused || {})[worker] === true) {
+      skipReasons.push(`${worker}（受付停止中）`);
+      continue;
+    }
+    // 戻り報告中（車に戻る途中）は含める（初回自動割当は「戻り」を待たず割当てる）
+    targets.push(worker);
+  }
+
+  if (targets.length === 0) {
+    alert(
+      `自動割当対象の作業者がいません。\n\n${skipReasons.length > 0 ? '除外:\n' + skipReasons.join('\n') : '全員に既に担当があります。'}`
+    );
+    return;
+  }
+
+  if (!confirm(`${targets.length}名の作業者を自動割当します。\n\n対象:\n${targets.join('、')}\n\n${skipReasons.length > 0 ? '\n除外:\n' + skipReasons.join('、') : ''}\n\n実行しますか？`)) return;
+
+  // 最新の全レコード再取得（進捗を最新にするため）
+  try {
+    const latestQuery = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
+    allRecords = await kintoneGet(latestQuery);
+  } catch(e) { console.error('レコード再取得エラー:', e); }
+
+  // 自動割当実行
+  const justAssigned = new Set();
+  const results = [];
+  const failed = [];
+  for (const worker of targets) {
+    const group = autoAssign(worker, justAssigned);
+    if (group) {
+      setWorkerGroups(worker, [group]);
+      justAssigned.add(group);
+      // returnedから外す（初回割当だが念のため）
+      assignState.returned = (assignState.returned || []).filter(w => w !== worker);
+      results.push(`✅ ${worker} → ${group}`);
+    } else {
+      failed.push(`⚠️ ${worker}（対象ルートに空きグループなし）`);
+    }
+  }
+
+  if (results.length > 0) {
+    assignState.updatedAt = new Date().toISOString();
+    await saveAssign();
+  }
+
+  const msg = `【自動割当結果】\n\n${results.join('\n')}${failed.length > 0 ? '\n\n' + failed.join('\n') : ''}`;
+  resultEl.textContent = `✅ ${results.length}件割当完了${failed.length > 0 ? ` / ⚠️ ${failed.length}件未割当` : ''}`;
+  alert(msg);
+
+  renderCars();
+  renderAssign();
+}
+
+// ===== 不在再訪機能 =====
+function renderRevisit() {
+  // 全ての不在店舗を取得（遅フラグの有無問わず）
+  const absentRecords = allRecords.filter(r => r['ドロップダウン']?.value === '不在');
+
+  // 既に再訪先に追加されているレコードIDのSet
+  const revisitMap = assignState.revisitMap || {};
+  const alreadyAssigned = new Set();
+  Object.values(revisitMap).forEach(ids => {
+    (ids || []).forEach(id => alreadyAssigned.add(String(id)));
+  });
+
+  const pending = absentRecords.filter(r => !alreadyAssigned.has(r['$id'].value));
+  const done = absentRecords.filter(r => alreadyAssigned.has(r['$id'].value));
+
+  // バナー＆タブバッジを更新
+  const bannerEl = document.getElementById('revisit-banner');
+  const bannerCountEl = document.getElementById('revisit-banner-count');
+  const tabBadgeEl = document.getElementById('revisit-tab-badge');
+  if (bannerEl) {
+    if (pending.length > 0) {
+      bannerEl.style.display = '';
+      if (bannerCountEl) bannerCountEl.textContent = pending.length;
+    } else {
+      bannerEl.style.display = 'none';
+    }
+  }
+  if (tabBadgeEl) {
+    if (pending.length > 0) {
+      tabBadgeEl.style.display = '';
+      tabBadgeEl.textContent = pending.length;
+    } else {
+      tabBadgeEl.style.display = 'none';
+    }
+  }
+
+  // 不在再訪専用タブのメインリスト
+  const mainEl = document.getElementById('revisit-list-main');
+  const doneEl = document.getElementById('revisit-done-list');
+  const summaryEl = document.getElementById('revisit-summary');
+  const doneCountEl = document.getElementById('revisit-done-count');
+  if (!mainEl) return;
+
+  // ルートフィルタを初期化
+  const filterSel = document.getElementById('revisit-filter');
+  const currentFilter = filterSel?.value || '';
+  if (filterSel) {
+    const existingRoutes = new Set(Array.from(filterSel.options).map(o => o.value));
+    const allAbsentRoutes = [...new Set(absentRecords.map(r => (r['文字列__1行__4']?.value || '').toUpperCase()).filter(Boolean))].sort();
+    allAbsentRoutes.forEach(rt => {
+      if (!existingRoutes.has(rt)) {
+        const o = document.createElement('option');
+        o.value = rt;
+        o.textContent = `ルート${rt}`;
+        filterSel.appendChild(o);
+      }
+    });
+  }
+
+  // フィルタ適用
+  const filteredPending = currentFilter
+    ? pending.filter(r => (r['文字列__1行__4']?.value || '').toUpperCase() === currentFilter)
+    : pending;
+
+  if (summaryEl) summaryEl.textContent = `待機 ${filteredPending.length}件 / 全体 ${pending.length}件`;
+  if (doneCountEl) doneCountEl.textContent = done.length > 0 ? `${done.length}件` : '';
+
+  // 振り分け待ちリスト
+  if (filteredPending.length === 0) {
+    mainEl.innerHTML = '<div style="font-size:13px;color:var(--muted);padding:30px 10px;text-align:center;background:var(--card);border-radius:10px;">' + (pending.length === 0 ? '✅ 振り分け待ちはありません' : '該当ルートに待機なし') + '</div>';
+  } else {
+    mainEl.innerHTML = filteredPending.map(r => {
+      const recId = r['$id'].value;
+      const shop = r['文字列__1行__1']?.value || '';
+      const building = r['文字列__1行__2']?.value || '';
+      const floor = r['文字列__1行__3']?.value || '';
+      const address = r['文字列__1行__8']?.value || '';
+      const comment = r['文字列__1行__9']?.value || '';
+      const route = (r['文字列__1行__4']?.value || '').toLowerCase();
+      const groupCode = r['文字列__1行__0']?.value || '';
+
+      // 同じルートの遅グループを抽出（自分自身のグループは除外）
+      const osoiGroups = allGroups.filter(g => {
+        if (g === groupCode) return false; // 自グループは候補から除外
+        const gRoute = (g.replace(/[0-9.]/g, '')).toLowerCase();
+        if (gRoute !== route) return false;
+        const hasOsoi = allRecords.some(rr =>
+          rr['文字列__1行__0']?.value === g &&
+          (rr['チェックボックス_0']?.value || []).length > 0
+        );
+        return hasOsoi;
+      });
+
+      const groupButtons = osoiGroups.map(g => {
+        const shops = allRecords.filter(rr => rr['文字列__1行__0']?.value === g)
+          .map(rr => {
+            const b = rr['文字列__1行__2']?.value || '';
+            const a = rr['文字列__1行__8']?.value || '';
+            return `${b}${a ? ` (${a})` : ''}`;
+          })
+          .slice(0, 5)
+          .join('、');
+        return `
+          <div style="background:var(--bg);border-radius:6px;padding:8px 10px;margin-top:6px;display:flex;align-items:flex-start;gap:8px;">
+            <button onclick="addToRevisit('${g}', ${recId})" style="flex-shrink:0;padding:8px 12px;background:var(--blue);color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;">${g}に追加</button>
+            <div style="flex:1;font-size:10px;color:var(--muted);line-height:1.5;">
+              含む店舗: ${shops || '（なし）'}
+            </div>
+          </div>`;
+      }).join('');
+
+      return `
+        <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:10px;border:2px solid var(--amber);">
+          <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;">
+            <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:2px 6px;border-radius:4px;">${groupCode} 不在</span>
+            <span style="font-size:14px;font-weight:900;">${shop}</span>
+          </div>
+          <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
+          ${comment ? `<div style="font-size:11px;color:#7a5a00;background:#fff8e8;padding:4px 8px;border-radius:4px;margin-bottom:6px;">💬 ${comment}</div>` : ''}
+          <div style="font-size:10px;font-weight:700;color:var(--muted);margin-top:8px;">▼ 振り分け先を選択：</div>
+          ${groupButtons || '<div style="font-size:11px;color:var(--muted);padding:8px;">遅グループなし</div>'}
+          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);">
+            <button onclick="openSoloModal('${route.toUpperCase()}', ${recId})" style="padding:8px 12px;background:#7a3dc4;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;">📍 個別訪問として追加（順番指定）</button>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px;">どのグループにも追加せず、単独で訪問する場合</div>
+          </div>
+        </div>`;
+    }).join('');
+  }
+
+  // 振り分け済みリスト
+  if (doneEl) {
+    if (done.length === 0) {
+      doneEl.innerHTML = '<div style="font-size:11px;color:var(--muted);padding:10px;text-align:center;background:var(--card);border-radius:8px;">振り分け済みなし</div>';
+    } else {
+      // どのレコードがどの遅グループに割り当てられたか逆引き
+      const recToGroup = {};
+      Object.entries(revisitMap).forEach(([g, ids]) => {
+        (ids || []).forEach(id => { recToGroup[String(id)] = g; });
+      });
+      doneEl.innerHTML = done.map(r => {
+        const recId = String(r['$id'].value);
+        const shop = r['文字列__1行__1']?.value || '';
+        const building = r['文字列__1行__2']?.value || '';
+        const targetGroup = recToGroup[recId];
+        return `
+          <div style="background:var(--card);border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:8px;border-left:4px solid var(--green);">
+            <div style="flex:1;">
+              <div style="font-size:13px;font-weight:700;">${shop}</div>
+              <div style="font-size:10px;color:var(--muted);">${building} → <strong style="color:var(--green)">${targetGroup}に追加済</strong></div>
+            </div>
+            <button onclick="removeFromRevisit('${targetGroup}', ${recId})" style="padding:5px 9px;background:#fff;color:#888;border:1px solid var(--border);border-radius:5px;font-size:10px;cursor:pointer;font-weight:700;">取消</button>
+          </div>`;
+      }).join('');
+    }
+  }
+}
+
+async function addToRevisit(groupCode, recordId) {
+  if (!assignState.revisitMap) assignState.revisitMap = {};
+  if (!assignState.revisitMap[groupCode]) assignState.revisitMap[groupCode] = [];
+  if (!assignState.revisitMap[groupCode].includes(String(recordId))) {
+    assignState.revisitMap[groupCode].push(String(recordId));
+  }
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  renderRevisit();
+  renderAssign();
+}
+
+async function removeFromRevisit(groupCode, recordId) {
+  if (!assignState.revisitMap?.[groupCode]) return;
+  assignState.revisitMap[groupCode] = assignState.revisitMap[groupCode].filter(id => String(id) !== String(recordId));
+  if (assignState.revisitMap[groupCode].length === 0) delete assignState.revisitMap[groupCode];
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  renderRevisit();
+  renderAssign();
+}
+
+// ===== 個別訪問機能 =====
+let soloModalRecordId = null;
+
+function openSoloModal(defaultRoute, recordId) {
+  soloModalRecordId = recordId;
+  const modal = document.getElementById('solo-modal');
+  const routeSel = document.getElementById('solo-route');
+
+  // ルート一覧を生成
+  const routes = [...new Set(allGroups.map(g => g.replace(/[0-9.]/g, '').toUpperCase()))].sort();
+  routeSel.innerHTML = routes.map(r => `<option value="${r}" ${r === defaultRoute ? 'selected' : ''}>${r}</option>`).join('');
+
+  updateSoloPositions();
+  modal.style.display = 'flex';
+}
+
+function updateSoloPositions() {
+  const route = document.getElementById('solo-route').value.toLowerCase();
+  const posSel = document.getElementById('solo-position');
+
+  const options = [];
+
+  // 既存の個別訪問グループ（仮想グループ）を抽出: revisitMap にあるが実レコードがないキー
+  const existingVirtual = [];
+  Object.keys(assignState.revisitMap || {}).forEach(k => {
+    if (k.replace(/[0-9.]/g, '').toLowerCase() !== route) return;
+    const realRecs = allRecords.filter(r => r['文字列__1行__0']?.value === k).length;
+    if (realRecs === 0) {
+      // 仮想グループ
+      const count = (assignState.revisitMap[k] || []).length;
+      existingVirtual.push({ code: k, count });
+    }
+  });
+  existingVirtual.sort((a, b) => {
+    const numA = parseFloat(a.code.replace(/[^0-9.]/g, '')) || 0;
+    const numB = parseFloat(b.code.replace(/[^0-9.]/g, '')) || 0;
+    return numA - numB;
+  });
+  existingVirtual.forEach(v => {
+    options.push({ value: `__merge__${v.code}`, label: `🔗 既存の「${v.code}」(${v.count}件) に追加` });
+  });
+
+  // そのルートのグループ一覧（数値順）
+  const routeGroups = allGroups.filter(g => g.replace(/[0-9.]/g, '').toLowerCase() === route);
+  const groupNums = routeGroups.map(g => ({
+    code: g,
+    num: parseFloat(g.replace(/[^0-9.]/g, '')) || 0
+  })).sort((a, b) => a.num - b.num);
+
+  // ルート先頭
+  if (groupNums.length > 0) {
+    options.push({ value: (groupNums[0].num - 0.5).toFixed(1), label: `🆕 ${route.toUpperCase()}ルートの先頭（${groupNums[0].code}の前）` });
+  }
+  // 各グループの後
+  groupNums.forEach((g, i) => {
+    const next = groupNums[i + 1];
+    const newNum = next ? ((g.num + next.num) / 2) : (g.num + 0.5);
+    const newCode = route.toUpperCase() + (Number.isInteger(newNum) ? newNum.toFixed(1) : newNum.toString());
+    const label = next ? `🆕 ${g.code} と ${next.code} の間（${newCode}）` : `🆕 ${g.code} の後（末尾・${newCode}）`;
+    options.push({ value: newNum.toString(), label });
+  });
+
+  posSel.innerHTML = options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
+  if (!options.length) posSel.innerHTML = '<option value="0.5">（ルート初の店舗）</option>';
+}
+
+function closeSoloModal() {
+  document.getElementById('solo-modal').style.display = 'none';
+  soloModalRecordId = null;
+}
+
+async function confirmSoloRevisit() {
+  if (!soloModalRecordId) return;
+  const route = document.getElementById('solo-route').value.toUpperCase();
+  const posValue = document.getElementById('solo-position').value;
+  if (!route || !posValue) return;
+
+  let virtualCode;
+  let isNew = false;
+
+  if (posValue.startsWith('__merge__')) {
+    // 既存の個別訪問グループに追加
+    virtualCode = posValue.replace('__merge__', '');
+    if (!assignState.revisitMap) assignState.revisitMap = {};
+    const existing = (assignState.revisitMap[virtualCode] || []).map(String);
+    if (!existing.includes(String(soloModalRecordId))) {
+      existing.push(String(soloModalRecordId));
+    }
+    assignState.revisitMap[virtualCode] = existing;
+  } else {
+    // 新規グループとして作成
+    isNew = true;
+    virtualCode = route + posValue;
+    // 重複チェック - 既に同じコードが使われている場合は微調整
+    if (allGroups.includes(virtualCode) || assignState.revisitMap?.[virtualCode]) {
+      let suffix = 1;
+      while (allGroups.includes(virtualCode + 'a'.repeat(suffix)) || assignState.revisitMap?.[virtualCode + 'a'.repeat(suffix)]) {
+        suffix++;
+      }
+      virtualCode = virtualCode + 'a'.repeat(suffix);
+    }
+    if (!assignState.revisitMap) assignState.revisitMap = {};
+    assignState.revisitMap[virtualCode] = [String(soloModalRecordId)];
+  }
+
+  assignState.updatedAt = new Date().toISOString();
+
+  await saveAssign();
+  closeSoloModal();
+  // allGroupsに仮想グループを追加（新規の場合）
+  if (isNew && !allGroups.includes(virtualCode)) {
+    allGroups.push(virtualCode);
+    allGroups.sort((a, b) => {
+      const routeA = a.replace(/[0-9.]/g, '');
+      const routeB = b.replace(/[0-9.]/g, '');
+      if (routeA !== routeB) return routeA.localeCompare(routeB);
+      const numA = parseFloat(a.replace(/[^0-9.]/g, '')) || 0;
+      const numB = parseFloat(b.replace(/[^0-9.]/g, '')) || 0;
+      return numA - numB;
+    });
+  }
+  renderRevisit();
+  renderAssign();
+  if (isNew) {
+    alert(`📍 個別訪問グループ「${virtualCode}」を作成しました。\n「👥 割当」タブで作業者に割り当ててください。`);
+  } else {
+    const count = assignState.revisitMap[virtualCode].length;
+    alert(`✅ 個別訪問グループ「${virtualCode}」に追加しました（合計${count}件）`);
+  }
+}
+
+async function assignWorker(groupCode, workerName) {
+  // 「✕ 解除」モード: workerName=''
+  if (!workerName) {
+    const w = getGroupWorker(groupCode);
+    if (w) {
+      const newGroups = getWorkerGroups(w).filter(g => g !== groupCode);
+      setWorkerGroups(w, newGroups);
+      assignState.updatedAt = new Date().toISOString();
+      await saveAssign();
+      renderCars();
+      renderAssign();
+    }
+    return;
+  }
+
+  // 受付停止中の作業者を割り当てる時は確認ダイアログ
+  if ((assignState.paused || {})[workerName] === true) {
+    const ok = confirm(
+      `⚠️ ${workerName} さんは「受付停止中」です。\n\n` +
+      `（電話対応・トイレ等で離席中の可能性があります）\n\n` +
+      `それでも「${groupCode}」を割り当てますか？\n\n` +
+      `※ OKを押すと受付停止も解除されます。`
+    );
+    if (!ok) return;
+    if (assignState.paused) delete assignState.paused[workerName];
+  }
+
+  // 最新の状態を取得して上書き競合を防ぐ
+  try {
+    const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
+    if (recs.length) {
+      const raw = recs[0]['文字列__複数行__0']?.value || '';
+      try {
+        const latest = JSON.parse(raw);
+        const wasPaused = (assignState.paused || {})[workerName];
+        assignState.assignments = latest.assignments || {};
+        assignState.returned = latest.returned || [];
+        if (latest.paused) {
+          assignState.paused = { ...latest.paused };
+          if (wasPaused === undefined && workerName) delete assignState.paused[workerName];
+        }
+      } catch(e) {}
+    }
+  } catch(e) { console.error('最新状態取得エラー:', e); }
+
+  // 既に他の作業者がこのグループに割当てられている場合、外す
+  Object.keys(assignState.assignments).forEach(w => {
+    if (w === workerName) return;
+    const wGroups = getWorkerGroups(w);
+    if (wGroups.includes(groupCode)) {
+      setWorkerGroups(w, wGroups.filter(g => g !== groupCode));
+    }
+  });
+
+  // 現在の対象作業者のグループ一覧
+  const currentGroups = getWorkerGroups(workerName);
+  const otherGroups = currentGroups.filter(g => g !== groupCode);
+
+  // 既にこのグループだけ担当中の場合は何もしない
+  if (currentGroups.length === 1 && currentGroups[0] === groupCode) {
+    return;
+  }
+
+  // 他のグループも担当している場合は確認ダイアログ
+  let finalGroups;
+  if (otherGroups.length > 0) {
+    const choice = confirm(
+      `${workerName} さんは既に「${otherGroups.join('、')}」を担当中です。\n\n` +
+      `[OK]   →「${groupCode}」も追加で担当（合計${otherGroups.length + 1}グループ）\n` +
+      `[キャンセル] →「${groupCode}」のみ担当（既存は解除）`
+    );
+    if (choice) {
+      finalGroups = [...otherGroups, groupCode];
+    } else {
+      finalGroups = [groupCode];
+    }
+  } else {
+    finalGroups = [groupCode];
+  }
+
+  setWorkerGroups(workerName, finalGroups);
+  // returnedから外す
+  assignState.returned = (assignState.returned || []).filter(w => w !== workerName);
+
+  assignState.updatedAt = new Date().toISOString();
+  await saveAssign();
+  renderCars();
+  renderAssign();
+}
+
+function getGroupRoute(g) {
+  // グループ内に遅レコードがあればルート名+'遅'を返す
+  const hasOsoi = allRecords.some(r =>
+    r['文字列__1行__0']?.value === g &&
+    (r['チェックボックス_0']?.value || []).length > 0
+  );
+  const letter = g.replace(/[0-9.]/g, '');
+  return hasOsoi ? letter + '遅' : letter;
+}
+
+function renderAssign() {
+  const carFilter = document.getElementById('car-filter')?.value || '';
+  const assignEl = document.getElementById('assign-list');
+
+  if (!allGroups.length) {
+    assignEl.innerHTML = '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">データなし</div>';
+    return;
+  }
+
+  // 作業日を取得
+  const workDay = document.getElementById('work-day-select')?.value || '';
+
+  // グループごとの集計（定休日除外）
+  const groupCounts = {}, groupDone = {}, groupNabon = {}, groupClosed = {};
+  const groupMap = {}, groupRack = {}, groupPop = {};
+  allRecords.forEach(r => {
+    const g = r['文字列__1行__0']?.value;
+    if (!g) return;
+    const closed = isClosedToday(r, workDay);
+    if (closed) {
+      groupClosed[g] = (groupClosed[g] || 0) + 1;
+      return; // 定休日は集計から除外
+    }
+    groupCounts[g] = (groupCounts[g] || 0) + 1;
+    groupNabon[g] = (groupNabon[g] || 0) + (parseInt(r['数値_2']?.value) || 0);
+    groupMap[g]   = (groupMap[g]   || 0) + (parseInt(r['数値_3']?.value) || 0);
+    if ((r['チェックボックス_1']?.value || []).length > 0) groupRack[g] = (groupRack[g] || 0) + 1;
+    if ((r['チェックボックス_3']?.value || []).length > 0) groupPop[g]  = (groupPop[g]  || 0) + 1;
+    if (r['ドロップダウン']?.value === '完了' || r['ドロップダウン']?.value === '不在') {
+      groupDone[g] = (groupDone[g] || 0) + 1;
+    }
+  });
+
+  // 作業者リスト
+  const allWorkers = [...new Set([
+    ...Object.keys(assignState.cars || {}),
+    ...(assignState.returned || []),
+    ...Object.keys(assignState.assignments || {}),
+  ])].filter(w => w);
+
+  const filteredWorkers = carFilter
+    ? allWorkers.filter(w => String(assignState.cars?.[w] || 0) === carFilter)
+    : allWorkers;
+
+  // グループをルートフィルタ・車フィルタで絞り込み
+  let filtered = [...allGroups];
+  if (carFilter) {
+    filtered = filtered.filter(g => {
+      const route = getGroupRoute(g);
+      return String(assignState.routeCars?.[route] || 0) === carFilter;
+    });
+  }
+
+  // グループの完了判定（仮想グループはrevisitMapの中身で判定）
+  const revisitMapForSplit = assignState.revisitMap || {};
+  function isGroupComplete(g) {
+    // 実レコードがあるか
+    const hasRealRecs = allRecords.some(r => r['文字列__1行__0']?.value === g);
+    if (!hasRealRecs && revisitMapForSplit[g]) {
+      // 仮想グループ: revisitMapのレコードで完了判定
+      const ids = (revisitMapForSplit[g] || []).map(String);
+      const recs = allRecords.filter(r => ids.includes(String(r['$id'].value)));
+      return recs.length > 0 && recs.every(r => ['完了','不在'].includes(r['ドロップダウン']?.value));
+    }
+    // 通常グループ
+    const count = groupCounts[g] || 0;
+    const done = groupDone[g] || 0;
+    return count > 0 && done >= count;
+  }
+
+  // アクティブ（未完了）と完了に分離
+  const activeGroups = filtered.filter(g => !isGroupComplete(g));
+  const doneGroups = filtered.filter(g => isGroupComplete(g));
+
+  function renderGroup(g, isDone) {
+    const assignedWorker = getGroupWorker(g);
+    // 仮想グループ判定（実レコードにないが revisitMap にある）
+    const isVirtual = !allRecords.some(r => r['文字列__1行__0']?.value === g) && (assignState.revisitMap || {})[g];
+    const virtualBadge = isVirtual ? '<span style="background:#7a3dc4;color:#fff;font-size:9px;padding:1px 6px;border-radius:4px;margin-left:6px;font-weight:900;">📍個別</span>' : '';
+    // 仮想グループは revisitMap のレコードを集計
+    let count, done, nabon, mapTotal, rackTotal, popTotal;
+    if (isVirtual) {
+      const ids = (assignState.revisitMap[g] || []).map(String);
+      const virtualRecs = allRecords.filter(r => ids.includes(String(r['$id'].value)));
+      count = virtualRecs.length;
+      done = virtualRecs.filter(r => r['ドロップダウン']?.value === '完了' || r['ドロップダウン']?.value === '不在').length;
+      nabon = virtualRecs.reduce((s, r) => s + (parseInt(r['数値_2']?.value) || 0), 0);
+      mapTotal = virtualRecs.reduce((s, r) => s + (parseInt(r['数値_3']?.value) || 0), 0);
+      rackTotal = virtualRecs.filter(r => (r['チェックボックス_1']?.value || []).length > 0).length;
+      popTotal = virtualRecs.filter(r => (r['チェックボックス_3']?.value || []).length > 0).length;
+    } else {
+      count = groupCounts[g] || 0;
+      done = groupDone[g] || 0;
+      nabon = groupNabon[g] || 0;
+      mapTotal = groupMap[g] || 0;
+      rackTotal = groupRack[g] || 0;
+      popTotal = groupPop[g] || 0;
+    }
+    const assignedCar = assignedWorker ? (assignState.cars?.[assignedWorker] || 0) : 0;
+    const carLabel = assignedCar ? `🚐${assignedCar} ` : '';
+    const route = getGroupRoute(g);
+    const routeCarNum = assignState.routeCars?.[route] || 0;
+    const routeCarLabel = routeCarNum ? `<span style="font-size:9px;color:var(--muted)">ルート${route.toUpperCase()} 🚐${routeCarNum}</span>` : `<span style="font-size:9px;color:var(--muted)">ルート${route.toUpperCase()}</span>`;
+
+    const workerBtns = isDone ? '' : filteredWorkers.map(w => {
+      const isAssigned = assignedWorker === w;
+      const isReturned = (assignState.returned || []).includes(w);
+      const isPaused = (assignState.paused || {})[w] === true;
+      const carNum = assignState.cars?.[w] || 0;
+      const carTag = carNum ? `<span style="font-size:9px;opacity:0.7"> ${carNum}号車</span>` : '';
+      const pausedTag = isPaused ? '<span style="font-size:9px;background:#d42020;color:#fff;padding:0 4px;border-radius:3px;margin-left:3px;font-weight:900">停止中</span>' : '';
+      // 複数グループ担当中の作業者にバッジ表示
+      const wGroups = getWorkerGroups(w);
+      const multiTag = wGroups.length > 1 ? `<span style="font-size:9px;background:#7a3dc4;color:#fff;padding:0 4px;border-radius:3px;margin-left:3px;font-weight:900;">🔗${wGroups.length}</span>` : '';
+      const cls = isAssigned ? 'assigned' : isReturned ? 'returned' : '';
+      const pausedStyle = isPaused ? 'opacity:0.5;' : '';
+      return `<button class="assign-worker-btn ${cls}" style="${pausedStyle}" onclick="assignWorker('${g}','${w}')">${w}${carTag}${multiTag}${pausedTag}</button>`;
+    }).join('');
+
+    // 店舗一覧HTML（コメント付き）
+    const groupRecs = isVirtual
+      ? allRecords.filter(r => ((assignState.revisitMap[g] || []).map(String)).includes(String(r['$id'].value)) && !isClosedToday(r, workDay))
+      : allRecords.filter(r => {
+          if (r['文字列__1行__0']?.value !== g) return false;
+          if (isClosedToday(r, workDay)) return false;
+          return true;
+        });
+    const shopList = groupRecs.map(r => {
+      const shop = r['文字列__1行__1']?.value || '';
+      const building = r['文字列__1行__2']?.value || '';
+      const floor = r['文字列__1行__3']?.value || '';
+      const genre = r['文字列__1行__6']?.value || '';
+      const address = r['文字列__1行__8']?.value || '';
+      const comment = r['文字列__1行__9']?.value || '';
+      const location = r['文字列__1行__7']?.value || '';
+      const nabonNum = r['数値_2']?.value || '';
+      const mapNum = r['数値_3']?.value || '';
+      const rackChange = (r['チェックボックス_1']?.value || []).length > 0;
+      const popChange = (r['チェックボックス_3']?.value || []).length > 0;
+      const status = r['ドロップダウン']?.value || '未着手';
+      const statusColor = status === '完了' ? 'var(--green)' : status === '不在' ? 'var(--amber)' : 'var(--border)';
+      return `
+        <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
+          <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;margin-top:4px;"></div>
+          <div style="flex:1;min-width:0;">
+            <div style="font-size:12px;font-weight:700;">${shop}</div>
+            <div style="font-size:10px;color:var(--muted);">${building}${floor ? ` ${floor}階` : ''}${genre ? ` / ${genre}` : ''}${address ? ` / 📍${address}` : ''}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
+              ${nabonNum ? `<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">📦${nabonNum}冊</span>` : ''}
+              ${mapNum && parseFloat(mapNum) > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🗺️MAP${mapNum}冊</span>` : ''}
+              ${rackChange ? `<span style="background:#ffebeb;color:#d42020;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🔧ラック交換</span>` : ''}
+              ${popChange ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🏷️POP貼替</span>` : ''}
+            </div>
+            ${location ? `<div style="font-size:10px;color:#555;margin-top:2px;">設置: ${location}</div>` : ''}
+            ${comment ? `<div style="font-size:10px;color:#7a5a00;background:#fff8e8;padding:3px 6px;border-radius:4px;margin-top:3px;border-left:2px solid var(--amber);">💬 ${comment}</div>` : ''}
+          </div>
+        </div>`;
+    }).join('');
+
+    return `
+      <div class="assign-group" style="${isDone ? 'opacity:0.4' : ''}">
+        <div class="assign-group-header" onclick="toggleGroupDetail('detail-${g}')" style="cursor:pointer;">
+          <div class="assign-group-code">${g}${virtualBadge}</div>
+          <div style="flex:1">
+            <div class="assign-group-info">${count}件 ${done > 0 ? `完了${done}/` : ''}<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">📦${nabon}冊</span>${mapTotal > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🗺️MAP${mapTotal}冊</span>` : ''}${rackTotal > 0 ? `<span style="background:#ffebeb;color:#d42020;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🔧${rackTotal}</span>` : ''}${popTotal > 0 ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🏷️${popTotal}</span>` : ''}${groupClosed[g] ? ` <span style="color:var(--amber);font-size:10px;">🚫定休${groupClosed[g]}件除外</span>` : ''}</div>
+            <div style="margin-top:2px">${routeCarLabel}</div>
+          </div>
+          <div class="assign-group-worker">${assignedWorker ? `${carLabel}👤 ${assignedWorker}` : isDone ? '✅ 完了' : '未割当'}</div>
+          <div style="font-size:11px;color:var(--muted);margin-left:4px;">▼</div>
+        </div>
+        <div id="detail-${g}" style="display:none;border-top:1px solid var(--border);">
+          ${shopList}
+        </div>
+        ${!isDone ? `<div class="assign-btn-row">
+          ${workerBtns}
+          ${assignedWorker ? `<button class="assign-worker-btn" onclick="assignWorker('${g}','')" style="color:var(--red);border-color:var(--red)">✕ 解除</button>` : ''}
+        </div>` : ''}
+      </div>`;
+  }
+
+  let html = '';
+  if (activeGroups.length) {
+    html += activeGroups.map(g => renderGroup(g, false)).join('');
+  }
+  if (doneGroups.length) {
+    html += `<div style="font-size:11px;color:var(--muted);margin:12px 0 6px;font-weight:700;">✅ 完了済みグループ</div>`;
+    html += doneGroups.map(g => renderGroup(g, true)).join('');
+  }
+  assignEl.innerHTML = html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>';
+}
+
+// ===== 作業日変更 =====
+function getDayName(d) {
+  return ['日','月','火','水','木','金','土'][parseInt(d)] || '';
+}
+
+async function changeWorkDay(workDay) {
+  if (!assignState) return;
+  assignState.workDay = workDay === '' ? null : parseInt(workDay);
+  assignState.updatedAt = new Date().toISOString();
+  await saveCommonData();
+  localStorage.setItem('fp_work_day', workDay);
+  renderAssign();
+  renderRevisit();
+}
+
+function isClosedToday(record, workDay) {
+  if (workDay === null || workDay === undefined || workDay === '') return false;
+  const teikyu = record['チェックボックス_2']?.value || [];
+  return teikyu.includes(getDayName(workDay));
+}
+
+// ===== 運転手位置情報共有 =====
+async function shareLocation() {
+  const btn = document.getElementById('location-btn');
+  btn.textContent = '📍 取得中...';
+  btn.disabled = true;
+
+  navigator.geolocation.getCurrentPosition(async pos => {
+    const lat = pos.coords.latitude;
+    const lng = pos.coords.longitude;
+    const mapsUrl = `https://maps.google.com/?q=${lat},${lng}`;
+
+    try {
+      // 自車データに位置情報を保存
+      assignState.driverLocation = { lat, lng, url: mapsUrl, updatedAt: new Date().toISOString() };
+      await saveCarData();
+
+      btn.textContent = '📍 共有済み ✓';
+      btn.style.background = '#1a8a4a';
+      setTimeout(() => {
+        btn.textContent = '📍 現在地を共有';
+        btn.style.background = '#1a5cd4';
+        btn.disabled = false;
+      }, 3000);
+    } catch(e) {
+      alert('保存エラー: ' + e.message);
+      btn.textContent = '📍 現在地を共有';
+      btn.disabled = false;
+    }
+  }, err => {
+    alert('位置情報の取得に失敗しました。ブラウザの位置情報を許可してください。');
+    btn.textContent = '📍 現在地を共有';
+    btn.disabled = false;
+  }, { timeout: 10000 });
+}
+
+// 起動時にタブ状態を復元
+function restoreTab() {
+  const saved = localStorage.getItem('fp_driver_tab') || 'assign';
+  const tabs = document.querySelectorAll('.tab');
+  const tabNames = ['progress', 'route', 'setup', 'assign', 'revisit'];
+  const idx = tabNames.indexOf(saved);
+  if (idx >= 0) {
+    switchTab(saved, tabs[idx]);
+  }
+  // 車フィルタを復元
+  const savedCar = localStorage.getItem('fp_car_filter') || '';
+  const carFilter = document.getElementById('car-filter');
+  if (carFilter) {
+    carFilter.value = savedCar;
+    renderAssign();
+    applyCarFilter();
+  }
+}
+
+// 起動時に読み込み
+let MY_DRIVER_NAME = '';
+let COMMON_CACHE = null; // ログイン画面用の共通データキャッシュ
+
+(async function init() {
+  // kintone設定から作業号を取得
+  const forced = await getWorkMonthFromSettings();
+  if (forced) {
+    currentMonth = forced;
+    console.log(`📌 管理者設定により作業号を ${forced} に固定`);
+  }
+  initMonthSelect();
+
+  // 共通データを読んで運転手リストを作る
+  try {
+    COMMON_CACHE = await loadSpecialRecord(commonKey(currentMonth));
+  } catch(e) { COMMON_CACHE = { _notfound: true }; }
+
+  // セッション復元（前回ログインした運転手）
+  const savedDriver = localStorage.getItem('fp_driver_name');
+  if (savedDriver && COMMON_CACHE && !COMMON_CACHE._notfound) {
+    const car = getCarOfWorker(COMMON_CACHE, savedDriver);
+    if (car) {
+      MY_DRIVER_NAME = savedDriver;
+      MY_CAR = car;
+      startDriverUI();
+      return;
+    }
+  }
+  // ログイン画面を表示
+  showDriverLogin();
+})();
+
+function showDriverLogin() {
+  const login = document.getElementById('driver-login');
+  login.style.display = 'flex';
+  const sel = document.getElementById('driver-name-select');
+  sel.innerHTML = '<option value="">-- 選択してください --</option>';
+
+  if (!COMMON_CACHE || COMMON_CACHE._notfound) {
+    const err = document.getElementById('driver-login-error');
+    err.style.display = 'block';
+    err.innerHTML = `${currentMonth} の準備データがありません。<br>先に「割当データ移行ツール」を実行してください。`;
+    return;
+  }
+
+  // 運転手として登録されている人＋全メンバーを候補に
+  const drivers = COMMON_CACHE.drivers || {};
+  const driverNames = Object.values(drivers).filter(Boolean);
+  const members = COMMON_CACHE.members || [];
+  // 運転手を先頭に、その後その他メンバー
+  const listed = [...driverNames, ...members.filter(m => !driverNames.includes(m))];
+  listed.forEach(name => {
+    const car = getCarOfWorker(COMMON_CACHE, name);
+    const o = document.createElement('option');
+    o.value = name;
+    o.textContent = car ? `${name}（${car}号車）` : name;
+    sel.appendChild(o);
+  });
+  // 準備担当（号車なし）の選択肢を末尾に追加
+  const prepOpt = document.createElement('option');
+  prepOpt.value = '__prep__';
+  prepOpt.textContent = '🔧 準備担当（号車なし・設定のみ）';
+  sel.appendChild(prepOpt);
+
+  sel.onchange = () => {
+    const name = sel.value;
+    const preview = document.getElementById('driver-car-preview');
+    const btn = document.getElementById('driver-login-btn');
+    if (!name) { preview.textContent = ''; btn.disabled = true; return; }
+    if (name === '__prep__') {
+      preview.innerHTML = `<span style="color:var(--amber);font-weight:900;">🔧 準備担当</span> として設定を行います<br><span style="font-size:11px;color:var(--muted);">メンバー・車編成・ルート設定ができます</span>`;
+      btn.disabled = false;
+      btn.textContent = '準備設定を開く →';
+      return;
+    }
+    const car = getCarOfWorker(COMMON_CACHE, name);
+    if (car) {
+      preview.innerHTML = `<span style="color:var(--green);font-weight:900;">✓ ${car}号車</span> として運転します`;
+      btn.disabled = false;
+      btn.textContent = '運転を開始する →';
+    } else {
+      preview.innerHTML = `<span style="color:var(--red);">この方は号車が設定されていません。<br>「準備担当」を選ぶか、メンバー管理で運転手・車編成を設定してください。</span>`;
+      btn.disabled = true;
+    }
+  };
+}
+
+let IS_PREP_MODE = false; // 準備担当モード（号車なし・設定タブのみ）
+
+function doDriverLogin() {
+  const name = document.getElementById('driver-name-select').value;
+  if (!name) return;
+  // 準備担当モード
+  if (name === '__prep__') {
+    IS_PREP_MODE = true;
+    MY_CAR = 0;
+    MY_DRIVER_NAME = '準備担当';
+    document.getElementById('driver-login').style.display = 'none';
+    startPrepUI();
+    return;
+  }
+  const car = getCarOfWorker(COMMON_CACHE, name);
+  if (!car) return;
+  // ★本人確認ダイアログ
+  const ok = confirm(`「${name}」さん（${car}号車）として運転画面を開きます。\n\nあなたは ${name} さんですか？\n\n※違う場合は「キャンセル」を押して選び直してください。`);
+  if (!ok) return;
+  IS_PREP_MODE = false;
+  MY_DRIVER_NAME = name;
+  MY_CAR = car;
+  localStorage.setItem('fp_driver_name', name);
+  document.getElementById('driver-login').style.display = 'none';
+  startDriverUI();
+}
+
+// 別の人に切り替え（運転手を選び間違えた時）
+function confirmSwitchDriver() {
+  const label = IS_PREP_MODE ? '準備担当' : MY_DRIVER_NAME;
+  const ok = confirm(`今「${label}」としてログイン中です。\n\n別の人に切り替えますか？\n\n※あなたが ${label} なら「キャンセル」を押してください。`);
+  if (!ok) return;
+  localStorage.removeItem('fp_driver_name');
+  location.reload(); // ログイン画面から選び直し
+}
+
+// 準備担当UI: 準備設定タブを開き、稼働系（進捗・割当ポーリング）は動かさない
+function startPrepUI() {
+  const badge = document.getElementById('driver-car-badge');
+  if (badge) {
+    badge.style.display = 'inline-block';
+    badge.textContent = '🔧 準備担当';
+    badge.style.background = '#c47a0a';
+  }
+  // 稼働系タブ（進捗確認・ルート別・割当・不在再訪）を隠し、準備設定だけ使えるように
+  document.querySelectorAll('.tabs .tab').forEach(t => {
+    const label = t.textContent || '';
+    if (!label.includes('準備設定')) t.style.display = 'none';
+  });
+  // 共通データを読み込んで準備設定を描画（号車データは読まない）
+  loadData();
+  // 準備設定タブへ
+  setTimeout(() => { switchTab('setup'); }, 500);
+}
+
+function startDriverUI() {
+  // 号車バッジ表示（名前も表示）
+  const badge = document.getElementById('driver-car-badge');
+  if (badge) {
+    badge.style.display = 'inline-block';
+    badge.textContent = `${MY_DRIVER_NAME}（${MY_CAR}号車）`;
+    badge.style.background = MY_CAR === 1 ? '#1a8a4a' : '#1a5cd4';
+  }
+  loadData();
+  setTimeout(restoreTab, 500);
+}
+
+// ===== ポーリング =====
+// 軽量ポーリング: 自車の稼働データのみ取得（即応性重視・競合しない）
+async function quickPollAssignState() {
+  if (!MY_CAR) return;
+  try {
+    const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    if (fresh && !fresh._notfound) {
+      // 昨日以前の残骸は無視（今日のデータのみ反映）
+      const useAssignments = isCarDataFresh(fresh) ? (fresh.assignments || {}) : {};
+      const useReturned = isCarDataFresh(fresh) ? (fresh.returned || []) : [];
+      const usePaused = isCarDataFresh(fresh) ? (fresh.paused || {}) : {};
+      const oldStr = JSON.stringify({ a: assignState.assignments, r: assignState.returned, p: assignState.paused });
+      const newStr = JSON.stringify({ a: useAssignments, r: useReturned, p: usePaused });
+      if (oldStr !== newStr) {
+        assignState.assignments = useAssignments;
+        assignState.returned = useReturned;
+        assignState.paused = usePaused;
+        assignState.revisitMap = isCarDataFresh(fresh) ? (fresh.revisitMap || {}) : {};
+        renderAssign();
+        renderCars();
+      }
+      // 戻り作業者がいれば自動割当（新鮮データで処理・変更時のみ保存）
+      if (useReturned.length > 0) {
+        await processReturnedWorkers();
+      }
+    }
+  } catch(e) { console.warn('軽量ポーリングエラー:', e); }
+}
+
+// 重量ポーリング: 全レコード取得（進捗・ルート別タブ用）
+setInterval(loadData, 30000);
+// 軽量ポーリング: 10秒ごとにassignState更新（割当の即応性確保）
+setInterval(quickPollAssignState, 10000);
+</script>
+</body>
+</html>

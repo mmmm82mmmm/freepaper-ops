@@ -23,6 +23,51 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .progress-bar-bg{flex:1;height:5px;background:#333;border-radius:3px;overflow:hidden;}
 .progress-bar-fill{height:100%;background:var(--green);border-radius:3px;transition:width 0.5s;}
 .progress-text{font-family:'DM Mono',monospace;font-size:11px;color:#aaa;white-space:nowrap;}
+.text-size-btn{background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 8px;border-radius:6px;font-size:12px;font-weight:900;cursor:pointer;font-family:inherit;min-width:36px;}
+.text-size-btn:active{background:rgba(255,255,255,.3);}
+
+/* ===== 大きい文字モード（老眼対応） ===== */
+/* サイズ大 (+30%) */
+body.text-large .shop-name{font-size:22px;}
+body.text-large .shop-location{font-size:16px;line-height:1.6;}
+body.text-large .shop-location::before{font-size:16px;}
+body.text-large .shop-comment{font-size:15px;line-height:1.6;}
+body.text-large .nabon-hint{font-size:15px;}
+body.text-large .nabon-hint strong{font-size:20px;}
+body.text-large .input-group label{font-size:13px;}
+body.text-large .input-group input{font-size:26px;padding:14px;}
+body.text-large .status-pill{font-size:14px;padding:6px 12px;}
+body.text-large .meta-chip{font-size:14px;padding:3px 10px;}
+body.text-large .group-name{font-size:17px;}
+body.text-large .group-count{font-size:14px;}
+body.text-large .group-badge{font-size:14px;padding:4px 10px;}
+body.text-large .app-title{font-size:19px;}
+body.text-large .worker-name{font-size:15px;padding:5px 12px;}
+body.text-large .progress-text{font-size:14px;}
+body.text-large .btn-done, body.text-large .btn-absent{font-size:16px;padding:14px;}
+body.text-large .btn-return{font-size:17px;padding:16px;}
+body.text-large .btn-modal-confirm{font-size:16px;}
+
+/* サイズ特大 (+60%) */
+body.text-xlarge .shop-name{font-size:27px;}
+body.text-xlarge .shop-location{font-size:19px;line-height:1.6;}
+body.text-xlarge .shop-location::before{font-size:19px;}
+body.text-xlarge .shop-comment{font-size:18px;line-height:1.6;}
+body.text-xlarge .nabon-hint{font-size:18px;}
+body.text-xlarge .nabon-hint strong{font-size:24px;}
+body.text-xlarge .input-group label{font-size:15px;}
+body.text-xlarge .input-group input{font-size:32px;padding:18px;}
+body.text-xlarge .status-pill{font-size:16px;padding:7px 14px;}
+body.text-xlarge .meta-chip{font-size:16px;padding:4px 12px;}
+body.text-xlarge .group-name{font-size:20px;}
+body.text-xlarge .group-count{font-size:16px;}
+body.text-xlarge .group-badge{font-size:16px;padding:5px 12px;}
+body.text-xlarge .app-title{font-size:22px;}
+body.text-xlarge .worker-name{font-size:17px;padding:6px 14px;}
+body.text-xlarge .progress-text{font-size:16px;}
+body.text-xlarge .btn-done, body.text-xlarge .btn-absent{font-size:19px;padding:17px;}
+body.text-xlarge .btn-return{font-size:20px;padding:20px;}
+body.text-xlarge .btn-modal-confirm{font-size:19px;}
 
 /* LOGIN */
 .login-screen{max-width:400px;margin:60px auto 0;padding:24px;}
@@ -178,8 +223,10 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <select class="login-select" id="worker-select">
       <option value="">-- 選択してください --</option>
     </select>
-    <label class="login-label" style="margin-top:8px">作業月</label>
-    <select class="login-select" id="month-select"></select>
+    <div style="margin-top:8px;background:#e8f0ff;border:2px solid var(--blue);border-radius:8px;padding:10px 12px;text-align:center;">
+      <div style="font-size:10px;color:var(--muted);">作業月</div>
+      <div style="font-size:18px;font-weight:900;color:var(--blue);" id="login-month-display">読込中...</div>
+    </div>
     <button class="btn-login" id="btn-login" onclick="startWork()" disabled>作業を開始する →</button>
     <div id="login-error" class="error-box" style="display:none"></div>
   </div>
@@ -203,7 +250,14 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div class="app-header">
     <div class="app-header-top">
       <div class="app-title" id="work-title">📦 2026年5月号</div>
-      <div class="worker-name" id="work-worker">田中 さん</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="text-size-btn" onclick="cycleTextSize()" title="文字サイズ変更" id="text-size-btn-work">A</button>
+        <button onclick="refreshNow()" title="再読み込み" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:14px;cursor:pointer;">🔄</button>
+        <div class="worker-name" id="work-worker" onclick="confirmSwitchWorker()" style="cursor:pointer;" title="別の人に切り替え">田中 さん</div>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.12);border-radius:6px;padding:4px 10px;margin:6px 0 0;font-size:11px;text-align:center;">
+      👆 名前が違う場合はタップして選び直してください
     </div>
     <div class="progress-wrap">
       <div class="progress-bar-bg"><div class="progress-bar-fill" id="prog-fill" style="width:0%"></div></div>
@@ -226,18 +280,40 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div class="app-header" style="position:relative">
     <div class="app-header-top">
       <div class="app-title">📦 フリーペーパー作業</div>
-      <div class="worker-name" id="waiting-worker-name"></div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="text-size-btn" onclick="cycleTextSize()" title="文字サイズ変更" id="text-size-btn-wait">A</button>
+        <button onclick="refreshNow()" title="再読み込み" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:14px;cursor:pointer;">🔄</button>
+        <div class="worker-name" id="waiting-worker-name"></div>
+      </div>
     </div>
   </div>
   <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:70vh;gap:20px;padding:24px;text-align:center;">
     <div style="font-size:48px">🚐</div>
     <div style="font-size:22px;font-weight:900">お疲れ様でした！</div>
-    <div style="font-size:14px;color:var(--muted);line-height:1.8">戻りを報告しました。<br>運転手が次のグループを割り当て中です...</div>
-    <div style="display:flex;align-items:center;gap:12px;margin-top:8px">
+    <div style="font-size:14px;color:var(--muted);line-height:1.8" id="waiting-msg">戻りを報告しました。<br>運転手が次のグループを割り当て中です...</div>
+    <div style="display:flex;align-items:center;gap:12px;margin-top:8px" id="waiting-spinner-wrap">
       <div class="spinner"></div>
       <div style="font-size:13px;color:var(--muted)">割当を待っています</div>
     </div>
     <div style="font-size:12px;color:var(--muted);margin-top:16px">次のグループ: <strong id="waiting-group" style="font-family:'DM Mono',monospace;color:var(--ink)">待機中</strong></div>
+
+    <!-- 受付停止トグル -->
+    <div style="margin-top:24px;width:100%;max-width:320px;">
+      <button id="pause-toggle" onclick="togglePause()" style="width:100%;padding:14px;background:#f5f5f0;color:#1a1a1a;border:2px solid var(--border);border-radius:10px;font-size:14px;font-weight:700;cursor:pointer;font-family:inherit;">
+        ⏸️ 受付を一時停止する
+      </button>
+      <div id="pause-help" style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">
+        電話対応・トイレなどで席を外す時に押してください。<br>停止中は次の割当が来ません。
+      </div>
+    </div>
+
+    <!-- 手動更新ボタン -->
+    <div style="margin-top:16px;width:100%;max-width:320px;">
+      <button onclick="refreshNow()" style="width:100%;padding:12px;background:var(--blue);color:#fff;border:none;border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">
+        🔄 今すぐ更新（割当の確認）
+      </button>
+    </div>
+
     <div id="driver-location-area" style="display:none;margin-top:8px;">
       <a id="driver-location-link" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:12px 20px;background:var(--blue);color:white;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
         📍 運転手の現在地を確認
@@ -260,7 +336,8 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     </div>
     <div class="modal-warning" id="modal-warning"></div>
     <div class="modal-btn-group">
-      <button class="btn-modal-confirm" id="btn-modal-confirm" onclick="confirmReturn()">車に戻る・次のグループを受け取る</button>
+      <button class="btn-modal-confirm" id="btn-modal-confirm" onclick="confirmReturn(false)">🚐 車に戻る・次のグループを受け取る</button>
+      <button class="btn-modal-confirm" id="btn-modal-pause" onclick="confirmReturn(true)" style="background:#888;margin-top:8px;">⏸️ 車に戻る・受付を停止する</button>
       <button class="btn-modal-cancel" onclick="closeModal()">キャンセル（作業を続ける）</button>
     </div>
   </div>
@@ -279,7 +356,24 @@ const BASE = `${PROXY}/kintone/v1`;
 const ASSIGN_RECORD_ID = 1; // 割当JSON保存用レコードID（作業月の最初のレコード）
 
 // ===== 今月の流動項目設定（メンバー管理画面で設定）=====
-let DYNAMIC_ITEMS = []; // kintoneから読み込む
+let HAIFU_ITEMS = []; // 配布物設定（[{name}, {name}, {name}]）kintoneから読み込む
+
+// 配布物設定を読み込む（名前が空でない枠だけを有効化。fieldキーはhaifu1〜3固定）
+function DYNAMIC_ITEMS_load(state) {
+  const raw = state.haifuItems || [];
+  HAIFU_ITEMS = [];
+  for (let i = 0; i < 3; i++) {
+    const name = raw[i]?.name || '';
+    if (name.trim()) {
+      HAIFU_ITEMS.push({
+        idx: i + 1,
+        name: name.trim(),
+        nameField: `haifu${i+1}_name`,
+        statusField: `haifu${i+1}_status`
+      });
+    }
+  }
+}
 
 // ===== 作業者リスト（毎月更新）=====
 const WORKERS = ['田中','鈴木','山田','佐藤','高橋','小林','伊藤','渡辺'];
@@ -289,6 +383,38 @@ let currentWorker = '';
 let currentMonth = '';
 let records = []; // kintoneから取得したレコード
 let doneCount = 0, absentCount = 0, todoCount = 0;
+
+// ===== 文字サイズ切替（老眼対応） =====
+const TEXT_SIZE_STORAGE = 'fp_text_size';
+const TEXT_SIZES = ['normal', 'large', 'xlarge']; // 通常 → 大 → 特大 → 通常...
+const TEXT_SIZE_LABELS = { normal: 'A', large: 'A+', xlarge: 'A++' };
+
+function applyTextSize(size) {
+  document.body.classList.remove('text-large', 'text-xlarge');
+  if (size === 'large') document.body.classList.add('text-large');
+  else if (size === 'xlarge') document.body.classList.add('text-xlarge');
+  const label = TEXT_SIZE_LABELS[size] || 'A';
+  document.querySelectorAll('.text-size-btn').forEach(b => b.textContent = label);
+  localStorage.setItem(TEXT_SIZE_STORAGE, size);
+}
+
+function cycleTextSize() {
+  const current = localStorage.getItem(TEXT_SIZE_STORAGE) || 'normal';
+  const idx = TEXT_SIZES.indexOf(current);
+  const next = TEXT_SIZES[(idx + 1) % TEXT_SIZES.length];
+  applyTextSize(next);
+  // 一度だけヘルプメッセージ表示（初回のみ）
+  if (!localStorage.getItem('fp_text_size_hinted')) {
+    setTimeout(() => alert('💡 文字サイズを変更しました\n\n通常(A) → 大(A+) → 特大(A++) の順に切替できます。\nもう一度タップで次のサイズになります。'), 100);
+    localStorage.setItem('fp_text_size_hinted', '1');
+  }
+}
+
+// 起動時に前回設定を適用
+(function initTextSize() {
+  const saved = localStorage.getItem(TEXT_SIZE_STORAGE) || 'normal';
+  applyTextSize(saved);
+})();
 
 // セッション保存・復元
 function saveSession() {
@@ -300,6 +426,25 @@ function saveSession() {
 function clearSession() {
   localStorage.removeItem('fp_worker');
   localStorage.removeItem('fp_month');
+}
+
+// 別の人に切り替え（名前を間違えた時）
+function confirmSwitchWorker() {
+  const ok = confirm(`今「${currentWorker}」さんとしてログイン中です。\n\n別の人に切り替えますか？\n\n※あなたが ${currentWorker} さんなら「キャンセル」を押してください。`);
+  if (!ok) return;
+  // セッションをクリアしてログイン画面に戻す
+  clearSession();
+  currentWorker = '';
+  MY_CAR = 0;
+  document.getElementById('work-screen').style.display = 'none';
+  document.getElementById('return-footer').style.display = 'none';
+  const waiting = document.getElementById('waiting-screen');
+  if (waiting) waiting.style.display = 'none';
+  document.getElementById('login-screen').style.display = 'block';
+  // セレクトをリセット
+  const wsel = document.getElementById('worker-select');
+  if (wsel) wsel.value = '';
+  checkLogin();
 }
 function loadSession() {
   return {
@@ -320,9 +465,8 @@ async function init() {
   const workerParam = getUrlParam('worker');
   if (workerParam) {
     currentWorker = workerParam;
-    const now = new Date();
-    const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
-    currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+    // kintone設定から作業号を取得（自動検出のフォールバック）
+    await setupWorkMonth();
     saveSession();
     document.getElementById('login-screen').style.display = 'none';
     document.getElementById('loading-screen').style.display = 'block';
@@ -334,7 +478,8 @@ async function init() {
   const session = loadSession();
   if (session.worker && session.month) {
     currentWorker = session.worker;
-    currentMonth = session.month;
+    // セッション復元でも kintone設定を確認して月号を上書き
+    await setupWorkMonth();
     // セッション復元でも作業者セレクトを更新しておく（ログイン画面に戻った場合のため）
     try {
       const sessionState = await getAssignState();
@@ -351,12 +496,10 @@ async function init() {
     startWorkDirect();
     return;
   }
-  // currentMonthを先に設定（来月号をデフォルト）
-  const nowTmp = new Date();
-  const nextTmp = new Date(nowTmp.getFullYear(), nowTmp.getMonth() + 1, 1);
-  currentMonth = `${nextTmp.getFullYear()}年${nextTmp.getMonth()+1}月号`;
+  // currentMonthを先に決定（kintone設定 → 自動検出のフォールバック）
+  await setupWorkMonth();
 
-  // 作業者セレクト（kintoneの割当JSONから取得）
+  // 作業者セレクト（kintoneの割当JSONから取得）※ currentMonthが正しい月号になった後で取得
   const wsel = document.getElementById('worker-select');
   try {
     const state = await getAssignState();
@@ -375,26 +518,43 @@ async function init() {
     });
   }
 
-  // 作業月セレクト
-  const msel = document.getElementById('month-select');
-  const now = new Date();
-  for (let i = 0; i < 3; i++) {
-    const d = new Date(now.getFullYear(), now.getMonth() + i, 1);
-    const label = `${d.getFullYear()}年${d.getMonth()+1}月号`;
-    const o = document.createElement('option');
-    o.value = label; o.textContent = label;
-    if (i === 0) o.selected = true;
-    msel.appendChild(o);
-  }
-
   wsel.addEventListener('change', checkLogin);
-  msel.addEventListener('change', checkLogin);
+}
+
+// 作業号を設定（kintone共有設定 → 自動検出のフォールバック）
+async function setupWorkMonth() {
+  // 自動検出（来月号）
+  const now = new Date();
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  let detected = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+
+  // kintone設定から取得して上書き
+  try {
+    const q = `文字列__1行_ = "__settings__" limit 1`;
+    // URLSearchParamsは空白を+にエンコードしkintoneがCB_IL02エラーを返すため手動組立
+    const paramStr = `subdomain=${KINTONE_DOMAIN}&app=${APP_NABON}&query=${encodeURIComponent(q)}`;
+    const res = await fetch(`${BASE}/records.json?${paramStr}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
+    });
+    const data = await res.json();
+    if (res.ok && data.records?.length) {
+      const raw = data.records[0]['文字列__複数行__0']?.value || '';
+      const obj = JSON.parse(raw);
+      if (obj.forceWorkMonth) {
+        detected = obj.forceWorkMonth;
+        console.log(`📌 管理者設定により作業号を ${detected} に固定`);
+      }
+    }
+  } catch(e) { console.warn('設定取得失敗:', e); }
+
+  currentMonth = detected;
+  const display = document.getElementById('login-month-display');
+  if (display) display.textContent = `📅 ${detected}`;
 }
 
 function initLoginScreen() {
-  // ログイン画面の初期化（月選択など）
+  // ログイン画面の初期化
   const wsel = document.getElementById('worker-select');
-  const msel = document.getElementById('month-select');
   if (currentWorker && wsel) {
     // URLパラメータの名前を選択状態に
     for (const opt of wsel.options) {
@@ -406,22 +566,7 @@ function initLoginScreen() {
 
 function checkLogin() {
   const w = document.getElementById('worker-select').value;
-  const m = document.getElementById('month-select').value;
-  document.getElementById('btn-login').disabled = !w || !m;
-}
-
-// ===== 定休日フィルタ =====
-function getDayName(d) {
-  return ['日','月','火','水','木','金','土'][parseInt(d)] || '';
-}
-
-function filterClosedToday(records, workDay) {
-  if (workDay === null || workDay === undefined || workDay === '') return records;
-  const day = getDayName(workDay);
-  return records.filter(r => {
-    const teikyu = r['チェックボックス_2']?.value || [];
-    return !teikyu.includes(day);
-  });
+  document.getElementById('btn-login').disabled = !w || !currentMonth;
 }
 
 // ===== kintone API =====
@@ -450,23 +595,117 @@ async function kintoneUpdate(appId, token, id, fields) {
   return await res.json();
 }
 
-// ===== 割当JSON操作 =====
-async function getAssignState() {
-  const records = await kintoneGet(APP_NABON, TOKEN_NABON,
-    `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-  if (!records.length) return { assignments: {}, returned: [], updatedAt: '' };
-  const raw = records[0]['文字列__複数行__0']?.value || '';
-  try { return JSON.parse(raw); } catch(e) { return { assignments: {}, returned: [], updatedAt: '' }; }
+// ===== 分割データアクセス層（__common__ / __car1__ / __car2__）=====
+let MY_CAR = 0; // この作業者の号車（common.carsから判定）
+
+function monthSuffix(month) {
+  const m = (month || '').match(/(\d{4})年(\d{1,2})月号/);
+  return m ? `_${m[1]}_${m[2]}` : '';
+}
+function commonKey(month) { return `__common__${monthSuffix(month)}`; }
+function carKey(month, car) { return `__car${car}__${monthSuffix(month)}`; }
+
+async function loadSpecialRecord(monthKey) {
+  const q = `文字列__1行_ = "${monthKey}" limit 1`;
+  const paramStr = `subdomain=${KINTONE_DOMAIN}&app=${APP_NABON}&query=${encodeURIComponent(q)}`;
+  const res = await fetch(`${BASE}/records.json?${paramStr}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
+  });
+  if (!res.ok) throw new Error(`取得失敗: ${res.status}`);
+  const data = await res.json();
+  if (!data.records?.length) return { _notfound: true };
+  const raw = data.records[0]['文字列__複数行__0']?.value || '';
+  let obj = {};
+  try { obj = JSON.parse(raw); } catch(e) {}
+  obj._id = data.records[0]['$id'].value;
+  return obj;
 }
 
+async function saveSpecialRecord(monthKey, jsonObj) {
+  const existing = await loadSpecialRecord(monthKey);
+  const body = { value: JSON.stringify(jsonObj, null, 2) };
+  if (existing && !existing._notfound && existing._id) {
+    await kintoneUpdate(APP_NABON, TOKEN_NABON, existing._id, { '文字列__複数行__0': body });
+  } else {
+    const res = await fetch(`${BASE}/record.json?subdomain=${KINTONE_DOMAIN}`, {
+      method: 'POST',
+      headers: { 'X-Cybozu-API-Token': TOKEN_NABON, 'Content-Type': 'application/json' },
+      body: JSON.stringify({ app: APP_NABON, record: {
+        '文字列__1行_': { value: monthKey },
+        '文字列__複数行__0': body
+      }})
+    });
+    if (!res.ok) { const t = await res.text(); throw new Error(`作成失敗: ${t.slice(0,150)}`); }
+  }
+}
+
+function getCarOfWorker(common, name) {
+  const drivers = common.drivers || {};
+  for (const [car, drvName] of Object.entries(drivers)) {
+    if (drvName === name) return parseInt(car);
+  }
+  const car = (common.cars || {})[name];
+  return car ? parseInt(car) : 0;
+}
+
+// 今日の日付（YYYY-MM-DD、ローカル）
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth()+1).padStart(2,'0')}-${String(d.getDate()).padStart(2,'0')}`;
+}
+// 車データが今日のものか（昨日以前の残骸を無視するため）
+function isCarDataFresh(carData) {
+  if (!carData || carData._notfound) return false;
+  return carData.sessionDate === todayStr();
+}
+
+// ===== 割当JSON操作（新方式：共通＋自車をマージ）=====
+async function getAssignState() {
+  // 共通データ
+  const common = await loadSpecialRecord(commonKey(currentMonth));
+  const commonData = common._notfound ? {} : common;
+  // MY_CARが未確定なら共通から判定
+  if (!MY_CAR && currentWorker) {
+    MY_CAR = getCarOfWorker(commonData, currentWorker);
+  }
+  // 自車データ
+  let carData = {};
+  if (MY_CAR) {
+    const c = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    if (!c._notfound) carData = c;
+  }
+  // ★今日のデータのみ採用。昨日以前の残骸なら空にする
+  const fresh = isCarDataFresh(carData);
+  return {
+    members: commonData.members || [],
+    cars: commonData.cars || {},
+    routeCars: commonData.routeCars || {},
+    drivers: commonData.drivers || {},
+    haifuItems: commonData.haifuItems || [{name:''},{name:''},{name:''}],
+    workDay: commonData.workDay || '',
+    dynamicItems: commonData.dynamicItems || [],
+    assignments: fresh ? (carData.assignments || {}) : {},
+    returned: fresh ? (carData.returned || []) : [],
+    paused: fresh ? (carData.paused || {}) : {},
+    revisitMap: fresh ? (carData.revisitMap || {}) : {},
+    driverLocation: fresh ? (carData.driverLocation || null) : null,
+    updatedAt: carData.updatedAt || ''
+  };
+}
+
+// 自車データだけ保存（returned/paused/assignments/revisitMap）
 async function saveAssignState(state) {
-  const records = await kintoneGet(APP_NABON, TOKEN_NABON,
-    `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-  if (!records.length) throw new Error('割当レコードが見つかりません');
-  const recId = records[0]['$id'].value;
-  await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-    '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
-  });
+  if (!MY_CAR) throw new Error('号車が未確定です');
+  const carData = {
+    assignments: state.assignments || {},
+    returned: state.returned || [],
+    paused: state.paused || {},
+    revisitMap: state.revisitMap || {},
+    driverLocation: state.driverLocation || null,
+    sessionDate: todayStr(),
+    updatedAt: new Date().toISOString()
+  };
+  await saveSpecialRecord(carKey(currentMonth, MY_CAR), carData);
 }
 
 // ===== 直接作業開始（URLパラメータから） =====
@@ -475,42 +714,50 @@ async function startWorkDirect() {
     document.getElementById('loading-text').textContent = '担当場所を読み込んでいます...';
     // 割当グループ・配布物設定を取得
     const state = await getAssignState();
-    DYNAMIC_ITEMS = state.dynamicItems || [];
-    const assignedGroup = state.assignments?.[currentWorker];
-
-    // グループ未割当の場合は待機画面を表示
-    if (!assignedGroup) {
+    DYNAMIC_ITEMS_load(state);
+    const assignedRaw = state.assignments?.[currentWorker];
+    const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
+    // 割当なしなら待機画面（担当者名で全レコード取得しないこと！過去の完了レコードが全部出てしまうため）
+    if (assignedGroups.length === 0) {
       document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('waiting-worker-name').textContent = currentWorker + ' さん';
-      document.getElementById('waiting-screen').style.display = 'block';
-      pollAssignment();
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = 'ようこそ！<br>運転手からのグループ割当を待っています...';
+      showWaitingScreen();
       return;
     }
 
-    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    const groupClause = assignedGroups.map(g => `"${g}"`).join(',');
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
-    // 定休日フィルタ
-    records = filterClosedToday(records, state.workDay);
-
-    // 再訪レコードを取得（このグループに振り分けられた不在店舗）
-    const revisitIds = state.revisitMap?.[assignedGroup] || [];
-    if (revisitIds.length > 0) {
-      const idList = revisitIds.map(id => `"${id}"`).join(',');
-      const revisitQuery = `$id in (${idList}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-      try {
-        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
-        // 再訪フラグを付ける
-        revisitRecords.forEach(r => { r._isRevisit = true; });
-        // 不在として記録されているがステータスをリセットして再作業できるように
-        records = records.concat(revisitRecords);
-      } catch(e) { console.error('再訪取得エラー:', e); }
+    // revisitMap (再訪・個別訪問・統合) のレコードも追加
+    const revisitIds = [];
+    for (const g of assignedGroups) {
+      const ids = (state.revisitMap?.[g] || []).map(String);
+      revisitIds.push(...ids);
     }
-
+    const uniqueRevisitIds = [...new Set(revisitIds)];
+    if (uniqueRevisitIds.length > 0) {
+      const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idsClause})`;
+      const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+      const existingIds = new Set(records.map(r => r['$id'].value));
+      revisitRecords.forEach(r => {
+        if (!existingIds.has(r['$id'].value)) records.push(r);
+      });
+    }
     if (records.length === 0) {
+      // 割当はあるがレコードが見つからない（グループ削除等の異常状態）→ 待機画面へ
       document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('login-screen').style.display = 'block';
-      initLoginScreen();
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = '割当のレコードが見つかりません。<br>運転手にご確認ください。';
+      showWaitingScreen();
       return;
     }
     document.getElementById('loading-screen').style.display = 'none';
@@ -530,8 +777,15 @@ async function startWorkDirect() {
 
 // ===== 作業開始 =====
 async function startWork() {
-  currentWorker = document.getElementById('worker-select').value;
-  currentMonth = document.getElementById('month-select').value;
+  const selectedWorker = document.getElementById('worker-select').value;
+  if (!selectedWorker) return;
+
+  // ★本人確認ダイアログ（別人を選んでいないか）
+  const ok = confirm(`「${selectedWorker}」さんとして作業を開始します。\n\nあなたは ${selectedWorker} さんですか？\n\n※違う場合は「キャンセル」を押して選び直してください。`);
+  if (!ok) return;
+
+  currentWorker = selectedWorker;
+  // currentMonth は setupWorkMonth() で既に設定済み
   saveSession();
 
   document.getElementById('login-screen').style.display = 'none';
@@ -543,38 +797,53 @@ async function startWork() {
 
     // 割当グループを取得
     const state = await getAssignState();
-    DYNAMIC_ITEMS = state.dynamicItems || [];
-    const assignedGroup = state.assignments?.[currentWorker];
+    DYNAMIC_ITEMS_load(state);
+    const assignedRaw = state.assignments?.[currentWorker];
+    const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
 
-    // グループ未割当の場合は待機画面を表示
-    if (!assignedGroup) {
+    // 割当なしなら待機画面（担当者名で全レコード取得しないこと）
+    if (assignedGroups.length === 0) {
       document.getElementById('loading-screen').style.display = 'none';
-      document.getElementById('waiting-worker-name').textContent = currentWorker + ' さん';
-      document.getElementById('waiting-screen').style.display = 'block';
-      pollAssignment();
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = 'ようこそ！<br>運転手からのグループ割当を待っています...';
+      showWaitingScreen();
       return;
     }
 
-    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${assignedGroup}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    const groupClause = assignedGroups.map(g => `"${g}"`).join(',');
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
-    // 定休日フィルタ
-    records = filterClosedToday(records, state.workDay);
-
-    // 再訪レコードを取得
-    const revisitIds = state.revisitMap?.[assignedGroup] || [];
-    if (revisitIds.length > 0) {
-      const idList = revisitIds.map(id => `"${id}"`).join(',');
-      const revisitQuery = `$id in (${idList}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-      try {
-        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
-        revisitRecords.forEach(r => { r._isRevisit = true; });
-        records = records.concat(revisitRecords);
-      } catch(e) { console.error('再訪取得エラー:', e); }
+    // revisitMap (再訪・個別訪問・統合) のレコードも追加
+    const revisitIds = [];
+    for (const g of assignedGroups) {
+      const ids = (state.revisitMap?.[g] || []).map(String);
+      revisitIds.push(...ids);
+    }
+    const uniqueRevisitIds = [...new Set(revisitIds)];
+    if (uniqueRevisitIds.length > 0) {
+      const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idsClause})`;
+      const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+      const existingIds = new Set(records.map(r => r['$id'].value));
+      revisitRecords.forEach(r => {
+        if (!existingIds.has(r['$id'].value)) records.push(r);
+      });
     }
 
     if (records.length === 0) {
-      throw new Error(`${currentMonth}の担当レコードが見つかりませんでした。\n運転手にグループの割当を依頼してください。`);
+      // 割当はあるがレコードが見つからない（グループ削除等の異常状態）→ 待機画面へ
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = '割当のレコードが見つかりません。<br>運転手にご確認ください。';
+      showWaitingScreen();
+      return;
     }
 
     document.getElementById('loading-screen').style.display = 'none';
@@ -607,6 +876,37 @@ function renderCards() {
 
   updateProgress();
 
+  // 総冊数を集計（通常納本数=数値_2、MAP冊数=数値_3）
+  let totalNabon = 0, totalMap = 0;
+  records.forEach(r => {
+    totalNabon += parseFloat(r['数値_2']?.value) || 0;
+    totalMap += parseFloat(r['数値_3']?.value) || 0;
+  });
+
+  const container = document.getElementById('cards-container');
+  container.innerHTML = '';
+
+  updateDriverLocationBar();
+
+  // ★総冊数サマリー（一番上に表示）
+  const summary = document.createElement('div');
+  summary.style.cssText = 'background:linear-gradient(135deg,#1a5cd4,#1a8ac4);color:#fff;border-radius:12px;padding:14px 16px;margin:12px 12px 4px;box-shadow:0 2px 8px rgba(26,92,212,.25);';
+  summary.innerHTML = `
+    <div style="font-size:11px;opacity:.85;font-weight:700;margin-bottom:6px;">📦 今回のグループ 総冊数</div>
+    <div style="display:flex;align-items:baseline;gap:14px;flex-wrap:wrap;">
+      <div style="display:flex;align-items:baseline;gap:4px;">
+        <span style="font-size:32px;font-weight:900;line-height:1;">${totalNabon}</span>
+        <span style="font-size:14px;font-weight:700;">冊</span>
+      </div>
+      ${totalMap > 0 ? `<div style="display:flex;align-items:baseline;gap:4px;opacity:.9;">
+        <span style="font-size:11px;">うちMAP</span>
+        <span style="font-size:20px;font-weight:900;line-height:1;">${totalMap}</span>
+        <span style="font-size:12px;font-weight:700;">冊</span>
+      </div>` : ''}
+      <div style="margin-left:auto;font-size:11px;opacity:.85;">${records.length}店舗</div>
+    </div>`;
+  container.appendChild(summary);
+
   // グループ別にまとめる
   const groups = {};
   records.forEach(r => {
@@ -615,19 +915,17 @@ function renderCards() {
     groups[g].push(r);
   });
 
-  const container = document.getElementById('cards-container');
-  container.innerHTML = '';
-
-  updateDriverLocationBar();
-
   Object.entries(groups).forEach(([groupName, recs]) => {
+    // グループごとの総冊数
+    let grpNabon = 0;
+    recs.forEach(r => { grpNabon += parseFloat(r['数値_2']?.value) || 0; });
     // グループヘッダー
     const gh = document.createElement('div');
     gh.className = 'group-header';
     gh.innerHTML = `
       <div class="group-badge">${recs[0]['ルート']?.value || ''}${recs[0]['ルート順']?.value || ''}</div>
       <div class="group-name">${groupName}</div>
-      <div class="group-count">${recs.length}件</div>`;
+      <div class="group-count">${grpNabon}冊 / ${recs.length}件</div>`;
     container.appendChild(gh);
 
     // 各店舗カード
@@ -639,21 +937,30 @@ function renderCard(r, container) {
   const recId = r['$id'].value;
   const status = r['ドロップダウン']?.value || '未着手';
   const shopName = r['文字列__1行__1']?.value || '';
-  const building = r['文字列__1行__2']?.value || '';   // ビル名
-  const floor = r['文字列__1行__3']?.value || '';      // 階数
-  const genre = r['文字列__1行__6']?.value || '';      // ジャンル
-  const address = r['文字列__1行__8']?.value || '';    // 住所
+  const floor = r['文字列__1行__3']?.value || '';   // 階数
+  const genre = r['文字列__1行__2']?.value || '';   // ビル名
   const closed = '' || '';
-  const location = r['文字列__1行__7']?.value || '';   // 設置場所説明
-  const comment = r['文字列__1行__9']?.value || '';    // コメント
-  const nabon = r['数値_2']?.value || '';              // 通常納本数
-  const mapCount = r['数値_3']?.value || '';           // MAP冊数
-  const rackChange = (r['チェックボックス_1']?.value || []).includes('交換'); // ラック交換
+  const location = r['文字列__1行__7']?.value || '';  // 設置場所説明
+  const comment = r['文字列__1行__9']?.value || '';   // コメント
+  const nabon = r['数値_2']?.value || '';
+  const mapNum = parseFloat(r['数値_3']?.value) || 0;
+  const rackChange = (r['チェックボックス_1']?.value || []).length > 0;
+  const popChange = (r['チェックボックス_3']?.value || []).length > 0;
   const absent1 = r['文字列__1行__11']?.value || '';
   const absent2 = r['文字列__1行__12']?.value || '';
   const absent3 = r['文字列__1行__13']?.value || '';
-  const nabonVal = r['数値']?.value || '';
+  // 納本数の入力初期値: 既に実績入力があればその値、無ければ通常納本数（数値_2）を初期表示
+  const nabonEntered = r['数値']?.value;
+  const nabonVal = (nabonEntered !== undefined && nabonEntered !== '') ? nabonEntered : (r['数値_2']?.value || '');
   const henkyakuVal = r['数値_0']?.value || '';
+
+  // 準備物バッジ（通常納本数・MAP冊数・ラック交換・POP交換）
+  const badges = `
+    ${nabon ? `<span style="background:#e8f0ff;color:#1a5cd4;padding:3px 8px;border-radius:4px;font-weight:900;font-size:12px;">📦${nabon}冊</span>` : ''}
+    ${mapNum > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:3px 8px;border-radius:4px;font-weight:900;font-size:12px;">🗺️MAP${mapNum}冊</span>` : ''}
+    ${rackChange ? `<span style="background:#ffebeb;color:#d42020;padding:3px 8px;border-radius:4px;font-weight:900;font-size:12px;">🔧ラック交換</span>` : ''}
+    ${popChange ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:3px 8px;border-radius:4px;font-weight:900;font-size:12px;">🏷️POP貼替</span>` : ''}
+  `;
 
   const card = document.createElement('div');
   card.id = 'card-' + recId;
@@ -688,39 +995,38 @@ function renderCard(r, container) {
         <button onclick="reopenCard('${recId}')" style="flex:1;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
       </div>`;
   } else {
-    // 動的項目HTML
-    const dynamicHtml = DYNAMIC_ITEMS.length > 0 ? `
+    // 配布物HTML（haifu1〜3、既存値があれば選択状態を復元）
+    const dynamicHtml = HAIFU_ITEMS.length > 0 ? `
       <div class="dynamic-section">
-        <div class="dynamic-section-title">今月の配布物・アンケート</div>
-        ${DYNAMIC_ITEMS.map(item => `
+        <div class="dynamic-section-title">今月の配布物</div>
+        ${HAIFU_ITEMS.map(item => {
+          const currentStatus = r[item.statusField]?.value || '';
+          const btn = (label) => {
+            const sel = currentStatus === label ? (label==='配布済'?'sel-ok':'sel-ng') : '';
+            return `<button class="toggle-btn ${sel}" onclick="toggleHaifu(this,'${recId}','${item.statusField}','${label}')">${label}</button>`;
+          };
+          return `
           <div class="dynamic-item">
             <div>
-              <div class="dynamic-label">${item.label}</div>
-              ${item.sublabel ? `<div class="dynamic-sublabel">${item.sublabel}</div>` : ''}
+              <div class="dynamic-label">${item.name}</div>
             </div>
-            <div class="toggle-group" id="toggle-${recId}-${item.key}">
-              ${item.type === 'distribute' ? `
-                <button class="toggle-btn" onclick="toggleBtn(this,'ok')">配布済</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'ng')">未配布</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'ng')">対象外</button>
-              ` : `
-                <button class="toggle-btn" onclick="toggleBtn(this,'yes')">はい</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'no')">いいえ</button>
-                <button class="toggle-btn" onclick="toggleBtn(this,'later')">後日確認</button>
-              `}
+            <div class="toggle-group" id="haifu-${recId}-${item.statusField}">
+              ${btn('配布済')}
+              ${btn('未配布')}
+              ${btn('対象外')}
             </div>
-          </div>
-        `).join('')}
+          </div>`;
+        }).join('')}
       </div>` : '';
 
     bodyHtml = `
       ${location ? `<div class="shop-location">${location}</div>` : ''}
       ${comment ? `<div class="shop-comment">${comment}</div>` : ''}
-      ${nabon ? `<div class="nabon-hint">通常納本数 <strong>${nabon}</strong> 冊</div>` : ''}
+      <div style="padding:10px 14px 0;display:flex;flex-wrap:wrap;gap:5px;">${badges}</div>
       <div class="input-area" id="input-area-${recId}" style="display:none">
         <div class="input-row">
-          <div class="input-group"><label>納本数</label><input type="number" id="nabon-${recId}" placeholder="0" min="0" inputmode="numeric" value="${nabonVal}"></div>
-          <div class="input-group"><label>返却数</label><input type="number" id="henkyaku-${recId}" placeholder="0" min="0" inputmode="numeric" value="${henkyakuVal}"></div>
+          <div class="input-group"><label>納本数</label><input type="number" id="nabon-${recId}" placeholder="未入力" min="0" inputmode="numeric" value="${nabonVal}"></div>
+          <div class="input-group"><label>返却数</label><input type="number" id="henkyaku-${recId}" placeholder="未入力" min="0" inputmode="numeric" value="${henkyakuVal}"></div>
         </div>
         <div class="btn-group">
           <button class="btn-action btn-absent" onclick="markAbsent('${recId}')">🚫 不在</button>
@@ -738,19 +1044,13 @@ function renderCard(r, container) {
       </div>`;
   }
 
-  const isRevisit = r._isRevisit;
   card.innerHTML = `
     <div class="card-header">
       <div class="card-header-left">
-        ${isRevisit ? '<div style="background:#fff8e8;color:#7a5a00;padding:3px 8px;border-radius:4px;font-size:11px;font-weight:700;display:inline-block;margin-bottom:4px;border-left:3px solid var(--amber);">🔄 再訪（前回不在）</div>' : ''}
-        <div class="shop-name">${shopName}${rackChange ? ' <span style="color:#d42020;font-size:13px;font-weight:700;background:#ffebeb;padding:2px 6px;border-radius:4px;margin-left:4px;">🔧 ラック交換</span>' : ''}</div>
+        <div class="shop-name">${shopName}</div>
         <div class="shop-meta">
-          ${building ? `<span class="meta-chip" style="background:#f0eee8;color:#666;">${building}</span>` : ''}
-          ${floor ? `<span class="meta-chip floor">${floor}階</span>` : ''}
           ${genre ? `<span class="meta-chip genre">${genre}</span>` : ''}
-          ${address ? `<span class="meta-chip" style="background:#e8f0ff;color:#1a5cd4;">📍${address}</span>` : ''}
-          ${nabon ? `<span class="meta-chip" style="background:#e8f5e9;color:#1a8a4a;font-weight:700;">📦${nabon}冊</span>` : ''}
-          ${mapCount ? `<span class="meta-chip" style="background:#fff5e6;color:#c47a0a;font-weight:700;">🗺️ MAP${mapCount}冊</span>` : ''}
+          ${floor ? `<span class="meta-chip floor">${floor}階</span>` : ''}
           ${closed ? `<span class="meta-chip closed">定休：${closed}</span>` : ''}
         </div>
       </div>
@@ -773,60 +1073,110 @@ function openCard(recId) {
   pill.textContent = '● 入力中';
 }
 
+// 失敗したリクエストの再試行用ストア
+const pendingUpdates = new Map();
+
 async function markDone(recId) {
-  const nabon = document.getElementById('nabon-' + recId)?.value || '';
-  const henkyaku = document.getElementById('henkyaku-' + recId)?.value || '';
+  const nabonRaw = document.getElementById('nabon-' + recId)?.value;
+  const henkyakuRaw = document.getElementById('henkyaku-' + recId)?.value;
   const memo = document.getElementById('memo-' + recId)?.value || '';
-  const btn = document.getElementById('btn-done-' + recId);
 
-  btn.disabled = true;
-  btn.innerHTML = '<span class="sending"></span>送信中...';
+  // 未入力チェック（空欄のまま完了しようとしていないか確認）
+  const nabonEmpty = (nabonRaw === undefined || nabonRaw === null || nabonRaw === '');
+  const henkyakuEmpty = (henkyakuRaw === undefined || henkyakuRaw === null || henkyakuRaw === '');
+  if (nabonEmpty || henkyakuEmpty) {
+    let msg = '⚠️ 未入力の項目があります。\n\n';
+    if (nabonEmpty) msg += '・納本数が入力されていません\n';
+    if (henkyakuEmpty) msg += '・返却数が入力されていません\n';
+    msg += '\n未入力の項目は「0冊」として記録されます。\nこのまま完了してよろしいですか？';
+    if (!confirm(msg)) {
+      // キャンセル → 未入力の欄にフォーカス
+      if (nabonEmpty) document.getElementById('nabon-' + recId)?.focus();
+      else if (henkyakuEmpty) document.getElementById('henkyaku-' + recId)?.focus();
+      return;
+    }
+  }
 
-  // 動的項目の値を収集
+  const nabon = nabonEmpty ? '0' : nabonRaw;
+  const henkyaku = henkyakuEmpty ? '0' : henkyakuRaw;
+
+  // 配布物の値を収集（haifu1〜3の名称と状態を保存）
   const dynamicFields = {};
-  DYNAMIC_ITEMS.forEach(item => {
-    const selected = document.querySelector(`#toggle-${recId}-${item.key} .toggle-btn[class*="sel-"]`);
-    if (selected) dynamicFields[item.key] = { value: selected.textContent.trim() };
+  HAIFU_ITEMS.forEach(item => {
+    const group = document.getElementById(`haifu-${recId}-${item.statusField}`);
+    const selected = group?.dataset.selected || '';
+    // 名称は常に保存（レコードにどの配布物だったか残す）、状態は選択があれば保存
+    dynamicFields[item.nameField] = { value: item.name };
+    if (selected) {
+      dynamicFields[item.statusField] = { value: selected };
+    }
   });
 
+  const updateData = {
+    'ドロップダウン': { value: '完了' },
+    '文字列__1行__10': { value: currentWorker },
+    '数値': { value: nabon },
+    '数値_0': { value: henkyaku },
+    '文字列__複数行_': { value: memo },
+    ...dynamicFields
+  };
+
+  // === ① 即座にUI更新（楽観的UI） ===
+  const card = document.getElementById('card-' + recId);
+  card.className = 'shop-card status-done';
+  document.getElementById('pill-' + recId).className = 'status-pill pill-done';
+  document.getElementById('pill-' + recId).textContent = '✓ 完了';
+  card.querySelector('.input-area').outerHTML = `
+    <div class="done-overlay" id="overlay-${recId}">
+      <div class="done-icon" id="overlay-icon-${recId}">⏳</div>
+      <div class="done-info">
+        <div class="done-label" id="overlay-label-${recId}">完了（送信中...）</div>
+        <div class="done-vals">納本 ${nabon}冊 ／ 返却 ${henkyaku}冊</div>
+      </div>
+      <button onclick="reopenCard('${recId}')" style="font-size:11px;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:white;cursor:pointer;color:#888">修正</button>
+    </div>`;
+  card.querySelectorAll('.dynamic-section,.memo-area').forEach(el => el.style.display = 'none');
+
+  // ローカルレコード即時更新
+  const rec = records.find(r => r['$id'].value == recId);
+  if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; rec['数値_0'] = { value: henkyaku }; }
+
+  doneCount++; todoCount = Math.max(0, todoCount - 1);
+  updateProgress();
+
+  // === ② バックグラウンドで送信 ===
+  pendingUpdates.set(recId, updateData);
+  sendPendingUpdate(recId, '完了');
+}
+
+async function sendPendingUpdate(recId, label) {
+  const updateData = pendingUpdates.get(recId);
+  if (!updateData) return;
+  const iconEl = document.getElementById('overlay-icon-' + recId);
+  const labelEl = document.getElementById('overlay-label-' + recId);
   try {
-    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-      'ドロップダウン': { value: '完了' },
-      '文字列__1行__10': { value: currentWorker },
-      '数値': { value: nabon },
-      '数値_0': { value: henkyaku },
-      '文字列__複数行_': { value: memo },
-      ...dynamicFields
-    });
-
-    // UI更新
-    const card = document.getElementById('card-' + recId);
-    card.className = 'shop-card status-done';
-    document.getElementById('pill-' + recId).className = 'status-pill pill-done';
-    document.getElementById('pill-' + recId).textContent = '✓ 完了';
-    card.querySelector('.input-area').outerHTML = `
-      <div class="done-overlay">
-        <div class="done-icon">✅</div>
-        <div class="done-info">
-          <div class="done-label">作業完了（送信済み）</div>
-          <div class="done-vals">納本 ${nabon}冊 ／ 返却 ${henkyaku}冊</div>
-        </div>
-        <button onclick="reopenCard('${recId}')" style="font-size:11px;padding:5px 10px;border:1px solid #ccc;border-radius:6px;background:white;cursor:pointer;color:#888">修正</button>
-      </div>`;
-    card.querySelectorAll('.dynamic-section,.memo-area').forEach(el => el.style.display = 'none');
-
-    // レコードのステータスを更新
-    const rec = records.find(r => r['$id'].value == recId);
-    if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; rec['数値_0'] = { value: henkyaku }; }
-
-    doneCount++; todoCount = Math.max(0, todoCount - 1);
-    updateProgress();
-
+    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, updateData);
+    pendingUpdates.delete(recId);
+    if (iconEl) iconEl.textContent = (label === '不在' ? '❌' : '✅');
+    if (labelEl) {
+      labelEl.style.color = '';
+      labelEl.textContent = (label === '不在' ? '不在（送信済み）' : '作業完了（送信済み）');
+    }
   } catch(e) {
-    btn.disabled = false;
-    btn.textContent = '✓ 作業完了を送信';
-    alert(`送信エラー: ${e.message}`);
+    if (iconEl) iconEl.textContent = '⚠️';
+    if (labelEl) {
+      labelEl.style.color = '#d42020';
+      labelEl.innerHTML = `送信失敗 <button onclick="retryUpdate('${recId}','${label}')" style="font-size:11px;padding:4px 8px;background:#d42020;color:#fff;border:none;border-radius:4px;margin-left:6px;cursor:pointer;">再送信</button>`;
+    }
   }
+}
+
+function retryUpdate(recId, label) {
+  const iconEl = document.getElementById('overlay-icon-' + recId);
+  const labelEl = document.getElementById('overlay-label-' + recId);
+  if (iconEl) iconEl.textContent = '⏳';
+  if (labelEl) { labelEl.style.color = ''; labelEl.textContent = (label === '不在' ? '不在（再送信中...）' : '完了（再送信中...）'); }
+  sendPendingUpdate(recId, label);
 }
 
 async function markAbsent(recId) {
@@ -835,52 +1185,66 @@ async function markAbsent(recId) {
 
   // 既存の不在時間を確認
   const rec = records.find(r => r['$id'].value == recId);
-  const t1 = rec?.['不在時間1']?.value || '';
-  const t2 = rec?.['不在時間2']?.value || '';
+  const t1 = rec?.['文字列__1行__11']?.value || '';
+  const t2 = rec?.['文字列__1行__12']?.value || '';
   let newT1 = t1, newT2 = t2, newT3 = '';
   if (!t1) newT1 = t;
   else if (!t2) newT2 = t;
   else newT3 = t;
 
+  const updateData = {
+    'ドロップダウン': { value: '不在' },
+    '文字列__1行__10': { value: currentWorker },
+    '文字列__1行__11': { value: newT1 },
+    '文字列__1行__12': { value: newT2 },
+    '文字列__1行__13': { value: newT3 },
+  };
+
+  // === ① 即座にUI更新（楽観的UI） ===
+  const card = document.getElementById('card-' + recId);
+  card.className = 'shop-card status-absent';
+  document.getElementById('pill-' + recId).className = 'status-pill pill-absent';
+  document.getElementById('pill-' + recId).textContent = '不在';
+  ['input-area-', 'tap-hint-', 'memo-area-'].forEach(prefix => {
+    const el = document.getElementById(prefix + recId);
+    if (el) el.style.display = 'none';
+  });
+  const div = document.createElement('div');
+  let absentText = '';
+  if (newT1) absentText += `① ${newT1} `;
+  if (newT2) absentText += `② ${newT2} `;
+  if (newT3) absentText += `③ ${newT3}`;
+  div.innerHTML = `
+    <div class="absent-overlay" id="overlay-${recId}">
+      <div class="absent-label" id="overlay-label-${recId}"><span id="overlay-icon-${recId}">⏳</span> 不在記録（送信中...）</div>
+      <div class="absent-times-display">${absentText}</div>
+    </div>
+    <div style="padding:0 14px 14px">
+      <button onclick="reopenCard('${recId}')" style="width:100%;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
+    </div>`;
+  card.appendChild(div);
+
+  if (rec) { rec['ドロップダウン'] = { value: '不在' }; rec['文字列__1行__11'] = { value: newT1 }; rec['文字列__1行__12'] = { value: newT2 }; rec['文字列__1行__13'] = { value: newT3 }; }
+  absentCount++; todoCount = Math.max(0, todoCount - 1);
+  updateProgress();
+
+  // === ② バックグラウンドで送信 ===
+  pendingUpdates.set(recId, updateData);
   try {
-    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, {
-      'ドロップダウン': { value: '不在' },
-      '文字列__1行__10': { value: currentWorker },
-      '文字列__1行__11': { value: newT1 },
-      '文字列__1行__12': { value: newT2 },
-      '文字列__1行__13': { value: newT3 },
-    });
-
-    // UI更新
-    const card = document.getElementById('card-' + recId);
-    card.className = 'shop-card status-absent';
-    document.getElementById('pill-' + recId).className = 'status-pill pill-absent';
-    document.getElementById('pill-' + recId).textContent = '不在';
-    ['input-area-', 'tap-hint-', 'memo-area-'].forEach(prefix => {
-      const el = document.getElementById(prefix + recId);
-      if (el) el.style.display = 'none';
-    });
-    const div = document.createElement('div');
-    let absentText = '';
-    if (newT1) absentText += `① ${newT1} `;
-    if (newT2) absentText += `② ${newT2} `;
-    if (newT3) absentText += `③ ${newT3}`;
-    div.innerHTML = `
-      <div class="absent-overlay">
-        <div class="absent-label">🚫 不在記録（送信済み）</div>
-        <div class="absent-times-display">${absentText}</div>
-      </div>
-      <div style="padding:0 14px 14px">
-        <button onclick="reopenCard('${recId}')" style="width:100%;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
-      </div>`;
-    card.appendChild(div);
-
-    if (rec) { rec['ドロップダウン'] = { value: '不在' }; rec['文字列__1行__11'] = { value: newT1 }; rec['文字列__1行__12'] = { value: newT2 }; rec['文字列__1行__13'] = { value: newT3 }; }
-    absentCount++; todoCount = Math.max(0, todoCount - 1);
-    updateProgress();
-
+    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, updateData);
+    pendingUpdates.delete(recId);
+    const ic = document.getElementById('overlay-icon-' + recId);
+    const lbl = document.getElementById('overlay-label-' + recId);
+    if (ic) ic.textContent = '🚫';
+    if (lbl) lbl.innerHTML = `<span id="overlay-icon-${recId}">🚫</span> 不在記録（送信済み）`;
   } catch(e) {
-    alert(`送信エラー: ${e.message}`);
+    const ic = document.getElementById('overlay-icon-' + recId);
+    const lbl = document.getElementById('overlay-label-' + recId);
+    if (ic) ic.textContent = '⚠️';
+    if (lbl) {
+      lbl.style.color = '#d42020';
+      lbl.innerHTML = `<span>⚠️</span> 送信失敗 <button onclick="retryUpdate('${recId}','不在')" style="font-size:11px;padding:4px 8px;background:#d42020;color:#fff;border:none;border-radius:4px;margin-left:6px;cursor:pointer;">再送信</button>`;
+    }
   }
 }
 
@@ -908,17 +1272,23 @@ function toggleBtn(btn, type) {
   btn.classList.add('sel-' + type);
 }
 
+// 配布物のトグル（配布済=青、未配布/対象外=グレー）。data属性に選択値を保持
+function toggleHaifu(btn, recId, statusField, label) {
+  const group = btn.closest('.toggle-group');
+  group.querySelectorAll('.toggle-btn').forEach(b => b.className = 'toggle-btn');
+  btn.classList.add(label === '配布済' ? 'sel-ok' : 'sel-ng');
+  group.dataset.selected = label;
+}
+
 // ===== 運転手位置情報バー更新 =====
 async function updateDriverLocationBar() {
   try {
     const state = await getAssignState();
     const loc = state.driverLocation;
-    if (!loc) return;
-    // 作業画面ヘッダーのバー
     const bar = document.getElementById('driver-location-bar');
     const link = document.getElementById('driver-location-bar-link');
     const time = document.getElementById('driver-location-bar-time');
-    if (bar && link) {
+    if (bar && link && loc) {
       bar.style.display = 'block';
       link.href = loc.url;
       if (time && loc.updatedAt) {
@@ -926,43 +1296,15 @@ async function updateDriverLocationBar() {
         time.textContent = `(${t}時点)`;
       }
     }
-    // 待機画面の表示
-    const area = document.getElementById('driver-location-area');
-    const linkArea = document.getElementById('driver-location-link');
-    const timeArea = document.getElementById('driver-location-time');
-    if (area && linkArea) {
-      area.style.display = 'block';
-      linkArea.href = loc.url;
-      if (timeArea && loc.updatedAt) {
-        const t = new Date(loc.updatedAt).toLocaleTimeString('ja-JP', {hour:'2-digit', minute:'2-digit'});
-        timeArea.textContent = `${t} 時点の位置`;
-      }
-    }
-    // フローティングボタン（どの画面からも）
-    const floating = document.getElementById('floating-driver-location');
-    if (floating) {
-      floating.href = loc.url;
-      floating.style.display = 'flex';
-    }
   } catch(e) { console.error(e); }
 }
-
-// 起動時とポーリング時にバー更新
-setInterval(() => {
-  if (currentWorker && currentMonth) updateDriverLocationBar();
-}, 30000);
 
 // ===== 進捗 =====
 function updateProgress() {
   const total = records.length;
   const pct = total > 0 ? Math.round(doneCount / total * 100) : 0;
-  // 合計冊数を計算
-  let totalNabon = 0;
-  records.forEach(r => {
-    totalNabon += parseInt(r['数値_2']?.value || 0);
-  });
   document.getElementById('prog-fill').style.width = pct + '%';
-  document.getElementById('prog-text').textContent = `${doneCount} / ${total} 完了 ・ 📦合計${totalNabon}冊`;
+  document.getElementById('prog-text').textContent = `${doneCount} / ${total} 完了`;
   const allDone = (doneCount + absentCount) >= total;
   document.getElementById('btn-return').classList.toggle('all-done', allDone);
   document.getElementById('return-sub').textContent = allDone ? '（全件完了！）' : `（未完了 ${todoCount}件）`;
@@ -984,6 +1326,15 @@ function showReturnModal() {
     w.style.display = 'none';
     s.textContent = '全件完了！次のグループに進みましょう 🎉';
   }
+  // ボタンを必ず有効な初期状態にリセット（前回のクリックでdisabledのままだったバグ対策）
+  const btn = document.getElementById('btn-modal-confirm');
+  const btn2 = document.getElementById('btn-modal-pause');
+  if (btn) { btn.disabled = false; btn.textContent = '🚐 車に戻る・次のグループを受け取る'; }
+  if (btn2) { btn2.disabled = false; btn2.textContent = '⏸️ 車に戻る・受付を停止する'; }
+  // 戻り中フラグもリセット（送信が終わってれば解除）
+  if (!isReturning || (Date.now() - (window.lastReturnAt || 0)) > 10000) {
+    isReturning = false;
+  }
   document.getElementById('return-modal').classList.add('show');
 }
 
@@ -991,56 +1342,144 @@ function closeModal() {
   document.getElementById('return-modal').classList.remove('show');
 }
 
-async function confirmReturn() {
+let isReturning = false; // 車に戻る処理中フラグ（多重タップ・ポーリング競合防止）
+
+async function confirmReturn(withPause) {
+  if (isReturning) {
+    console.log('既に戻り処理中のため無視');
+    return;
+  }
+  isReturning = true;
+  window.lastReturnAt = Date.now();
+
   const btn = document.getElementById('btn-modal-confirm');
+  const btn2 = document.getElementById('btn-modal-pause');
+  const returnBtn = document.getElementById('btn-return');
   btn.disabled = true;
-  // UIを即座に切替（ユーザーを待たせない）
+  if (btn2) btn2.disabled = true;
+  if (returnBtn) returnBtn.disabled = true; // 車に戻るボタン自体もロック
+  const origLabel = btn.textContent;
+  btn.textContent = '📤 送信中...';
+
+  // 戻り報告を必ず完了させてから待機画面へ遷移（レース条件回避）
+  try {
+    await reportReturn(withPause === true);
+  } catch(e) {
+    console.error('戻り報告エラー:', e);
+    alert('戻り報告に失敗しました。通信環境を確認してもう一度お試しください。\n\nエラー: ' + e.message);
+    btn.disabled = false;
+    if (btn2) btn2.disabled = false;
+    if (returnBtn) returnBtn.disabled = false;
+    btn.textContent = origLabel;
+    isReturning = false;
+    return;
+  }
+
+  // 保存完了後に画面切替＋ポーリング開始
   closeModal();
+  btn.textContent = origLabel;
   showWaitingScreen();
-  // バックグラウンドで保存
-  reportReturn().catch(e => console.error('戻り報告エラー:', e));
+  // 少し待ってからフラグ解除（待機画面のポーリングが安定してから）
+  setTimeout(() => { isReturning = false; if (returnBtn) returnBtn.disabled = false; }, 3000);
 }
 
-async function reportReturn() {
-  // 1回のGETで取得してすぐPUT
-  const params = new URLSearchParams({
-    subdomain: 'white', app: APP_NABON,
-    query: `文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`
-  });
-  const res = await fetch(`${PROXY}/kintone/v1/records.json?${params}`, {
-    headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
-  });
-  const data = await res.json();
-  if (!data.records?.length) throw new Error('レコードが見つかりません');
-  const recId = data.records[0]['$id'].value;
-  const raw = data.records[0]['文字列__複数行__0']?.value || '';
-  let state;
-  try { state = JSON.parse(raw); } catch(e) { state = { assignments:{}, returned:[], updatedAt:'' }; }
+// 自車データを「読み込み→変更→保存」する際、他の作業者の同時更新と衝突しても
+// リトライして安全にマージする（13人同時でも取りこぼさない）
+async function updateCarDataWithRetry(mutateFn, maxRetries = 6) {
+  for (let attempt = 0; attempt < maxRetries; attempt++) {
+    // 最新の自車データを取得
+    const carData = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    const recId = carData._notfound ? null : carData._id;
+    // ★昨日以前の残骸なら空から始める（今日のデータのみ引き継ぐ）
+    let state;
+    if (carData._notfound || !isCarDataFresh(carData)) {
+      state = { assignments:{}, returned:[], paused:{}, revisitMap:{}, driverLocation:null };
+    } else {
+      state = JSON.parse(JSON.stringify(carData));
+      delete state._id; delete state._notfound;
+    }
+    const beforeUpdatedAt = carData._notfound ? '' : (carData.updatedAt || '');
 
-  if (!state.returned) state.returned = [];
-  if (!state.returned.includes(currentWorker)) state.returned.push(currentWorker);
-  delete state.assignments[currentWorker];
-  state.updatedAt = new Date().toISOString();
+    // 変更を適用
+    mutateFn(state);
+    state.sessionDate = todayStr();
+    state.updatedAt = new Date().toISOString();
 
-  await fetch(`${PROXY}/kintone/v1/record.json?subdomain=white`, {
-    method: 'PUT',
-    headers: { 'X-Cybozu-API-Token': TOKEN_NABON, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ app: APP_NABON, id: recId, record: {
-      '文字列__複数行__0': { value: JSON.stringify(state, null, 2) }
-    }})
+    // 保存直前に再取得して、その間に他の人が更新していないか確認（楽観ロック）
+    try {
+      const check = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+      const checkUpdatedAt = check._notfound ? '' : (check.updatedAt || '');
+      if (checkUpdatedAt !== beforeUpdatedAt) {
+        // 他の人が先に更新した → 最新を取り込んで再試行
+        console.log(`[retry] 競合検知 (${attempt+1}回目)、再取得して再適用`);
+        continue;
+      }
+      // 衝突なし → 保存
+      const body = { value: JSON.stringify(state, null, 2) };
+      if (recId) {
+        await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, { '文字列__複数行__0': body });
+      } else {
+        const res = await fetch(`${BASE}/record.json?subdomain=${KINTONE_DOMAIN}`, {
+          method: 'POST',
+          headers: { 'X-Cybozu-API-Token': TOKEN_NABON, 'Content-Type': 'application/json' },
+          body: JSON.stringify({ app: APP_NABON, record: {
+            '文字列__1行_': { value: carKey(currentMonth, MY_CAR) },
+            '文字列__複数行__0': body
+          }})
+        });
+        if (!res.ok) { const t = await res.text(); throw new Error('作成失敗: ' + t.slice(0,150)); }
+      }
+      return state; // 成功
+    } catch(e) {
+      if (attempt === maxRetries - 1) throw e;
+      // エラーでも少し待って再試行
+      await new Promise(r => setTimeout(r, 200 + Math.random() * 300));
+    }
+  }
+  throw new Error('保存が混み合っています。もう一度お試しください。');
+}
+
+async function reportReturn(withPause) {
+  if (!MY_CAR) {
+    // 号車未確定なら共通から判定
+    const common = await loadSpecialRecord(commonKey(currentMonth));
+    if (!common._notfound) MY_CAR = getCarOfWorker(common, currentWorker);
+    if (!MY_CAR) throw new Error('号車が特定できません。運転手に確認してください。');
+  }
+
+  // 楽観ロック付きで「自分の戻り報告だけ」を追記（13人同時でも取りこぼさない）
+  await updateCarDataWithRetry(state => {
+    if (!state.returned) state.returned = [];
+    if (!state.assignments) state.assignments = {};
+    if (!state.returned.includes(currentWorker)) state.returned.push(currentWorker);
+    delete state.assignments[currentWorker];
+    if (!state.paused) state.paused = {};
+    if (withPause) state.paused[currentWorker] = true;
   });
+
+  if (withPause) updatePauseUI(true);
 }
 
 function showWaitingScreen() {
   document.getElementById('work-screen').style.display = 'none';
   document.getElementById('return-footer').style.display = 'none';
   document.getElementById('waiting-screen').style.display = 'block';
+  // 受付停止状態を初期表示
+  getAssignState().then(state => {
+    const isPaused = (state.paused || {})[currentWorker] === true;
+    updatePauseUI(isPaused);
+  }).catch(() => {});
   // 割当をポーリング
   pollAssignment();
 }
 
 let pollTimer = null;
 async function pollAssignment() {
+  // 戻り処理中はスキップ（レース条件回避）
+  if (isReturning) {
+    pollTimer = setTimeout(pollAssignment, 2000);
+    return;
+  }
   try {
     const state = await getAssignState();
 
@@ -1060,39 +1499,51 @@ async function pollAssignment() {
       }
     }
 
-    const myGroup = state.assignments[currentWorker];
-    if (myGroup) {
+    const myGroupRaw = state.assignments[currentWorker];
+    const myGroups = Array.isArray(myGroupRaw) ? myGroupRaw : (myGroupRaw ? [myGroupRaw] : []);
+    if (myGroups.length > 0) {
       clearTimeout(pollTimer);
-      document.getElementById('waiting-group').textContent = myGroup.toUpperCase();
+      document.getElementById('waiting-group').textContent = myGroups.join(' + ').toUpperCase();
       document.getElementById('waiting-screen').style.display = 'none';
-      await loadGroup(myGroup);
+      await loadGroup(myGroups);
       return;
     }
   } catch(e) { console.error(e); }
   pollTimer = setTimeout(pollAssignment, 5000);
 }
 
-async function loadGroup(groupCode) {
+async function loadGroup(groupCodes) {
+  // 配列でも単一でも受付（後方互換）
+  const groups = Array.isArray(groupCodes) ? groupCodes : [groupCodes];
+  const groupLabel = groups.join(' + ').toUpperCase();
   document.getElementById('loading-screen').style.display = 'block';
-  document.getElementById('loading-text').textContent = `グループ ${groupCode.toUpperCase()} を読み込み中...`;
+  document.getElementById('loading-text').textContent = `グループ ${groupLabel} を読み込み中...`;
   try {
-    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 = "${groupCode}" order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-    records = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+    // 1. グループコードに直接マッチするレコードを取得（複数グループ対応）
+    const groupClause = groups.map(g => `"${g}"`).join(',');
+    const query = `文字列__1行_ = "${currentMonth}" and 文字列__1行__0 in (${groupClause}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    let groupRecords = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
-    // 定休日フィルタ
+    // 2. revisitMap にあるレコードも取得（不在再訪・個別訪問・統合）
     const state = await getAssignState();
-    records = filterClosedToday(records, state.workDay);
-    const revisitIds = state.revisitMap?.[groupCode] || [];
-    if (revisitIds.length > 0) {
-      const idList = revisitIds.map(id => `"${id}"`).join(',');
-      const revisitQuery = `$id in (${idList}) order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
-      try {
-        const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
-        revisitRecords.forEach(r => { r._isRevisit = true; });
-        records = records.concat(revisitRecords);
-      } catch(e) { console.error('再訪取得エラー:', e); }
+    const revisitIds = [];
+    for (const g of groups) {
+      const ids = (state.revisitMap?.[g] || []).map(String);
+      revisitIds.push(...ids);
+    }
+    const uniqueRevisitIds = [...new Set(revisitIds)];
+    if (uniqueRevisitIds.length > 0) {
+      const idsClause = uniqueRevisitIds.map(id => `"${id}"`).join(',');
+      const revisitQuery = `$id in (${idsClause})`;
+      const revisitRecords = await kintoneGet(APP_NABON, TOKEN_NABON, revisitQuery);
+      // 重複除外してマージ
+      const existingIds = new Set(groupRecords.map(r => r['$id'].value));
+      revisitRecords.forEach(r => {
+        if (!existingIds.has(r['$id'].value)) groupRecords.push(r);
+      });
     }
 
+    records = groupRecords;
     doneCount = 0; absentCount = 0; todoCount = 0;
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';
@@ -1107,13 +1558,102 @@ async function loadGroup(groupCode) {
   }
 }
 
+// ===== 手動更新 =====
+async function refreshNow() {
+  const btns = document.querySelectorAll('[onclick*="refreshNow"]');
+  // 元のテキストを保存して⏳に変更
+  const originalTexts = [];
+  btns.forEach(b => {
+    originalTexts.push(b.innerHTML);
+    b.disabled = true;
+    if (b.innerHTML.includes('🔄')) {
+      b.innerHTML = b.innerHTML.replace('🔄', '⏳');
+    }
+  });
+
+  try {
+    // 待機画面・作業画面に関わらず、まず割当状態を確認
+    const state = await getAssignState();
+    const myGroupRaw = state.assignments?.[currentWorker];
+    const myGroups = Array.isArray(myGroupRaw) ? myGroupRaw : (myGroupRaw ? [myGroupRaw] : []);
+
+    if (document.getElementById('waiting-screen').style.display !== 'none') {
+      // 待機画面：割当が来てれば作業画面に遷移
+      clearTimeout(pollTimer);
+      await pollAssignment();
+    } else if (document.getElementById('work-screen').style.display !== 'none') {
+      // 作業画面：割当が変わっていれば新しいグループ読込、同じなら現在グループのデータ再取得
+      if (myGroups.length > 0) {
+        await loadGroup(myGroups);
+      } else {
+        // 割当が外された場合、待機画面へ
+        showWaitingScreen();
+      }
+    }
+    // 成功表示
+    btns.forEach((b, i) => {
+      b.innerHTML = originalTexts[i].replace('🔄', '✅');
+      setTimeout(() => { b.innerHTML = originalTexts[i]; }, 1200);
+    });
+  } catch(e) {
+    console.error('更新エラー:', e);
+    btns.forEach((b, i) => {
+      b.innerHTML = originalTexts[i].replace('🔄', '❌');
+      setTimeout(() => { b.innerHTML = originalTexts[i]; }, 1500);
+    });
+    alert('更新に失敗しました: ' + e.message);
+  } finally {
+    btns.forEach(b => b.disabled = false);
+  }
+}
+
+// ===== 受付停止トグル =====
+async function togglePause() {
+  const btn = document.getElementById('pause-toggle');
+  btn.disabled = true;
+  try {
+    if (!MY_CAR) {
+      const common = await loadSpecialRecord(commonKey(currentMonth));
+      if (!common._notfound) MY_CAR = getCarOfWorker(common, currentWorker);
+    }
+    let nowPaused = false;
+    await updateCarDataWithRetry(state => {
+      if (!state.paused) state.paused = {};
+      const isPaused = state.paused[currentWorker] === true;
+      if (isPaused) { delete state.paused[currentWorker]; nowPaused = false; }
+      else { state.paused[currentWorker] = true; nowPaused = true; }
+    });
+    updatePauseUI(nowPaused);
+  } catch(e) {
+    alert('更新エラー: ' + e.message);
+  }
+  btn.disabled = false;
+}
+
+function updatePauseUI(isPaused) {
+  const btn = document.getElementById('pause-toggle');
+  const msg = document.getElementById('waiting-msg');
+  const spinner = document.getElementById('waiting-spinner-wrap');
+  if (!btn) return;
+  if (isPaused) {
+    btn.innerHTML = '▶️ 受付を再開する';
+    btn.style.background = '#d42020';
+    btn.style.color = '#fff';
+    btn.style.borderColor = '#d42020';
+    if (msg) msg.innerHTML = '<strong style="color:#d42020">受付停止中です</strong><br>準備ができたら下のボタンで再開してください';
+    if (spinner) spinner.style.display = 'none';
+  } else {
+    btn.innerHTML = '⏸️ 受付を一時停止する';
+    btn.style.background = '#f5f5f0';
+    btn.style.color = '#1a1a1a';
+    btn.style.borderColor = 'var(--border)';
+    if (msg) msg.innerHTML = '戻りを報告しました。<br>運転手が次のグループを割り当て中です...';
+    if (spinner) spinner.style.display = 'flex';
+  }
+}
+
 // ===== 起動 =====
 init();
 </script>
-<!-- 全画面共通の運転手位置情報フローティングボタン -->
-<a id="floating-driver-location" href="#" target="_blank" style="display:none;position:fixed;bottom:80px;right:16px;width:56px;height:56px;background:var(--blue);color:white;border-radius:50%;align-items:center;justify-content:center;text-decoration:none;font-size:24px;box-shadow:0 4px 12px rgba(0,0,0,0.25);z-index:1000;">
-  📍
-</a>
-
 </body>
 </html>
