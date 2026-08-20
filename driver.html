@@ -1437,7 +1437,15 @@ function autoAssign(workerName, justAssigned = new Set()) {
     if (realRecs.length > 0) {
       // 通常グループ: 未完了が残っているか
       const done = realRecs.filter(r => ['完了','不在'].includes(r['ドロップダウン']?.value)).length;
-      return done < realRecs.length;
+      if (done < realRecs.length) return true; // 通常の未完了店が残っている
+      // ★合流した不在店（revisitMap）が未完了なら候補（完了済みグループの再アクティブ化）
+      if (revisitMapAuto[g]) {
+        const mIds = (revisitMapAuto[g] || []).map(String);
+        const mRecs = allRecords.filter(r => mIds.includes(String(r['$id'].value)) && !isClosedToday(r, workDay));
+        const mDone = mRecs.filter(r => r['ドロップダウン']?.value === '完了').length;
+        return mRecs.length > 0 && mDone < mRecs.length;
+      }
+      return false;
     }
     // 仮想グループ（個別訪問）: revisitMapの中身が未完了か
     if (revisitMapAuto[g]) {
@@ -1804,16 +1812,17 @@ function updateSoloPositions() {
     groupNums.forEach((g, i) => {
       const done = groupDone(g.code);
       const buildings = groupBuildings(g.code);
-      // グループ表示
+      // グループ表示（🔵合流ボタン付き）
       html += `
         <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:4px 0;">
           <div style="display:flex;align-items:center;gap:6px;">
             <span style="font-size:12px;font-weight:900;color:${done ? '#888' : 'var(--ink)'};">${g.code}</span>
             ${done ? '<span style="font-size:9px;color:#fff;background:#3a9a5a;padding:1px 5px;border-radius:3px;">完了</span>' : ''}
           </div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px;">含む店舗: ${buildings || '（なし）'}</div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;margin-bottom:6px;">含む店舗: ${buildings || '（なし）'}</div>
+          <button onclick="pickSoloPosition('__merge__${g.code}')" style="width:100%;padding:8px;background:#1a5cd4;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🔵 ${g.code} に合流（同じビル・一緒に回る）</button>
         </div>`;
-      // このグループの後に追加
+      // このグループの後に「間に差し込み」（紫）
       const next = groupNums[i + 1];
       const newNum = next ? ((g.num + next.num) / 2) : (g.num + 0.5);
       const newCode = route.toUpperCase() + (Number.isInteger(newNum) ? newNum.toFixed(1) : newNum.toString());
@@ -1853,10 +1862,12 @@ async function confirmSoloRevisit() {
 
   let virtualCode;
   let isNew = false;
+  let isRealMerge = false;
 
   if (posValue.startsWith('__merge__')) {
-    // 既存の個別訪問グループに追加
+    // グループに合流（実グループ A30 or 既存の個別訪問グループ）
     virtualCode = posValue.replace('__merge__', '');
+    isRealMerge = allGroups.includes(virtualCode) && allRecords.some(r => r['文字列__1行__0']?.value === virtualCode);
     if (!assignState.revisitMap) assignState.revisitMap = {};
     const existing = (assignState.revisitMap[virtualCode] || []).map(String);
     if (!existing.includes(String(soloModalRecordId))) {
@@ -1899,6 +1910,9 @@ async function confirmSoloRevisit() {
   renderAssign();
   if (isNew) {
     alert(`📍 個別訪問グループ「${virtualCode}」を作成しました。\n「👥 割当」タブで作業者に割り当ててください。`);
+  } else if (isRealMerge) {
+    const count = assignState.revisitMap[virtualCode].length;
+    alert(`🔵「${virtualCode}」グループに合流しました。\n${virtualCode}を回る作業者が、この店も一緒に回ります。\n（${virtualCode}が完了済みでも、再度表示されます）`);
   } else {
     const count = assignState.revisitMap[virtualCode].length;
     alert(`✅ 個別訪問グループ「${virtualCode}」に追加しました（合計${count}件）`);
@@ -2073,7 +2087,16 @@ function renderAssign() {
     // 通常グループ
     const count = groupCounts[g] || 0;
     const done = groupDone[g] || 0;
-    return count > 0 && done >= count;
+    let complete = count > 0 && done >= count;
+    // ★このグループに合流した不在店（revisitMap）があれば、それも完了していないと未完了扱い
+    //   （完了済みA30に不在店を合流させたら、A30を再アクティブ化する）
+    if (complete && revisitMapForSplit[g]) {
+      const mergedIds = (revisitMapForSplit[g] || []).map(String);
+      const mergedRecs = allRecords.filter(r => mergedIds.includes(String(r['$id'].value)));
+      const allMergedDone = mergedRecs.every(r => r['ドロップダウン']?.value === '完了');
+      if (!allMergedDone) complete = false; // 合流した不在店が未完了なら再アクティブ
+    }
+    return complete;
   }
 
   // アクティブ（未完了）と完了に分離
