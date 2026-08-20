@@ -1408,12 +1408,23 @@ function autoAssign(workerName, justAssigned = new Set()) {
     ...justAssigned
   ]);
 
+  // 仮想グループ（差し込み・個別訪問）判定: revisitMapにあり、かつ実レコードが無い
+  const revisitMapAuto = assignState.revisitMap || {};
+  function isVirtualInsert(g) {
+    if (!revisitMapAuto[g]) return false;
+    return !allRecords.some(r => r['文字列__1行__0']?.value === g);
+  }
+
   // ルートごとの「現在の到達点」を計算
   // ★重要: 過去の完了データ（昨日の本番など）ではなく、
   //   「今まさに誰かに割当中のグループ」の最大番号だけを到達点とする。
   //   これにより、過去に完了したグループが「前進の壁」にならない。
+  // ★差し込みグループ（X28.5など仮想グループ）は壁の計算から除外する。
+  //   さもないと X28.5 が割当中だと routeMaxReached=28.5 になり、
+  //   手前の通常グループ X27 が「前進チェック」で飛ばされてしまう。
   const routeMaxReached = {}; // { 'b': 6, ... }
   assignedGroups.forEach(g => {
+    if (isVirtualInsert(g)) return; // 差し込みグループは壁にしない
     const letter = getGroupLetter(g);
     const num = getGroupNum(g);
     if (routeMaxReached[letter] === undefined || num > routeMaxReached[letter]) {
@@ -1422,15 +1433,17 @@ function autoAssign(workerName, justAssigned = new Set()) {
   });
 
   // 候補グループを絞り込む
-  const revisitMapAuto = assignState.revisitMap || {};
   const candidates = allGroups.filter(g => {
     const letter = getGroupLetter(g);
     if (!carRoutes.includes(letter)) return false;      // 担当ルート外
     if (assignedGroups.has(g)) return false;             // 既に割当済み
     const num = getGroupNum(g);
     // ★前進のみ: 割当中の最大番号より大きいグループだけ（若い番号には戻らない）
-    const maxReached = routeMaxReached[letter];
-    if (maxReached !== undefined && num <= maxReached) return false;
+    //   ただし差し込みグループ（仮想）は前進チェックの対象外（位置に関係なく割当可能）
+    if (!isVirtualInsert(g)) {
+      const maxReached = routeMaxReached[letter];
+      if (maxReached !== undefined && num <= maxReached) return false;
+    }
 
     // 実レコードを持つグループか、仮想グループ（個別訪問）かで判定を分ける
     const realRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g && !isClosedToday(r, workDay));
