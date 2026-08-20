@@ -813,7 +813,7 @@ async function startWorkDirect() {
     }
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';
-    document.getElementById('return-footer').style.display = 'block';
+    document.getElementById('return-footer').style.display = 'block'; document.getElementById('return-footer').style.visibility = 'visible';
     document.getElementById('work-title').textContent = `📦 ${currentMonth}`;
     document.getElementById('work-worker').textContent = `${currentWorker} さん`;
     renderCards();
@@ -913,7 +913,7 @@ async function startWork() {
 
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';
-    document.getElementById('return-footer').style.display = 'block';
+    document.getElementById('return-footer').style.display = 'block'; document.getElementById('return-footer').style.visibility = 'visible';
 
     document.getElementById('work-title').textContent = `📦 ${currentMonth}`;
     document.getElementById('work-worker').textContent = `${currentWorker} さん`;
@@ -1672,10 +1672,16 @@ function showReturnModal() {
     isReturning = false;
   }
   document.getElementById('return-modal').classList.add('show');
+  // モーダル表示中は背景の車に戻るボタン(return-footer)を隠す
+  // （画面下部でキャンセルボタンと重なり、タップを奪う問題の対策）
+  const rf = document.getElementById('return-footer');
+  if (rf) rf.style.visibility = 'hidden';
 }
 
 function closeModal() {
   document.getElementById('return-modal').classList.remove('show');
+  const rf = document.getElementById('return-footer');
+  if (rf) rf.style.visibility = 'visible';
 }
 
 let isReturning = false; // 車に戻る処理中フラグ（多重タップ・ポーリング競合防止）
@@ -1883,7 +1889,7 @@ async function loadGroup(groupCodes) {
     doneCount = 0; absentCount = 0; todoCount = 0;
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';
-    document.getElementById('return-footer').style.display = 'block';
+    document.getElementById('return-footer').style.display = 'block'; document.getElementById('return-footer').style.visibility = 'visible';
     saveSession();
     renderCards();
   } catch(e) {
