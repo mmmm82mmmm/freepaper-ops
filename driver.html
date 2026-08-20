@@ -1946,21 +1946,25 @@ async function assignWorker(groupCode, workerName) {
     if (assignState.paused) delete assignState.paused[workerName];
   }
 
-  // 最新の状態を取得して上書き競合を防ぐ
+  // 最新の状態を取得して上書き競合を防ぐ（自車データ __carN__ から読む）
   try {
-    const recs = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by レコード番号 asc limit 1`);
-    if (recs.length) {
-      const raw = recs[0]['文字列__複数行__0']?.value || '';
-      try {
-        const latest = JSON.parse(raw);
+    if (MY_CAR) {
+      const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+      if (fresh && !fresh._notfound) {
         const wasPaused = (assignState.paused || {})[workerName];
-        assignState.assignments = latest.assignments || {};
-        assignState.returned = latest.returned || [];
-        if (latest.paused) {
-          assignState.paused = { ...latest.paused };
-          if (wasPaused === undefined && workerName) delete assignState.paused[workerName];
+        // 今日のデータのみ採用（昨日以前の残骸なら無視）
+        const freshDate = fresh.sessionDate;
+        const today = new Date().toISOString().slice(0,10);
+        if (freshDate === today) {
+          assignState.assignments = fresh.assignments || {};
+          assignState.returned = fresh.returned || [];
+          assignState.revisitMap = fresh.revisitMap || assignState.revisitMap || {};
+          if (fresh.paused) {
+            assignState.paused = { ...fresh.paused };
+            if (wasPaused === undefined && workerName) delete assignState.paused[workerName];
+          }
         }
-      } catch(e) {}
+      }
     }
   } catch(e) { console.error('最新状態取得エラー:', e); }
 
