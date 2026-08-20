@@ -2126,6 +2126,18 @@ function renderAssign() {
       mapTotal = groupMap[g] || 0;
       rackTotal = groupRack[g] || 0;
       popTotal = groupPop[g] || 0;
+      // ★このグループに合流した不在店（revisitMap）があれば集計に加える
+      const mergedIds = ((assignState.revisitMap || {})[g] || []).map(String);
+      if (mergedIds.length > 0) {
+        const realIds = new Set(allRecords.filter(r => r['文字列__1行__0']?.value === g).map(r => String(r['$id'].value)));
+        const mergedRecs = allRecords.filter(r => mergedIds.includes(String(r['$id'].value)) && !realIds.has(String(r['$id'].value)));
+        count += mergedRecs.length;
+        done += mergedRecs.filter(r => r['ドロップダウン']?.value === '完了' || r['ドロップダウン']?.value === '不在').length;
+        nabon += mergedRecs.reduce((s, r) => s + (parseInt(r['数値_2']?.value) || 0), 0);
+        mapTotal += mergedRecs.reduce((s, r) => s + (parseInt(r['数値_3']?.value) || 0), 0);
+        rackTotal += mergedRecs.filter(r => (r['チェックボックス_1']?.value || []).length > 0).length;
+        popTotal += mergedRecs.filter(r => (r['チェックボックス_3']?.value || []).length > 0).length;
+      }
     }
     const assignedCar = assignedWorker ? (assignState.cars?.[assignedWorker] || 0) : 0;
     const carLabel = assignedCar ? `🚐${assignedCar} ` : '';
@@ -2149,13 +2161,19 @@ function renderAssign() {
     }).join('');
 
     // 店舗一覧HTML（コメント付き）
-    const groupRecs = isVirtual
-      ? allRecords.filter(r => ((assignState.revisitMap[g] || []).map(String)).includes(String(r['$id'].value)) && !isClosedToday(r, workDay))
-      : allRecords.filter(r => {
-          if (r['文字列__1行__0']?.value !== g) return false;
-          if (isClosedToday(r, workDay)) return false;
-          return true;
-        });
+    let groupRecs;
+    if (isVirtual) {
+      groupRecs = allRecords.filter(r => ((assignState.revisitMap[g] || []).map(String)).includes(String(r['$id'].value)) && !isClosedToday(r, workDay));
+    } else {
+      // 実グループの店＋合流した不在店（revisitMap）
+      const mergedIds = ((assignState.revisitMap || {})[g] || []).map(String);
+      groupRecs = allRecords.filter(r => {
+        if (isClosedToday(r, workDay)) return false;
+        const isReal = r['文字列__1行__0']?.value === g;
+        const isMerged = mergedIds.includes(String(r['$id'].value));
+        return isReal || isMerged;
+      });
+    }
     const shopList = groupRecs.map(r => {
       const shop = r['文字列__1行__1']?.value || '';
       const building = r['文字列__1行__2']?.value || '';
