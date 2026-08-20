@@ -314,6 +314,16 @@ body.text-xlarge .btn-modal-confirm{font-size:19px;}
       </button>
     </div>
 
+    <!-- 不在店モード（3〜4日目：不在店を自分で選んで回る） -->
+    <div style="margin-top:16px;width:100%;max-width:320px;">
+      <button onclick="enterAbsentMode()" style="width:100%;padding:14px;background:#d42020;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:900;cursor:pointer;font-family:inherit;">
+        🔴 不在店モード（不在店を選んで回る）
+      </button>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">
+        自分の号車ルートの不在店から、回る店を選べます。
+      </div>
+    </div>
+
     <div id="driver-location-area" style="display:none;margin-top:8px;">
       <a id="driver-location-link" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:12px 20px;background:var(--blue);color:white;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
         📍 運転手の現在地を確認
@@ -323,11 +333,47 @@ body.text-xlarge .btn-modal-confirm{font-size:19px;}
   </div>
 </div>
 
-<!-- 確認モーダル -->
-<div class="modal-overlay" id="return-modal">
-  <div class="modal-sheet">
-    <div class="modal-handle"></div>
-    <div class="modal-title">🚐 車に戻りますか？</div>
+<!-- 不在店モード画面（3〜4日目：不在店セルフ選択） -->
+<div id="absent-screen" style="display:none">
+  <div class="app-header">
+    <div class="app-header-top">
+      <div class="app-title">🔴 不在店モード</div>
+      <div style="display:flex;align-items:center;gap:6px;">
+        <button class="text-size-btn" onclick="cycleTextSize()" title="文字サイズ変更">A</button>
+        <button onclick="loadAbsentStores()" title="再読み込み" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 10px;border-radius:6px;font-size:14px;cursor:pointer;">🔄</button>
+        <div class="worker-name" id="absent-worker-name"></div>
+      </div>
+    </div>
+    <div style="background:rgba(255,255,255,.12);border-radius:6px;padding:6px 10px;margin:6px 0 0;font-size:11px;text-align:center;line-height:1.6;">
+      回る不在店を選んで「選んだ店を回る」を押してください
+    </div>
+  </div>
+
+  <!-- 選択待ちリスト -->
+  <div id="absent-select-area">
+    <div id="absent-list" style="padding:12px;"></div>
+    <div style="position:sticky;bottom:0;background:var(--bg);padding:12px;border-top:2px solid var(--border);box-shadow:0 -2px 8px rgba(0,0,0,.08);">
+      <button id="absent-claim-btn" onclick="claimSelectedAbsent()" disabled style="width:100%;padding:16px;background:#d42020;color:#fff;border:none;border-radius:10px;font-size:16px;font-weight:900;cursor:pointer;font-family:inherit;opacity:0.5;">
+        選んだ店を回る（<span id="absent-sel-count">0</span>件）
+      </button>
+      <button onclick="exitAbsentMode()" style="width:100%;padding:10px;background:transparent;color:var(--muted);border:none;font-size:12px;cursor:pointer;font-family:inherit;margin-top:6px;">
+        ← 通常画面に戻る
+      </button>
+    </div>
+  </div>
+
+  <!-- 選択後の作業カード（通常と同じ入力） -->
+  <div id="absent-work-area" style="display:none">
+    <div id="absent-cards-container"></div>
+    <div style="padding:12px;">
+      <button onclick="backToAbsentList()" style="width:100%;padding:12px;background:var(--card);color:var(--ink);border:2px solid var(--border);border-radius:10px;font-size:13px;font-weight:700;cursor:pointer;font-family:inherit;">
+        ← 不在店リストに戻る（別の店を選ぶ）
+      </button>
+    </div>
+  </div>
+</div>
+
+
     <div class="modal-sub" id="modal-sub">作業状況を確認してください</div>
     <div class="modal-stats">
       <div class="modal-stat green"><span class="val" id="modal-done">0</span><div class="lbl">完了</div></div>
@@ -382,6 +428,7 @@ const WORKERS = ['田中','鈴木','山田','佐藤','高橋','小林','伊藤',
 let currentWorker = '';
 let currentMonth = '';
 let records = []; // kintoneから取得したレコード
+let CURRENT_REVISIT_MAP = {}; // 個別訪問・再訪の差し込み位置マップ（道順並べ替え用）
 let doneCount = 0, absentCount = 0, todoCount = 0;
 
 // ===== 文字サイズ切替（老眼対応） =====
@@ -676,6 +723,7 @@ async function getAssignState() {
   }
   // ★今日のデータのみ採用。昨日以前の残骸なら空にする
   const fresh = isCarDataFresh(carData);
+  CURRENT_REVISIT_MAP = fresh ? (carData.revisitMap || {}) : {};
   return {
     members: commonData.members || [],
     cars: commonData.cars || {},
@@ -798,6 +846,20 @@ async function startWork() {
     // 割当グループを取得
     const state = await getAssignState();
     DYNAMIC_ITEMS_load(state);
+
+    // ★号車ガード: 号車が0（未割当）なら作業させない（car0への迷子書き込みを防ぐ）
+    if (!MY_CAR) MY_CAR = getCarOfWorker(state, currentWorker);
+    if (!MY_CAR) {
+      document.getElementById('loading-screen').style.display = 'none';
+      document.getElementById('login-screen').style.display = 'none';
+      const nameEl = document.getElementById('waiting-worker-name');
+      if (nameEl) nameEl.textContent = currentWorker + ' さん';
+      const msgEl = document.getElementById('waiting-msg');
+      if (msgEl) msgEl.innerHTML = '⚠️ あなたの号車が設定されていません。<br>運転手・リーダーに「車編成」の設定を依頼してください。<br><br>設定後、下の「🔄 今すぐ更新」を押してください。';
+      showWaitingScreen();
+      return;
+    }
+
     const assignedRaw = state.assignments?.[currentWorker];
     const assignedGroups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
 
@@ -907,24 +969,61 @@ function renderCards() {
     </div>`;
   container.appendChild(summary);
 
-  // グループ別にまとめる
+  // グループ別にまとめる（道順で並べる）
+  // 各レコードの「表示グループ」を決める:
+  //   個別訪問で差し込まれた店 → 差し込み先の仮想グループ（例 A43.5）に表示
+  //   通常の店 → 自分のグループコード
+  const recIdToVirtual = {}; // recordId → 差し込み先仮想グループ
+  Object.entries(CURRENT_REVISIT_MAP || {}).forEach(([vg, ids]) => {
+    // 実レコードを持たないグループ（＝個別訪問の仮想グループ）だけ対象
+    const isVirtual = !records.some(r => r['文字列__1行__0']?.value === vg);
+    if (!isVirtual) return;
+    (ids || []).forEach(id => { recIdToVirtual[String(id)] = vg; });
+  });
+
   const groups = {};
   records.forEach(r => {
-    const g = r['文字列__1行__0']?.value || r['文字列__1行__2']?.value || 'その他';
+    const recId = String(r['$id'].value);
+    // 差し込み先があればそちらを表示グループに
+    const g = recIdToVirtual[recId] || r['文字列__1行__0']?.value || r['文字列__1行__2']?.value || 'その他';
     if (!groups[g]) groups[g] = [];
     groups[g].push(r);
   });
 
-  Object.entries(groups).forEach(([groupName, recs]) => {
+  // グループの並び順キー（道順）を計算
+  // ルート文字 → 番号（グループコードの数字）。個別訪問(A43.5)も番号で正しい位置に入る
+  function groupSortKey(groupName, recs) {
+    // グループコードから数字を取る（A43.5 → 43.5、A41 → 41）
+    let num = parseFloat((groupName || '').replace(/[^0-9.]/g, ''));
+    if (isNaN(num)) {
+      // グループコードに数字がない場合はレコードのルート順の最小値
+      num = Math.min(...recs.map(r => parseFloat(r['数値_1']?.value) || 9999));
+    }
+    const letter = (groupName || '').replace(/[0-9.]/g, '').toLowerCase();
+    return { letter, num };
+  }
+
+  const orderedGroups = Object.entries(groups).sort((a, b) => {
+    const ka = groupSortKey(a[0], a[1]);
+    const kb = groupSortKey(b[0], b[1]);
+    if (ka.letter !== kb.letter) return ka.letter.localeCompare(kb.letter);
+    return ka.num - kb.num;
+  });
+
+  orderedGroups.forEach(([groupName, recs]) => {
+    // グループ内も道順（ルート順・数値_1）で並べる
+    recs.sort((a, b) => (parseFloat(a['数値_1']?.value) || 0) - (parseFloat(b['数値_1']?.value) || 0));
     // グループごとの総冊数
     let grpNabon = 0;
     recs.forEach(r => { grpNabon += parseFloat(r['数値_2']?.value) || 0; });
+    // 個別訪問の差し込みグループか
+    const isInserted = recs.some(r => recIdToVirtual[String(r['$id'].value)]);
     // グループヘッダー
     const gh = document.createElement('div');
     gh.className = 'group-header';
     gh.innerHTML = `
       <div class="group-badge">${recs[0]['ルート']?.value || ''}${recs[0]['ルート順']?.value || ''}</div>
-      <div class="group-name">${groupName}</div>
+      <div class="group-name">${groupName}${isInserted ? ' <span style="font-size:10px;color:#7a3dc4;font-weight:700;">📍差し込み</span>' : ''}</div>
       <div class="group-count">${grpNabon}冊 / ${recs.length}件</div>`;
     container.appendChild(gh);
 
@@ -1257,7 +1356,12 @@ function reopenCard(recId) {
     else if (rec['ドロップダウン'].value === '不在') absentCount--;
     todoCount++;
   }
-  renderCards();
+  // 不在店モードで作業中なら、そのカード群を再描画
+  if (document.getElementById('absent-work-area')?.style.display === 'block') {
+    showAbsentWorkCards();
+  } else {
+    renderCards();
+  }
 }
 
 function resetInputCard(recId) {
@@ -1297,6 +1401,235 @@ async function updateDriverLocationBar() {
       }
     }
   } catch(e) { console.error(e); }
+}
+
+// ===== 不在店モード（3〜4日目：不在店セルフ選択）=====
+let absentSelectedIds = new Set();  // 選択中の不在店レコードID
+let absentClaimedRecords = [];      // 自分が回ると決めた不在店レコード
+
+// グループの遅フラグ判定用にルート文字を返す
+function absentRouteLetter(g, recs) {
+  const letter = (g || '').replace(/[0-9.]/g, '').toLowerCase();
+  const hasOsoi = recs.some(r => r['文字列__1行__0']?.value === g && (r['チェックボックス_0']?.value || []).length > 0);
+  return hasOsoi ? letter + '遅' : letter;
+}
+
+async function enterAbsentMode() {
+  document.getElementById('work-screen').style.display = 'none';
+  document.getElementById('waiting-screen').style.display = 'none';
+  document.getElementById('return-footer').style.display = 'none';
+  document.getElementById('login-screen').style.display = 'none';
+  document.getElementById('absent-screen').style.display = 'block';
+  const nameEl = document.getElementById('absent-worker-name');
+  if (nameEl) nameEl.textContent = currentWorker + ' さん';
+  await loadAbsentStores();
+}
+
+function exitAbsentMode() {
+  document.getElementById('absent-screen').style.display = 'none';
+  // 元の画面へ（割当があれば作業画面、なければ待機画面）
+  refreshNow();
+}
+
+// 自分の号車が担当するルート文字（遅含む）の集合を返す
+function getMyCarRouteKeys(state) {
+  const routeCars = state.routeCars || {};
+  const keys = new Set();
+  Object.entries(routeCars).forEach(([routeKey, car]) => {
+    if (parseInt(car) === MY_CAR) keys.add(routeKey.toLowerCase()); // 例: "e", "e遅"
+  });
+  return keys;
+}
+
+async function loadAbsentStores() {
+  const listEl = document.getElementById('absent-list');
+  listEl.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);">不在店を読み込んでいます...</div>';
+  document.getElementById('absent-select-area').style.display = 'block';
+  document.getElementById('absent-work-area').style.display = 'none';
+
+  try {
+    const state = await getAssignState();
+    // MY_CAR確定
+    if (!MY_CAR && currentWorker) MY_CAR = getCarOfWorker(state, currentWorker);
+    // 号車0（未設定）は不在店モードも使えない（car0迷子防止）
+    if (!MY_CAR) {
+      listEl.innerHTML = '<div style="background:#fde8e8;border-radius:10px;padding:24px;text-align:center;color:#d42020;font-size:13px;">⚠️ あなたの号車が設定されていません。<br>運転手・リーダーに「車編成」の設定を依頼してください。</div>';
+      updateAbsentClaimBtn();
+      return;
+    }
+    const myRouteKeys = getMyCarRouteKeys(state);
+
+    if (myRouteKeys.size === 0) {
+      listEl.innerHTML = '<div style="background:var(--card);border-radius:10px;padding:24px;text-align:center;color:var(--muted);font-size:13px;">あなたの号車にルートが割り当てられていません。<br>運転手にルート設定を確認してください。</div>';
+      return;
+    }
+
+    // 当月の不在レコードを全部取得
+    const query = `文字列__1行_ = "${currentMonth}" and ドロップダウン in ("不在") order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    const absentRecs = await kintoneGet(APP_NABON, TOKEN_NABON, query);
+
+    // 自分の号車のルート（遅含む）の不在店だけに絞る
+    const mine = absentRecs.filter(r => {
+      const g = r['文字列__1行__0']?.value || '';
+      const rl = absentRouteLetter(g, absentRecs);
+      return myRouteKeys.has(rl);
+    });
+
+    // 既に誰かが取った不在店（absentClaims）
+    const claims = state.absentClaims || {}; // { recordId: workerName }
+
+    // 作業日が定休日の店は除外
+    const workDay = state.workDay;
+    const dayName = (workDay === null || workDay === undefined || workDay === '') ? '' : ['日','月','火','水','木','金','土'][parseInt(workDay)];
+    const visible = mine.filter(r => {
+      if (!dayName) return true;
+      const teikyu = r['チェックボックス_2']?.value || [];
+      return !teikyu.includes(dayName);
+    });
+
+    if (visible.length === 0) {
+      listEl.innerHTML = '<div style="background:var(--card);border-radius:10px;padding:24px;text-align:center;color:var(--muted);font-size:13px;">✅ あなたの号車ルートに、回れる不在店はありません。</div>';
+      updateAbsentClaimBtn();
+      return;
+    }
+
+    // ルート（グループのルート文字）ごとにまとめ、グループ順（ルート順）で並べる
+    const byRoute = {};
+    visible.forEach(r => {
+      const g = r['文字列__1行__0']?.value || '';
+      const rl = absentRouteLetter(g, absentRecs).toUpperCase();
+      if (!byRoute[rl]) byRoute[rl] = [];
+      byRoute[rl].push(r);
+    });
+    // 各ルート内をルート順（数値_1）で並べる
+    Object.values(byRoute).forEach(arr => arr.sort((a,b) => (parseFloat(a['数値_1']?.value)||0) - (parseFloat(b['数値_1']?.value)||0)));
+
+    const routeOrder = Object.keys(byRoute).sort();
+    absentSelectedIds.clear();
+
+    listEl.innerHTML = routeOrder.map(rl => {
+      const recs = byRoute[rl];
+      const items = recs.map(r => {
+        const recId = r['$id'].value;
+        const shop = r['文字列__1行__1']?.value || '';
+        const building = r['文字列__1行__2']?.value || '';
+        const floor = r['文字列__1行__3']?.value || '';
+        const address = r['文字列__1行__8']?.value || '';
+        const groupCode = r['文字列__1行__0']?.value || '';
+        const isOsoi = (r['チェックボックス_0']?.value || []).length > 0;
+        const fuzai = [r['文字列__1行__11']?.value, r['文字列__1行__12']?.value, r['文字列__1行__13']?.value].filter(Boolean);
+        const claimedBy = claims[recId];
+        const mineClaim = claimedBy === currentWorker;
+        const takenByOther = claimedBy && claimedBy !== currentWorker;
+
+        return `
+          <div style="background:var(--card);border-radius:8px;padding:12px;margin-bottom:8px;border:2px solid ${takenByOther ? 'var(--border)' : (isOsoi ? '#d42020' : 'var(--amber)')};${takenByOther ? 'opacity:0.55;' : ''}">
+            <label style="display:flex;align-items:flex-start;gap:10px;cursor:${takenByOther ? 'not-allowed' : 'pointer'};">
+              <input type="checkbox" ${takenByOther ? 'disabled' : ''} ${mineClaim ? 'checked' : ''} onchange="toggleAbsentSelect('${recId}', this.checked)" style="width:22px;height:22px;margin-top:2px;flex-shrink:0;">
+              <div style="flex:1;">
+                <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+                  <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:1px 5px;border-radius:4px;">${groupCode}</span>
+                  ${isOsoi ? '<span style="font-size:10px;color:#fff;font-weight:900;background:#d42020;padding:1px 5px;border-radius:4px;">⏰遅</span>' : ''}
+                  ${takenByOther ? `<span style="font-size:10px;color:#fff;font-weight:700;background:#888;padding:1px 6px;border-radius:4px;">✋ ${claimedBy}さん担当中</span>` : ''}
+                  ${mineClaim ? '<span style="font-size:10px;color:#fff;font-weight:700;background:var(--green);padding:1px 6px;border-radius:4px;">🙋 自分</span>' : ''}
+                  <span style="font-size:14px;font-weight:900;">${shop}</span>
+                </div>
+                <div style="font-size:11px;color:var(--muted);margin-top:3px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
+                ${fuzai.length ? `<div style="font-size:11px;color:#1a5cd4;margin-top:3px;">🕐 ${fuzai.join(' / ')}</div>` : ''}
+              </div>
+            </label>
+          </div>`;
+      }).join('');
+      return `
+        <div style="margin-bottom:16px;">
+          <div style="font-size:13px;font-weight:900;color:var(--ink);padding:6px 10px;background:var(--card);border-radius:6px;margin-bottom:8px;">📍 ルート${rl}（${recs.length}件）</div>
+          ${items}
+        </div>`;
+    }).join('');
+
+    // 既に自分が取っている店を選択状態に
+    Object.entries(claims).forEach(([recId, w]) => { if (w === currentWorker) absentSelectedIds.add(String(recId)); });
+    updateAbsentClaimBtn();
+  } catch(e) {
+    listEl.innerHTML = `<div style="background:#fde8e8;border-radius:10px;padding:16px;color:#d42020;font-size:13px;">エラー: ${e.message}</div>`;
+  }
+}
+
+function toggleAbsentSelect(recId, checked) {
+  if (checked) absentSelectedIds.add(String(recId));
+  else absentSelectedIds.delete(String(recId));
+  updateAbsentClaimBtn();
+}
+
+function updateAbsentClaimBtn() {
+  const btn = document.getElementById('absent-claim-btn');
+  const cnt = document.getElementById('absent-sel-count');
+  const n = absentSelectedIds.size;
+  if (cnt) cnt.textContent = n;
+  if (btn) {
+    btn.disabled = n === 0;
+    btn.style.opacity = n === 0 ? '0.5' : '1';
+  }
+}
+
+async function claimSelectedAbsent() {
+  if (absentSelectedIds.size === 0) return;
+  const ids = [...absentSelectedIds];
+  const btn = document.getElementById('absent-claim-btn');
+  btn.disabled = true; btn.textContent = '確保中...';
+
+  try {
+    // absentClaimsに自分の名前で登録（かぶり防止・楽観ロック）
+    await updateCarDataWithRetry(state => {
+      if (!state.absentClaims) state.absentClaims = {};
+      // 自分が過去に取って今回外した店は解放
+      Object.keys(state.absentClaims).forEach(rid => {
+        if (state.absentClaims[rid] === currentWorker && !ids.includes(String(rid))) {
+          delete state.absentClaims[rid];
+        }
+      });
+      // 今回選んだ店を確保（他人が取っていなければ）
+      ids.forEach(rid => {
+        const owner = state.absentClaims[rid];
+        if (!owner || owner === currentWorker) state.absentClaims[rid] = currentWorker;
+      });
+    });
+
+    // 実際に確保できた店を読み込んで作業カード表示
+    const idsClause = ids.map(id => `"${id}"`).join(',');
+    const recs = await kintoneGet(APP_NABON, TOKEN_NABON, `$id in (${idsClause}) order by 文字列__1行__4 asc, 数値_1 asc`);
+    absentClaimedRecords = recs;
+    records = recs; // 通常の作業ロジック（renderCard/markDone等）で使う配列に流用
+    showAbsentWorkCards();
+  } catch(e) {
+    alert('確保に失敗しました: ' + e.message);
+    btn.disabled = false;
+  }
+  btn.textContent = '選んだ店を回る（' + absentSelectedIds.size + '件）';
+}
+
+function showAbsentWorkCards() {
+  document.getElementById('absent-select-area').style.display = 'none';
+  document.getElementById('absent-work-area').style.display = 'block';
+  // 通常のrenderCardを使ってカード描画
+  const container = document.getElementById('absent-cards-container');
+  container.innerHTML = '';
+  // サマリー
+  let totalNabon = 0;
+  records.forEach(r => { totalNabon += parseFloat(r['数値_2']?.value) || 0; });
+  const summary = document.createElement('div');
+  summary.style.cssText = 'background:linear-gradient(135deg,#d42020,#c4501a);color:#fff;border-radius:12px;padding:14px 16px;margin:12px 12px 4px;';
+  summary.innerHTML = `<div style="font-size:11px;opacity:.85;font-weight:700;margin-bottom:4px;">🔴 不在店 再訪</div>
+    <div style="display:flex;align-items:baseline;gap:14px;"><div><span style="font-size:28px;font-weight:900;">${records.length}</span><span style="font-size:13px;font-weight:700;"> 店舗</span></div>
+    <div style="opacity:.9;"><span style="font-size:11px;">通常納本 計</span> <span style="font-size:20px;font-weight:900;">${totalNabon}</span><span style="font-size:12px;">冊</span></div></div>`;
+  container.appendChild(summary);
+  // 各店カード（通常と同じrenderCard）
+  records.forEach(r => renderCard(r, container));
+  updateProgress();
+}
+
+function backToAbsentList() {
+  loadAbsentStores();
 }
 
 // ===== 進捗 =====
