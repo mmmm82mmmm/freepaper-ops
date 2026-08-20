@@ -464,18 +464,16 @@ body.text-xlarge .error-box{font-size:19px;}
     </div>
 
     <div style="margin-bottom:14px;">
-      <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">挿入位置</div>
-      <select id="solo-position" style="width:100%;padding:10px;border:2px solid var(--border);border-radius:8px;font-family:'Noto Sans JP',sans-serif;font-size:13px;background:#fff;"></select>
+      <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">挿入位置（グループの含む店舗を見て選択）</div>
+      <div id="solo-position-list" style="max-height:44vh;overflow-y:auto;border:2px solid var(--border);border-radius:8px;padding:6px;background:var(--bg);"></div>
     </div>
 
     <div style="font-size:10px;color:#7a3dc4;background:#f0e8ff;padding:8px 10px;border-radius:6px;margin-bottom:14px;">
-      💡 例:「A31の後」を選ぶと、A31グループとA32グループの間に「A31.5」という単独グループが作成されます。<br>
-      運転手はこの単独グループを通常通り作業者に割り当てます。
+      💡「ここに追加」を押すと、その位置に単独グループ（例 B40.5）が作られ、道順の正しい位置に入ります。
     </div>
 
     <div style="display:flex;gap:8px;">
       <button onclick="closeSoloModal()" style="flex:1;padding:11px;background:#fff;color:#888;border:1px solid var(--border);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">キャンセル</button>
-      <button onclick="confirmSoloRevisit()" style="flex:1;padding:11px;background:#7a3dc4;color:#fff;border:none;border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;">追加する</button>
     </div>
   </div>
 </div>
@@ -1660,24 +1658,6 @@ function renderRevisit() {
         return hasOsoi;
       });
 
-      const groupButtons = osoiGroups.map(g => {
-        const shops = allRecords.filter(rr => rr['文字列__1行__0']?.value === g)
-          .map(rr => {
-            const b = rr['文字列__1行__2']?.value || '';
-            const a = rr['文字列__1行__8']?.value || '';
-            return `${b}${a ? ` (${a})` : ''}`;
-          })
-          .slice(0, 5)
-          .join('、');
-        return `
-          <div style="background:var(--bg);border-radius:6px;padding:8px 10px;margin-top:6px;display:flex;align-items:flex-start;gap:8px;">
-            <button onclick="addToRevisit('${g}', ${recId})" style="flex-shrink:0;padding:8px 12px;background:var(--blue);color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;">${g}に追加</button>
-            <div style="flex:1;font-size:10px;color:var(--muted);line-height:1.5;">
-              含む店舗: ${shops || '（なし）'}
-            </div>
-          </div>`;
-      }).join('');
-
       // バッジ類
       const osoiBadge = isOsoi ? `<span style="font-size:10px;color:#fff;font-weight:900;background:#d42020;padding:2px 6px;border-radius:4px;">⏰遅</span>` : '';
       const teikyuBadge = teikyu.length > 0 ? `<span style="font-size:10px;color:#7a3dc4;font-weight:700;background:#f0e8ff;padding:2px 6px;border-radius:4px;">🛑定休:${teikyu.join('・')}</span>` : '';
@@ -1694,11 +1674,9 @@ function renderRevisit() {
           <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
           ${fuzaiInfo}
           ${comment ? `<div style="font-size:11px;color:#7a5a00;background:#fff8e8;padding:4px 8px;border-radius:4px;margin-bottom:6px;">💬 ${comment}</div>` : ''}
-          <div style="font-size:10px;font-weight:700;color:var(--muted);margin-top:8px;">▼ 振り分け先を選択：</div>
-          ${groupButtons || '<div style="font-size:11px;color:var(--muted);padding:8px;">遅グループなし</div>'}
-          <div style="margin-top:10px;padding-top:8px;border-top:1px dashed var(--border);">
-            <button onclick="openSoloModal('${route.toUpperCase()}', ${recId})" style="padding:8px 12px;background:#7a3dc4;color:white;border:none;border-radius:6px;font-weight:700;font-size:12px;cursor:pointer;">📍 個別訪問として追加（順番指定）</button>
-            <div style="font-size:10px;color:var(--muted);margin-top:4px;">どのグループにも追加せず、単独で訪問する場合</div>
+          <div style="margin-top:10px;">
+            <button onclick="openSoloModal('${route.toUpperCase()}', ${recId})" style="width:100%;padding:12px;background:#7a3dc4;color:white;border:none;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;">📍 差し込み位置を選んで追加</button>
+            <div style="font-size:10px;color:var(--muted);margin-top:4px;text-align:center;">遅ルートの「どのビルの間か」を見て差し込めます</div>
           </div>
         </div>`;
     }).join('');
@@ -1756,6 +1734,7 @@ async function removeFromRevisit(groupCode, recordId) {
 
 // ===== 個別訪問機能 =====
 let soloModalRecordId = null;
+let soloSelectedPosition = null;
 
 function openSoloModal(defaultRoute, recordId) {
   soloModalRecordId = recordId;
@@ -1772,52 +1751,93 @@ function openSoloModal(defaultRoute, recordId) {
 
 function updateSoloPositions() {
   const route = document.getElementById('solo-route').value.toLowerCase();
-  const posSel = document.getElementById('solo-position');
+  const listEl = document.getElementById('solo-position-list');
 
-  const options = [];
-
-  // 既存の個別訪問グループ（仮想グループ）を抽出: revisitMap にあるが実レコードがないキー
-  const existingVirtual = [];
-  Object.keys(assignState.revisitMap || {}).forEach(k => {
-    if (k.replace(/[0-9.]/g, '').toLowerCase() !== route) return;
-    const realRecs = allRecords.filter(r => r['文字列__1行__0']?.value === k).length;
-    if (realRecs === 0) {
-      // 仮想グループ
-      const count = (assignState.revisitMap[k] || []).length;
-      existingVirtual.push({ code: k, count });
-    }
-  });
-  existingVirtual.sort((a, b) => {
-    const numA = parseFloat(a.code.replace(/[^0-9.]/g, '')) || 0;
-    const numB = parseFloat(b.code.replace(/[^0-9.]/g, '')) || 0;
-    return numA - numB;
-  });
-  existingVirtual.forEach(v => {
-    options.push({ value: `__merge__${v.code}`, label: `🔗 既存の「${v.code}」(${v.count}件) に追加` });
-  });
-
-  // そのルートのグループ一覧（数値順）
+  // そのルートのグループ一覧（数値順）※遅ルートも同じ文字で扱う（B40はb、B40遅もb）
   const routeGroups = allGroups.filter(g => g.replace(/[0-9.]/g, '').toLowerCase() === route);
   const groupNums = routeGroups.map(g => ({
     code: g,
     num: parseFloat(g.replace(/[^0-9.]/g, '')) || 0
   })).sort((a, b) => a.num - b.num);
 
-  // ルート先頭
-  if (groupNums.length > 0) {
-    options.push({ value: (groupNums[0].num - 0.5).toFixed(1), label: `🆕 ${route.toUpperCase()}ルートの先頭（${groupNums[0].code}の前）` });
+  // 各グループの「含む店舗（ビル）」を取得するヘルパー
+  function groupBuildings(code) {
+    const recs = allRecords.filter(r => r['文字列__1行__0']?.value === code);
+    const names = recs.map(r => {
+      const b = r['文字列__1行__2']?.value || r['文字列__1行__1']?.value || '';
+      return b;
+    }).filter(Boolean);
+    const uniq = [...new Set(names)];
+    return uniq.slice(0, 4).join('、') + (uniq.length > 4 ? ' 他' : '');
   }
-  // 各グループの後
-  groupNums.forEach((g, i) => {
-    const next = groupNums[i + 1];
-    const newNum = next ? ((g.num + next.num) / 2) : (g.num + 0.5);
-    const newCode = route.toUpperCase() + (Number.isInteger(newNum) ? newNum.toFixed(1) : newNum.toString());
-    const label = next ? `🆕 ${g.code} と ${next.code} の間（${newCode}）` : `🆕 ${g.code} の後（末尾・${newCode}）`;
-    options.push({ value: newNum.toString(), label });
+  // グループが完了済みか
+  function groupDone(code) {
+    const recs = allRecords.filter(r => r['文字列__1行__0']?.value === code);
+    if (!recs.length) return false;
+    return recs.every(r => ['完了','不在'].includes(r['ドロップダウン']?.value));
+  }
+
+  // 既存の個別訪問グループ（仮想グループ）
+  const existingVirtual = [];
+  Object.keys(assignState.revisitMap || {}).forEach(k => {
+    if (k.replace(/[0-9.]/g, '').toLowerCase() !== route) return;
+    const realRecs = allRecords.filter(r => r['文字列__1行__0']?.value === k).length;
+    if (realRecs === 0) existingVirtual.push({ code: k, count: (assignState.revisitMap[k] || []).length });
   });
 
-  posSel.innerHTML = options.map(o => `<option value="${o.value}">${o.label}</option>`).join('');
-  if (!options.length) posSel.innerHTML = '<option value="0.5">（ルート初の店舗）</option>';
+  let html = '';
+
+  // 「ここに追加」ボタンのHTML生成
+  function addHereBtn(num, label) {
+    const val = num.toString();
+    return `<button onclick="pickSoloPosition('${val}')" style="width:100%;padding:8px;margin:3px 0;background:#7a3dc4;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">▶ ここに追加（${label}）</button>`;
+  }
+
+  if (groupNums.length === 0) {
+    html = '<div style="padding:12px;text-align:center;color:var(--muted);font-size:12px;">このルートにグループがありません</div>';
+    html += addHereBtn(0.5, route.toUpperCase() + '0.5');
+  } else {
+    // ルート先頭
+    const firstNum = (groupNums[0].num - 0.5);
+    html += addHereBtn(firstNum, route.toUpperCase() + firstNum.toFixed(1) + '・先頭');
+
+    groupNums.forEach((g, i) => {
+      const done = groupDone(g.code);
+      const buildings = groupBuildings(g.code);
+      // グループ表示
+      html += `
+        <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:4px 0;">
+          <div style="display:flex;align-items:center;gap:6px;">
+            <span style="font-size:12px;font-weight:900;color:${done ? '#888' : 'var(--ink)'};">${g.code}</span>
+            ${done ? '<span style="font-size:9px;color:#fff;background:#3a9a5a;padding:1px 5px;border-radius:3px;">完了</span>' : ''}
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">含む店舗: ${buildings || '（なし）'}</div>
+        </div>`;
+      // このグループの後に追加
+      const next = groupNums[i + 1];
+      const newNum = next ? ((g.num + next.num) / 2) : (g.num + 0.5);
+      const newCode = route.toUpperCase() + (Number.isInteger(newNum) ? newNum.toFixed(1) : newNum.toString());
+      const label = next ? `${g.code}と${next.code}の間・${newCode}` : `末尾・${newCode}`;
+      html += addHereBtn(newNum, label);
+    });
+  }
+
+  // 既存の個別訪問グループへの合流
+  if (existingVirtual.length > 0) {
+    html += '<div style="font-size:10px;font-weight:700;color:var(--muted);margin:10px 0 4px;border-top:1px dashed var(--border);padding-top:8px;">既存の個別訪問グループに合流:</div>';
+    existingVirtual.sort((a,b) => (parseFloat(a.code.replace(/[^0-9.]/g,''))||0) - (parseFloat(b.code.replace(/[^0-9.]/g,''))||0));
+    existingVirtual.forEach(v => {
+      html += `<button onclick="pickSoloPosition('__merge__${v.code}')" style="width:100%;padding:8px;margin:3px 0;background:#5a8ac4;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🔗 既存「${v.code}」(${v.count}件) に合流</button>`;
+    });
+  }
+
+  listEl.innerHTML = html;
+}
+
+// 位置を選んだら即追加（確認）
+function pickSoloPosition(value) {
+  soloSelectedPosition = value;
+  confirmSoloRevisit();
 }
 
 function closeSoloModal() {
@@ -1828,7 +1848,7 @@ function closeSoloModal() {
 async function confirmSoloRevisit() {
   if (!soloModalRecordId) return;
   const route = document.getElementById('solo-route').value.toUpperCase();
-  const posValue = document.getElementById('solo-position').value;
+  const posValue = soloSelectedPosition;
   if (!route || !posValue) return;
 
   let virtualCode;
