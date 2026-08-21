@@ -2088,6 +2088,15 @@ function renderAssign() {
       return String(assignState.routeCars?.[route] || 0) === carFilter;
     });
   }
+  // 全店が本日定休で除外され、合流不在店も無いグループは割当欄に出さない（0件0冊を消す）
+  filtered = filtered.filter(g => {
+    const realRecs = allRecords.filter(r => r['文字列__1行__0']?.value === g);
+    if (realRecs.length === 0) return true; // 仮想グループ（差し込み）は残す
+    const openRecs = realRecs.filter(r => !isClosedToday(r, workDay));
+    const mergedIds = ((assignState.revisitMap || {})[g] || []).map(String);
+    const hasMerged = allRecords.some(r => mergedIds.includes(String(r['$id'].value)) && !isClosedToday(r, workDay));
+    return openRecs.length > 0 || hasMerged; // 開いてる店 or 合流不在店があれば表示
+  });
 
   // グループの完了判定（仮想グループはrevisitMapの中身で判定）
   const revisitMapForSplit = assignState.revisitMap || {};
