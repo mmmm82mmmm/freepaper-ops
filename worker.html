@@ -1521,6 +1521,8 @@ async function loadAbsentStores() {
         const groupCode = r['文字列__1行__0']?.value || '';
         const isOsoi = (r['チェックボックス_0']?.value || []).length > 0;
         const fuzai = [r['文字列__1行__11']?.value, r['文字列__1行__12']?.value, r['文字列__1行__13']?.value].filter(Boolean);
+        const nabon = parseInt(r['数値_2']?.value) || 0;  // 通常納本数（冊数）
+        const comment = r['文字列__1行__9']?.value || '';  // コメント
         const claimedBy = claims[recId];
         const mineClaim = claimedBy === currentWorker;
         const takenByOther = claimedBy && claimedBy !== currentWorker;
@@ -1533,12 +1535,14 @@ async function loadAbsentStores() {
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                   <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:1px 5px;border-radius:4px;">${groupCode}</span>
                   ${isOsoi ? '<span style="font-size:10px;color:#fff;font-weight:900;background:#d42020;padding:1px 5px;border-radius:4px;">⏰遅</span>' : ''}
+                  <span style="font-size:10px;color:#1a5cd4;font-weight:700;background:#e8f0ff;padding:1px 6px;border-radius:4px;">📦${nabon}冊</span>
                   ${takenByOther ? `<span style="font-size:10px;color:#fff;font-weight:700;background:#888;padding:1px 6px;border-radius:4px;">✋ ${claimedBy}さん担当中</span>` : ''}
                   ${mineClaim ? '<span style="font-size:10px;color:#fff;font-weight:700;background:var(--green);padding:1px 6px;border-radius:4px;">🙋 自分</span>' : ''}
                   <span style="font-size:14px;font-weight:900;">${shop}</span>
                 </div>
                 <div style="font-size:11px;color:var(--muted);margin-top:3px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
                 ${fuzai.length ? `<div style="font-size:11px;color:#1a5cd4;margin-top:3px;">🕐 ${fuzai.join(' / ')}</div>` : ''}
+                ${comment ? `<div style="font-size:12px;color:#7a5a00;background:#fff8e8;padding:5px 8px;border-radius:5px;margin-top:5px;font-weight:700;">💬 ${comment}</div>` : ''}
               </div>
             </label>
           </div>`;
