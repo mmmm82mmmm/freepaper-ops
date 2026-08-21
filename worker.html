@@ -327,6 +327,16 @@ body.text-xlarge .btn-modal-confirm{font-size:19px;}
       </div>
     </div>
 
+    <!-- 未完了モード（不在＋未着手・権限者が解放した時だけ表示） -->
+    <div id="unfinished-mode-area" style="margin-top:12px;width:100%;max-width:320px;display:none;">
+      <button onclick="enterAbsentMode(true)" style="width:100%;padding:14px;background:#e08a1a;color:#fff;border:none;border-radius:10px;font-size:14px;font-weight:900;cursor:pointer;font-family:inherit;">
+        🟠 未完了モード（不在＋未着手を回る）
+      </button>
+      <div style="font-size:11px;color:var(--muted);margin-top:8px;line-height:1.6;">
+        残りの店（不在・未着手）から、回る店を選べます。
+      </div>
+    </div>
+
     <div id="driver-location-area" style="display:none;margin-top:8px;">
       <a id="driver-location-link" href="#" target="_blank" style="display:inline-flex;align-items:center;gap:6px;padding:12px 20px;background:var(--blue);color:white;border-radius:10px;font-size:14px;font-weight:700;text-decoration:none;">
         📍 運転手の現在地を確認
@@ -735,6 +745,7 @@ async function getAssignState() {
     haifuItems: commonData.haifuItems || [{name:''},{name:''},{name:''}],
     workDay: commonData.workDay || '',
     dynamicItems: commonData.dynamicItems || [],
+    unfinishedModeOpen: commonData.unfinishedModeOpen || false,
     assignments: fresh ? (carData.assignments || {}) : {},
     returned: fresh ? (carData.returned || []) : [],
     paused: fresh ? (carData.paused || {}) : {},
@@ -1409,6 +1420,7 @@ async function updateDriverLocationBar() {
 // ===== 不在店モード（3〜4日目：不在店セルフ選択）=====
 let absentSelectedIds = new Set();  // 選択中の不在店レコードID
 let absentClaimedRecords = [];      // 自分が回ると決めた不在店レコード
+let unfinishedMode = false;         // true=未完了モード（不在＋未着手）、false=不在のみ
 
 // グループの遅フラグ判定用にルート文字を返す
 function absentRouteLetter(g, recs) {
@@ -1417,12 +1429,16 @@ function absentRouteLetter(g, recs) {
   return hasOsoi ? letter + '遅' : letter;
 }
 
-async function enterAbsentMode() {
+async function enterAbsentMode(includeUnfinished) {
+  unfinishedMode = !!includeUnfinished;
   document.getElementById('work-screen').style.display = 'none';
   document.getElementById('waiting-screen').style.display = 'none';
   document.getElementById('return-footer').style.display = 'none';
   document.getElementById('login-screen').style.display = 'none';
   document.getElementById('absent-screen').style.display = 'block';
+  // ヘッダーのタイトルをモードに応じて変更
+  const titleEl = document.querySelector('#absent-screen .app-title');
+  if (titleEl) titleEl.textContent = unfinishedMode ? '🟠 未完了モード' : '🔴 不在店モード';
   const nameEl = document.getElementById('absent-worker-name');
   if (nameEl) nameEl.textContent = currentWorker + ' さん';
   await loadAbsentStores();
@@ -1467,8 +1483,9 @@ async function loadAbsentStores() {
       return;
     }
 
-    // 当月の不在レコードを全部取得
-    const query = `文字列__1行_ = "${currentMonth}" and ドロップダウン in ("不在") order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
+    // 当月のレコードを取得（不在のみ or 未完了＝完了以外＝不在＋未着手＋空）
+    const statusClause = unfinishedMode ? 'not in ("完了")' : 'in ("不在")';
+    const query = `文字列__1行_ = "${currentMonth}" and ドロップダウン ${statusClause} order by 文字列__1行__4 asc, 数値_1 asc limit 500`;
     const absentRecs = await kintoneGet(APP_NABON, TOKEN_NABON, query);
 
     // 自分の号車のルート（遅含む）の不在店だけに絞る
@@ -1523,9 +1540,16 @@ async function loadAbsentStores() {
         const fuzai = [r['文字列__1行__11']?.value, r['文字列__1行__12']?.value, r['文字列__1行__13']?.value].filter(Boolean);
         const nabon = parseInt(r['数値_2']?.value) || 0;  // 通常納本数（冊数）
         const comment = r['文字列__1行__9']?.value || '';  // コメント
+        const status = r['ドロップダウン']?.value || '';   // 不在 or 未着手/空
+        const isFuzai = status === '不在';
         const claimedBy = claims[recId];
         const mineClaim = claimedBy === currentWorker;
         const takenByOther = claimedBy && claimedBy !== currentWorker;
+
+        // ステータスバッジ（未完了モードで不在/未着手を区別）
+        const statusBadge = isFuzai
+          ? '<span style="font-size:10px;color:#fff;font-weight:700;background:#e08a1a;padding:1px 6px;border-radius:4px;">🚫不在</span>'
+          : '<span style="font-size:10px;color:#fff;font-weight:700;background:#5a8ac4;padding:1px 6px;border-radius:4px;">⬜未着手</span>';
 
         return `
           <div style="background:var(--card);border-radius:8px;padding:12px;margin-bottom:8px;border:2px solid ${takenByOther ? 'var(--border)' : (isOsoi ? '#d42020' : 'var(--amber)')};${takenByOther ? 'opacity:0.55;' : ''}">
@@ -1534,6 +1558,7 @@ async function loadAbsentStores() {
               <div style="flex:1;">
                 <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
                   <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:1px 5px;border-radius:4px;">${groupCode}</span>
+                  ${unfinishedMode ? statusBadge : ''}
                   ${isOsoi ? '<span style="font-size:10px;color:#fff;font-weight:900;background:#d42020;padding:1px 5px;border-radius:4px;">⏰遅</span>' : ''}
                   <span style="font-size:10px;color:#1a5cd4;font-weight:700;background:#e8f0ff;padding:1px 6px;border-radius:4px;">📦${nabon}冊</span>
                   ${takenByOther ? `<span style="font-size:10px;color:#fff;font-weight:700;background:#888;padding:1px 6px;border-radius:4px;">✋ ${claimedBy}さん担当中</span>` : ''}
@@ -1810,10 +1835,13 @@ function showWaitingScreen() {
   document.getElementById('work-screen').style.display = 'none';
   document.getElementById('return-footer').style.display = 'none';
   document.getElementById('waiting-screen').style.display = 'block';
-  // 受付停止状態を初期表示
+  // 受付停止状態を初期表示＋未完了モード解放フラグの確認
   getAssignState().then(state => {
     const isPaused = (state.paused || {})[currentWorker] === true;
     updatePauseUI(isPaused);
+    // 権限者が未完了モードを解放していれば、ボタンを表示
+    const area = document.getElementById('unfinished-mode-area');
+    if (area) area.style.display = state.unfinishedModeOpen ? 'block' : 'none';
   }).catch(() => {});
   // 割当をポーリング
   pollAssignment();

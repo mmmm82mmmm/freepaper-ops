@@ -249,6 +249,7 @@ body.text-xlarge .error-box{font-size:19px;}
     <div class="tab" onclick="switchTab('setup')">⚙️ 準備設定</div>
     <div class="tab" onclick="switchTab('assign')">👥 割当</div>
     <div class="tab" onclick="switchTab('revisit')">🔄 不在再訪<span id="revisit-tab-badge" style="display:none;background:#d42020;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:3px;font-weight:900;">0</span></div>
+    <div class="tab" onclick="switchTab('unfinished')">📋 未完了<span id="unfinished-tab-badge" style="display:none;background:#e08a1a;color:#fff;font-size:9px;padding:1px 5px;border-radius:8px;margin-left:3px;font-weight:900;">0</span></div>
   </div>
 </div>
 
@@ -446,6 +447,45 @@ body.text-xlarge .error-box{font-size:19px;}
   </div>
 </div>
 
+<!-- 未完了タブ（不在＋未着手の俯瞰＋モード解放） -->
+<div class="screen" id="screen-unfinished">
+  <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:14px;">
+    <div style="font-size:14px;font-weight:900;margin-bottom:4px;">📋 未完了一覧（不在＋未着手）</div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.6;">
+      まだ完了していない店（不在・未着手）を、ルート別に俯瞰できます。<br>
+      終盤で「残りを全員で潰す」時に、作業者の<strong>未完了モード</strong>を解放できます。
+    </div>
+  </div>
+
+  <!-- 未完了モード解放トグル -->
+  <div style="background:#fff8f0;border:2px solid #e08a1a;border-radius:10px;padding:14px;margin-bottom:14px;">
+    <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;flex-wrap:wrap;">
+      <div style="flex:1;min-width:180px;">
+        <div style="font-size:13px;font-weight:900;color:#e08a1a;">🟠 作業者の「未完了モード」</div>
+        <div style="font-size:10px;color:var(--muted);margin-top:2px;line-height:1.5;">
+          解放すると、全作業者の待機画面に「未完了モード」ボタンが出現し、<br>不在＋未着手の店を自分で選んで回れるようになります。
+        </div>
+      </div>
+      <button id="unfinished-release-btn" onclick="toggleUnfinishedRelease()" style="padding:12px 18px;background:#888;color:#fff;border:none;border-radius:8px;font-weight:900;font-size:13px;cursor:pointer;white-space:nowrap;">
+        解放する
+      </button>
+    </div>
+    <div id="unfinished-release-status" style="font-size:11px;font-weight:700;margin-top:8px;"></div>
+  </div>
+
+  <!-- フィルタ -->
+  <div style="display:flex;align-items:center;gap:8px;margin-bottom:10px;flex-wrap:wrap;">
+    <div style="font-size:11px;color:var(--muted);font-weight:700;">ルートで絞り込み:</div>
+    <select id="unfinished-filter" onchange="renderUnfinished()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:'Noto Sans JP',sans-serif;font-size:11px;background:var(--card);">
+      <option value="">全ルート</option>
+    </select>
+    <div style="flex:1"></div>
+    <div style="font-size:11px;font-weight:700;color:#e08a1a;" id="unfinished-summary"></div>
+  </div>
+
+  <div id="unfinished-list-main"></div>
+</div>
+
 <!-- 更新ボタン -->
 <button class="refresh-btn" id="refresh-btn" onclick="loadData()">🔄</button>
 
@@ -574,6 +614,8 @@ function mergeState(common, carData) {
     drivers: common.drivers || {},
     haifuItems: common.haifuItems || [{name:''},{name:''},{name:''}],
     workDay: common.workDay || '',
+    dynamicItems: common.dynamicItems || [],
+    unfinishedModeOpen: common.unfinishedModeOpen || false,
     // 今日のデータのみ採用。昨日以前なら空（＝昨日のゴミを読み込まない）
     assignments: fresh ? (carData.assignments || {}) : {},
     returned: fresh ? (carData.returned || []) : [],
@@ -593,6 +635,8 @@ function extractCommon(state) {
     drivers: state.drivers || {},
     haifuItems: state.haifuItems || [{name:''},{name:''},{name:''}],
     workDay: state.workDay || '',
+    dynamicItems: state.dynamicItems || [],
+    unfinishedModeOpen: state.unfinishedModeOpen || false,
     updatedAt: new Date().toISOString()
   };
 }
@@ -1022,6 +1066,7 @@ function switchTab(tab, el) {
   if (tab === 'assign') { renderAssign(); applyCarFilter(); }
   if (tab === 'revisit') renderRevisit();
   if (tab === 'setup') { renderCars(); renderRouteCars(); }
+  if (tab === 'unfinished') renderUnfinished();
 }
 
 // 車フィルタを戻り待ちエリアにも適用
@@ -1729,6 +1774,126 @@ function renderRevisit() {
       }).join('');
     }
   }
+}
+
+// ===== 未完了タブ（不在＋未着手の俯瞰＋モード解放）=====
+function renderUnfinished() {
+  // 解放ボタンの状態を反映
+  const released = !!(assignState && assignState.unfinishedModeOpen);
+  const btn = document.getElementById('unfinished-release-btn');
+  const status = document.getElementById('unfinished-release-status');
+  if (btn) {
+    btn.textContent = released ? '解放を解除' : '解放する';
+    btn.style.background = released ? '#d42020' : '#e08a1a';
+  }
+  if (status) {
+    status.innerHTML = released
+      ? '<span style="color:#2a8a4a;">✅ 現在、全作業者が未完了モードを使えます</span>'
+      : '<span style="color:var(--muted);">現在は解放していません（作業者は不在店モードのみ）</span>';
+  }
+
+  // 未完了（完了・不在以外＝未着手/空）と不在 を集める
+  const unfinished = allRecords.filter(r => {
+    const st = r['ドロップダウン']?.value || '';
+    return st !== '完了'; // 不在＋未着手＋空
+  });
+
+  // フィルタのルート選択肢を用意
+  const filterEl = document.getElementById('unfinished-filter');
+  const routes = [...new Set(unfinished.map(r => (r['文字列__1行__4']?.value || '').toUpperCase()).filter(Boolean))].sort();
+  if (filterEl && filterEl.options.length <= 1) {
+    routes.forEach(rt => {
+      const o = document.createElement('option'); o.value = rt; o.textContent = 'ルート' + rt; filterEl.appendChild(o);
+    });
+  }
+  const currentFilter = filterEl ? filterEl.value : '';
+
+  // バッジ更新
+  const badge = document.getElementById('unfinished-tab-badge');
+  if (badge) {
+    if (unfinished.length > 0) { badge.style.display = 'inline-block'; badge.textContent = unfinished.length; }
+    else badge.style.display = 'none';
+  }
+
+  const filtered = currentFilter ? unfinished.filter(r => (r['文字列__1行__4']?.value || '').toUpperCase() === currentFilter) : unfinished;
+
+  // ルート別にまとめてグループ順で並べる
+  const byRoute = {};
+  filtered.forEach(r => {
+    const rt = (r['文字列__1行__4']?.value || '?').toUpperCase();
+    if (!byRoute[rt]) byRoute[rt] = [];
+    byRoute[rt].push(r);
+  });
+  Object.values(byRoute).forEach(arr => arr.sort((a,b) => {
+    const ga = a['文字列__1行__0']?.value||'', gb = b['文字列__1行__0']?.value||'';
+    return (parseFloat(ga.replace(/[^0-9.]/g,''))||0) - (parseFloat(gb.replace(/[^0-9.]/g,''))||0);
+  }));
+
+  const summary = document.getElementById('unfinished-summary');
+  const absentCount = filtered.filter(r => r['ドロップダウン']?.value === '不在').length;
+  const todoCount = filtered.length - absentCount;
+  if (summary) summary.textContent = `未完了 ${filtered.length}件（不在${absentCount} / 未着手${todoCount}）`;
+
+  const main = document.getElementById('unfinished-list-main');
+  if (!main) return;
+  if (filtered.length === 0) {
+    main.innerHTML = '<div style="text-align:center;padding:30px;color:var(--muted);background:var(--card);border-radius:10px;font-size:13px;">🎉 未完了の店はありません</div>';
+    return;
+  }
+
+  main.innerHTML = Object.keys(byRoute).sort().map(rt => {
+    const recs = byRoute[rt];
+    const items = recs.map(r => {
+      const g = r['文字列__1行__0']?.value || '';
+      const name = r['文字列__1行__1']?.value || '';
+      const bldg = r['文字列__1行__2']?.value || '';
+      const addr = r['文字列__1行__8']?.value || '';
+      const nabon = parseInt(r['数値_2']?.value) || 0;
+      const comment = r['文字列__1行__9']?.value || '';
+      const st = r['ドロップダウン']?.value || '';
+      const isFuzai = st === '不在';
+      const isOsoi = (r['チェックボックス_0']?.value || []).length > 0;
+      const stBadge = isFuzai
+        ? '<span style="font-size:9px;color:#fff;background:#e08a1a;padding:1px 5px;border-radius:3px;font-weight:700;">🚫不在</span>'
+        : '<span style="font-size:9px;color:#fff;background:#5a8ac4;padding:1px 5px;border-radius:3px;font-weight:700;">⬜未着手</span>';
+      return `
+        <div style="background:var(--card);border-radius:8px;padding:10px 12px;margin-bottom:6px;border-left:4px solid ${isFuzai ? '#e08a1a' : '#5a8ac4'};">
+          <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
+            <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:1px 5px;border-radius:4px;">${g}</span>
+            ${stBadge}
+            ${isOsoi ? '<span style="font-size:9px;color:#fff;background:#d42020;padding:1px 5px;border-radius:3px;font-weight:900;">⏰遅</span>' : ''}
+            <span style="font-size:10px;color:#1a5cd4;font-weight:700;background:#e8f0ff;padding:1px 5px;border-radius:3px;">📦${nabon}冊</span>
+            <span style="font-size:13px;font-weight:900;">${name}</span>
+          </div>
+          <div style="font-size:10px;color:var(--muted);margin-top:2px;">${bldg}${addr ? ` / 📍${addr}` : ''}</div>
+          ${comment ? `<div style="font-size:11px;color:#7a5a00;background:#fff8e8;padding:3px 7px;border-radius:4px;margin-top:4px;font-weight:700;">💬 ${comment}</div>` : ''}
+        </div>`;
+    }).join('');
+    return `
+      <div style="margin-bottom:16px;">
+        <div style="font-size:13px;font-weight:900;padding:6px 10px;background:var(--bg);border-radius:6px;margin-bottom:8px;">📍 ルート${rt}（${recs.length}件）</div>
+        ${items}
+      </div>`;
+  }).join('');
+}
+
+async function toggleUnfinishedRelease() {
+  const btn = document.getElementById('unfinished-release-btn');
+  const willRelease = !(assignState && assignState.unfinishedModeOpen);
+  if (willRelease) {
+    if (!confirm('未完了モードを解放しますか？\n\n全作業者の待機画面に「🟠 未完了モード」ボタンが表示され、\n不在＋未着手の店を自分で選んで回れるようになります。')) return;
+  } else {
+    if (!confirm('未完了モードの解放を解除しますか？\n\n作業者は不在店モードのみ使えるようになります。')) return;
+  }
+  btn.disabled = true; btn.textContent = '保存中...';
+  try {
+    assignState.unfinishedModeOpen = willRelease;
+    await saveCommonData();
+    renderUnfinished();
+  } catch(e) {
+    alert('保存に失敗しました: ' + e.message);
+  }
+  btn.disabled = false;
 }
 
 async function addToRevisit(groupCode, recordId) {
