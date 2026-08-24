@@ -1354,23 +1354,20 @@ function parseAddr(addr) {
   return null; // パース不可
 }
 
-// ブロック → 緯度経度（実測2点から校正した格子ベクトルを使用）
+// ブロック → 緯度経度（実測2点から校正）
 //   校正点A: 南1条西1丁目 南西角 = (43.058854, 141.355788)
 //   校正点B: 南7条西4丁目 北東角 = (43.052455, 141.352489)
-//   → 南1条ぶんベクトルS・西1丁目ぶんベクトルW を逆算（街区の傾き込み）
-//   ブロック(jou,chome)の中心 = A + (jou-0.5)*S + (chome-0.5)*W
+//   S=南へ1条ぶん, W=西へ1丁目ぶん のベクトル。
+//   各ブロックは「南西角」の位置に描画（校正点Aと直接一致するのでズレ最小）。
+//   南M条西N丁目の南西角 = A + (M-1)*S + (N-1)*W
 function blockToLatLng(p) {
-  const A_LAT = 43.058854, A_LNG = 141.355788; // 南1条西1丁目 南西角
-  // 南1条ぶん（南へ1ブロック）: lat/lng差
+  const A_LAT = 43.058854, A_LNG = 141.355788;
   const S_LAT = -0.0012695, S_LNG = 0.0000352;
-  // 西1丁目ぶん（西へ1ブロック）: lat/lng差
   const W_LAT = -0.0000257, W_LNG = -0.0017374;
-  // 南北・東西の符号（東は西の逆、北は南の逆）
   const jSign = (p.ns === '南') ? +1 : -1;
   const cSign = (p.ew === '西') ? +1 : -1;
-  // ブロック中心（南西角から半ブロックずらす）
-  const jN = jSign * (p.jou - 0.5);
-  const cN = cSign * (p.chome - 0.5);
+  const jN = jSign * (p.jou - 1);
+  const cN = cSign * (p.chome - 1);
   const lat = A_LAT + jN * S_LAT + cN * W_LAT;
   const lng = A_LNG + jN * S_LNG + cN * W_LNG;
   return [lat, lng];
