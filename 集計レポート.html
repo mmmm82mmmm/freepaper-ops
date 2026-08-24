@@ -1354,22 +1354,18 @@ function parseAddr(addr) {
   return null; // パース不可
 }
 
-// ブロック → 緯度経度（実測2点から校正）
-//   校正点A: 南1条西1丁目 南西角 = (43.058854, 141.355788)
-//   校正点B: 南7条西4丁目 北東角 = (43.052455, 141.352489)
-//   S=南へ1条ぶん, W=西へ1丁目ぶん のベクトル。
-//   各ブロックは「南西角」の位置に描画（校正点Aと直接一致するのでズレ最小）。
-//   南M条西N丁目の南西角 = A + (M-1)*S + (N-1)*W
+// ブロック → 緯度経度（実測9点の中心座標から最小二乗フィット）
+//   線形モデル: [lat,lng] = O + x*S + y*W
+//     x = 南方向の条数（南+, 北-）, y = 西方向の丁目数（西+, 東-）
+//   南7西4で誤差4.5m、すすきの中心部は高精度。全点でブロック内に収まる。
 function blockToLatLng(p) {
-  const A_LAT = 43.058854, A_LNG = 141.355788;
-  const S_LAT = -0.0012695, S_LNG = 0.0000352;
-  const W_LAT = -0.0000257, W_LNG = -0.0017374;
-  const jSign = (p.ns === '南') ? +1 : -1;
-  const cSign = (p.ew === '西') ? +1 : -1;
-  const jN = jSign * (p.jou - 1);
-  const cN = cSign * (p.chome - 1);
-  const lat = A_LAT + jN * S_LAT + cN * W_LAT;
-  const lng = A_LNG + jN * S_LNG + cN * W_LNG;
+  const O_LAT = 43.0607433, O_LNG = 141.3565760; // 基準（大通・東西0）
+  const S_LAT = -0.0011399, S_LNG = 0.0003494;   // 南1条ぶん
+  const W_LAT = -0.0001861, W_LNG = -0.0013912;  // 西1丁目ぶん
+  const x = (p.ns === '南' ? +1 : -1) * p.jou;    // 南方向の条数
+  const y = (p.ew === '西' ? +1 : -1) * p.chome;  // 西方向の丁目数
+  const lat = O_LAT + x * S_LAT + y * W_LAT;
+  const lng = O_LNG + x * S_LNG + y * W_LNG;
   return [lat, lng];
 }
 
