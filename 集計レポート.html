@@ -1354,17 +1354,25 @@ function parseAddr(addr) {
   return null; // パース不可
 }
 
-// ブロック → 緯度経度（札幌の碁盤目を利用）
-// 基準: 大通(南北0)西1丁目 ≈ (43.0605, 141.3469)
+// ブロック → 緯度経度（実測2点から校正した格子ベクトルを使用）
+//   校正点A: 南1条西1丁目 南西角 = (43.058854, 141.355788)
+//   校正点B: 南7条西4丁目 北東角 = (43.052455, 141.352489)
+//   → 南1条ぶんベクトルS・西1丁目ぶんベクトルW を逆算（街区の傾き込み）
+//   ブロック(jou,chome)の中心 = A + (jou-0.5)*S + (chome-0.5)*W
 function blockToLatLng(p) {
-  const BASE_LAT = 43.0605;   // 大通あたり
-  const BASE_LNG = 141.3469;  // 西1丁目あたり
-  const D_JOU = 0.000813;     // 1条ぶんの緯度差（南に約90m）
-  const D_CHOME = 0.001085;   // 1丁目ぶんの経度差（西に約80m→経度換算）
-  const latSign = (p.ns === '南') ? -1 : +1;
-  const lngSign = (p.ew === '西') ? -1 : +1;
-  const lat = BASE_LAT + latSign * p.jou * D_JOU;
-  const lng = BASE_LNG + lngSign * (p.chome - 1) * D_CHOME;
+  const A_LAT = 43.058854, A_LNG = 141.355788; // 南1条西1丁目 南西角
+  // 南1条ぶん（南へ1ブロック）: lat/lng差
+  const S_LAT = -0.0012695, S_LNG = 0.0000352;
+  // 西1丁目ぶん（西へ1ブロック）: lat/lng差
+  const W_LAT = -0.0000257, W_LNG = -0.0017374;
+  // 南北・東西の符号（東は西の逆、北は南の逆）
+  const jSign = (p.ns === '南') ? +1 : -1;
+  const cSign = (p.ew === '西') ? +1 : -1;
+  // ブロック中心（南西角から半ブロックずらす）
+  const jN = jSign * (p.jou - 0.5);
+  const cN = cSign * (p.chome - 0.5);
+  const lat = A_LAT + jN * S_LAT + cN * W_LAT;
+  const lng = A_LNG + jN * S_LNG + cN * W_LNG;
   return [lat, lng];
 }
 
