@@ -5,6 +5,8 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>集計・レポート</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
 <style>
 :root {
   --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888;
@@ -116,6 +118,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div class="tab" onclick="switchTab('prevmon', this)">📊 前月号消化</div>
     <div class="tab" onclick="switchTab('haifu', this)">📦 配布物</div>
     <div class="tab" onclick="switchTab('shouka', this)">🔥 消化分析</div>
+    <div class="tab" onclick="switchTab('map', this)">🗾 配布マップ</div>
   </div>
 </div>
 
@@ -227,6 +230,27 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <!-- 消化分析 -->
 <div class="screen container" id="screen-shouka">
   <div id="shouka-content"></div>
+</div>
+
+<div class="screen container" id="screen-map">
+  <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:12px;">
+    <div style="font-size:15px;font-weight:900;margin-bottom:6px;">🗾 ブロック別 配布マップ</div>
+    <div style="font-size:12px;color:var(--muted);line-height:1.6;">
+      住所（南○条西○丁目）ごとに納本数を集計し、地図上に色分けした円で表示します。<br>
+      円の大きさ・色が濃いほど、そのブロックへの配布冊数が多いことを表します。
+    </div>
+    <div style="margin-top:10px;display:flex;align-items:center;gap:10px;flex-wrap:wrap;">
+      <label style="font-size:12px;font-weight:700;">集計対象:</label>
+      <select id="map-metric" onchange="renderMap()" style="padding:6px 10px;border:2px solid var(--border);border-radius:6px;font-family:inherit;font-size:12px;">
+        <option value="数値">納本数</option>
+        <option value="数値_3">MAP冊数</option>
+        <option value="数値_2">通常納本数</option>
+      </select>
+      <span id="map-summary" style="font-size:12px;font-weight:700;color:var(--blue);"></span>
+    </div>
+  </div>
+  <div id="map-canvas" style="width:100%;height:600px;border-radius:10px;overflow:hidden;border:2px solid var(--border);"></div>
+  <div id="map-legend" style="background:var(--card);border-radius:10px;padding:12px;margin-top:12px;font-size:11px;"></div>
 </div>
 
 <script>
@@ -1304,6 +1328,130 @@ function switchTab(tab, el) {
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   el.classList.add('active');
   document.getElementById('screen-' + tab).classList.add('active');
+  if (tab === 'map') {
+    // 地図はタブ表示後に初期化（非表示要素だと描画されないため）
+    setTimeout(() => renderMap(), 50);
+  }
+}
+
+// ===== 配布マップ =====
+let _leafletMap = null;
+let _mapLayer = null;
+
+// 住所文字列（"6-4", "北5-2", "4-東1", "北8-東1"）→ {ns:'南'|'北', jou, ew:'西'|'東', chome}
+function parseAddr(addr) {
+  addr = (addr || '').trim();
+  // 北の判定
+  let ns = '南', ew = '西';
+  let s = addr;
+  if (s.startsWith('北')) { ns = '北'; s = s.slice(1); }
+  // 東の判定（"-東N"）
+  const eastMatch = s.match(/^(\d+)-東(\d+)$/);
+  if (eastMatch) return { ns, jou: parseInt(eastMatch[1]), ew: '東', chome: parseInt(eastMatch[2]) };
+  // 標準（"N-N"）
+  const stdMatch = s.match(/^(\d+)-(\d+)$/);
+  if (stdMatch) return { ns, jou: parseInt(stdMatch[1]), ew, chome: parseInt(stdMatch[2]) };
+  return null; // パース不可
+}
+
+// ブロック → 緯度経度（札幌の碁盤目を利用）
+// 基準: 大通(南北0)西1丁目 ≈ (43.0605, 141.3469)
+function blockToLatLng(p) {
+  const BASE_LAT = 43.0605;   // 大通あたり
+  const BASE_LNG = 141.3469;  // 西1丁目あたり
+  const D_JOU = 0.000813;     // 1条ぶんの緯度差（南に約90m）
+  const D_CHOME = 0.001085;   // 1丁目ぶんの経度差（西に約80m→経度換算）
+  const latSign = (p.ns === '南') ? -1 : +1;
+  const lngSign = (p.ew === '西') ? -1 : +1;
+  const lat = BASE_LAT + latSign * p.jou * D_JOU;
+  const lng = BASE_LNG + lngSign * (p.chome - 1) * D_CHOME;
+  return [lat, lng];
+}
+
+// 冊数 → 色（画像の凡例を参考に段階分け）
+function booksColor(n) {
+  if (n <= 0) return '#9e9e9e';
+  if (n < 20) return '#fdf6b2';
+  if (n < 40) return '#f5d033';
+  if (n < 60) return '#f0a020';
+  if (n < 70) return '#e07818';
+  if (n < 90) return '#d42020';
+  if (n < 150) return '#a01515';
+  if (n < 200) return '#5ac8e0';
+  if (n < 250) return '#2080d4';
+  if (n < 350) return '#1550a0';
+  return '#0a2a70';
+}
+function booksRadius(n) {
+  if (n <= 0) return 10;
+  return Math.min(10 + Math.sqrt(n) * 1.6, 34);
+}
+
+function renderMap() {
+  const metric = document.getElementById('map-metric')?.value || '数値';
+  // ブロックごとに集計
+  const blocks = {}; // key: 住所文字列 → {sum, count, latlng}
+  let parsed = 0, unparsed = 0;
+  allRecords.forEach(r => {
+    const addr = getVal(r, '文字列__1行__8');
+    const p = parseAddr(addr);
+    if (!p) { unparsed++; return; }
+    parsed++;
+    if (!blocks[addr]) {
+      blocks[addr] = { sum: 0, count: 0, latlng: blockToLatLng(p), addr };
+    }
+    blocks[addr].sum += getNum(r, metric);
+    blocks[addr].count++;
+  });
+
+  const blockArr = Object.values(blocks);
+  const totalBooks = blockArr.reduce((s,b) => s + b.sum, 0);
+  const summ = document.getElementById('map-summary');
+  if (summ) summ.textContent = `${blockArr.length}ブロック / 合計${totalBooks}冊${unparsed ? `（住所解析不可 ${unparsed}件）` : ''}`;
+
+  // 地図初期化
+  const canvas = document.getElementById('map-canvas');
+  if (!_leafletMap) {
+    _leafletMap = L.map(canvas).setView([43.055, 141.350], 15);
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      attribution: '© OpenStreetMap', maxZoom: 19
+    }).addTo(_leafletMap);
+  } else {
+    _leafletMap.invalidateSize();
+  }
+  // 既存レイヤー削除
+  if (_mapLayer) { _leafletMap.removeLayer(_mapLayer); }
+  _mapLayer = L.layerGroup().addTo(_leafletMap);
+
+  const bounds = [];
+  blockArr.forEach(b => {
+    const color = booksColor(b.sum);
+    const radius = booksRadius(b.sum);
+    const marker = L.circleMarker(b.latlng, {
+      radius, fillColor: color, color: '#fff', weight: 2, opacity: 1, fillOpacity: 0.85
+    });
+    marker.bindTooltip(`${b.addr}（${b.count}店）<br><b>${b.sum}冊</b>`, { direction: 'top' });
+    // 冊数ラベル
+    const label = L.divIcon({
+      className: 'map-book-label',
+      html: `<div style="font-size:10px;font-weight:900;color:${b.sum>=150?'#fff':'#222'};text-align:center;width:40px;margin-left:-20px;margin-top:-6px;text-shadow:0 0 2px ${b.sum>=150?'#000':'#fff'};">${b.sum}</div>`,
+      iconSize: [0,0]
+    });
+    marker.addTo(_mapLayer);
+    L.marker(b.latlng, { icon: label, interactive: false }).addTo(_mapLayer);
+    bounds.push(b.latlng);
+  });
+  if (bounds.length) _leafletMap.fitBounds(bounds, { padding: [30,30] });
+
+  // 凡例
+  const legend = document.getElementById('map-legend');
+  if (legend) {
+    const steps = [[0,'0'],[1,'1〜'],[20,'20〜'],[40,'40〜'],[60,'60〜'],[70,'70〜'],[90,'90〜'],[150,'150〜'],[200,'200〜'],[250,'250〜'],[350,'350〜']];
+    legend.innerHTML = '<div style="font-weight:700;margin-bottom:6px;">凡例（冊数）</div>' +
+      '<div style="display:flex;flex-wrap:wrap;gap:8px;">' +
+      steps.map(([n,lbl]) => `<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;border-radius:50%;background:${booksColor(n)};border:1px solid #fff;box-shadow:0 0 0 1px #ccc;"></span>${lbl}</span>`).join('') +
+      '</div>';
+  }
 }
 
 function exportCSV() {
