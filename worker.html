@@ -656,6 +656,80 @@ async function kintoneUpdate(appId, token, id, fields) {
   return await res.json();
 }
 
+// ===== 前月号レコード（返却数の記録先）=====
+// 返却数は「回収した号」＝前月号のレコードに記録する。
+// 例）9月号の作業で回収した冊数 → 8月号レコードの数値_0 に入る
+let prevMonth = '';     // 例: 2026年8月号
+let prevMonthMap = {};  // 突合キー(ID:xxx / NAME:xxx) -> { id, henkyaku }
+
+function calcPrevMonth(month) {
+  const m = (month || '').match(/(\d{4})年(\d{1,2})月号/);
+  if (!m) return '';
+  let y = parseInt(m[1], 10);
+  let mo = parseInt(m[2], 10) - 1;
+  if (mo <= 0) { mo = 12; y -= 1; }
+  return `${y}年${mo}月号`;
+}
+
+// 店舗の突合キー。設置店IDが未設定（空・「なし」）の店舗が約100件あるうえ、
+// 号によってIDが付いたり付かなかったりするため、IDと店名の両方で引けるようにする。
+// （店名は同一号の中で重複が無いことを確認済み）
+function storeIdKeyOf(r) {
+  const sid = (r?.['文字列__1行__5']?.value || '').trim();
+  return (sid && sid !== 'なし') ? 'ID:' + sid : '';
+}
+function storeNameKeyOf(r) {
+  const name = (r?.['文字列__1行__1']?.value || '').trim();
+  return name ? 'NAME:' + name : '';
+}
+
+// 表示中のレコードに対応する前月号レコードをまとめて取得する。
+// 設置店IDは号によって未設定のことがあるため、IDと店名の両方で問い合わせる。
+async function loadPrevMonthMap() {
+  prevMonthMap = {};
+  prevMonth = calcPrevMonth(currentMonth);
+  if (!prevMonth || !records.length) return;
+
+  // 引用符やバックスラッシュを含む値はクエリを壊すため対象から除外する（実データには存在しない）
+  const safe = v => v.indexOf('"') < 0 && v.indexOf(String.fromCharCode(92)) < 0;
+  const ids = [...new Set(records.map(r => (r['文字列__1行__5']?.value || '').trim()).filter(v => v && safe(v)))];
+  const names = [...new Set(records.map(r => (r['文字列__1行__1']?.value || '').trim()).filter(v => v && safe(v)))];
+
+  const runQuery = async (cond) => {
+    const q = `文字列__1行_ = "${prevMonth}" and ${cond} limit 500`;
+    try {
+      const recs = await kintoneGet(APP_NABON, TOKEN_NABON, q);
+      recs.forEach(r => {
+        const info = { id: r['$id'].value, henkyaku: r['数値_0']?.value || '' };
+        const idKey = storeIdKeyOf(r);
+        const nameKey = storeNameKeyOf(r);
+        if (idKey) prevMonthMap[idKey] = info;
+        if (nameKey) prevMonthMap[nameKey] = info;  // IDが片方の号にしか無い店舗の救済用
+      });
+    } catch (e) {
+      // 取得に失敗しても作業は継続できるようにする（カードに記録不可の旨を表示）
+      console.error('前月号レコードの取得に失敗', e);
+    }
+  };
+
+  for (let i = 0; i < ids.length; i += 50) {
+    const clause = ids.slice(i, i + 50).map(x => `"${x}"`).join(',');
+    await runQuery(`文字列__1行__5 in (${clause})`);
+  }
+  for (let i = 0; i < names.length; i += 50) {
+    const clause = names.slice(i, i + 50).map(x => `"${x}"`).join(',');
+    await runQuery(`文字列__1行__1 in (${clause})`);
+  }
+}
+
+// レコードに対応する前月号レコードを引く（設置店ID優先、無ければ店名で突合）
+function prevInfoOf(r) {
+  const idKey = storeIdKeyOf(r);
+  const nameKey = storeNameKeyOf(r);
+  const prev = (idKey && prevMonthMap[idKey]) || (nameKey && prevMonthMap[nameKey]) || null;
+  return { key: idKey || nameKey, prev };
+}
+
 // ===== 分割データアクセス層（__common__ / __car1__ / __car2__）=====
 let MY_CAR = 0; // この作業者の号車（common.carsから判定）
 
@@ -828,6 +902,7 @@ async function startWorkDirect() {
     document.getElementById('return-footer').style.display = 'block'; document.getElementById('return-footer').style.visibility = 'visible';
     document.getElementById('work-title').textContent = `📦 ${currentMonth}`;
     document.getElementById('work-worker').textContent = `${currentWorker} さん`;
+    await loadPrevMonthMap();
     renderCards();
   } catch(e) {
     document.getElementById('loading-screen').style.display = 'none';
@@ -930,6 +1005,7 @@ async function startWork() {
     document.getElementById('work-title').textContent = `📦 ${currentMonth}`;
     document.getElementById('work-worker').textContent = `${currentWorker} さん`;
 
+    await loadPrevMonthMap();
     renderCards();
 
   } catch(e) {
@@ -1066,7 +1142,10 @@ function renderCard(r, container) {
   // 納本数の入力初期値: 既に実績入力があればその値、無ければ通常納本数（数値_2）を初期表示
   const nabonEntered = r['数値']?.value;
   const nabonVal = (nabonEntered !== undefined && nabonEntered !== '') ? nabonEntered : (r['数値_2']?.value || '');
-  const henkyakuVal = r['数値_0']?.value || '';
+  // 返却数は前月号レコードに記録されるため、表示・初期値も前月号レコードから取る
+  const prevInfo = prevInfoOf(r);
+  const henkyakuVal = prevInfo.prev ? (prevInfo.prev.henkyaku || '') : '';
+  const noPrevRec = !prevInfo.prev;
 
   // 準備物バッジ（通常納本数・MAP冊数・ラック交換・POP交換）
   const badges = `
@@ -1140,8 +1219,9 @@ function renderCard(r, container) {
       <div class="input-area" id="input-area-${recId}" style="display:none">
         <div class="input-row">
           <div class="input-group"><label>納本数</label><input type="number" id="nabon-${recId}" placeholder="未入力" min="0" inputmode="numeric" value="${nabonVal}"></div>
-          <div class="input-group"><label>返却数</label><input type="number" id="henkyaku-${recId}" placeholder="未入力" min="0" inputmode="numeric" value="${henkyakuVal}"></div>
+          <div class="input-group"><label>返却数${prevMonth ? `<span style="font-weight:400;font-size:10px;color:var(--muted);"> → ${prevMonth}へ記録</span>` : ''}</label><input type="number" id="henkyaku-${recId}" placeholder="未入力" min="0" inputmode="numeric" value="${henkyakuVal}"></div>
         </div>
+        ${noPrevRec ? `<div style="margin:2px 0 8px;font-size:11px;color:#d42020;font-weight:700;">⚠️ ${prevMonth || '前月号'}のレコードが無いため、返却数は記録されません</div>` : ''}
         <div class="btn-group">
           <button class="btn-action btn-absent" onclick="markAbsent('${recId}')">🚫 不在</button>
           <button class="btn-action btn-reset" onclick="resetInputCard('${recId}')">↩ リセット</button>
@@ -1189,6 +1269,8 @@ function openCard(recId) {
 
 // 失敗したリクエストの再試行用ストア
 const pendingUpdates = new Map();
+// 前月号レコード（返却数）の再試行用ストア: recId -> { id, data }
+const pendingPrevUpdates = new Map();
 
 async function markDone(recId) {
   const nabonRaw = document.getElementById('nabon-' + recId)?.value;
@@ -1226,11 +1308,21 @@ async function markDone(recId) {
     }
   });
 
+  // 返却数の記録先は前月号レコード（回収した号＝前月号のため）
+  const targetRec = records.find(r => r['$id'].value == recId);
+  const { prev } = prevInfoOf(targetRec);
+  if (!prev && henkyaku !== '0') {
+    const ok = confirm(`⚠️ ${prevMonth || '前月号'}のレコードが見つからないため、
+返却数 ${henkyaku}冊 は記録されません。
+
+このまま完了してよろしいですか？`);
+    if (!ok) return;
+  }
+
   const updateData = {
     'ドロップダウン': { value: '完了' },
     '文字列__1行__10': { value: currentWorker },
     '数値': { value: nabon },
-    '数値_0': { value: henkyaku },
     '文字列__複数行_': { value: memo },
     ...dynamicFields
   };
@@ -1252,14 +1344,18 @@ async function markDone(recId) {
   card.querySelectorAll('.dynamic-section,.memo-area').forEach(el => el.style.display = 'none');
 
   // ローカルレコード即時更新
-  const rec = records.find(r => r['$id'].value == recId);
-  if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; rec['数値_0'] = { value: henkyaku }; }
+  const rec = targetRec;
+  if (rec) { rec['ドロップダウン'] = { value: '完了' }; rec['数値'] = { value: nabon }; }
+  // 返却数は前月号マップ側を更新（再描画時にこの値が表示される）
+  if (prev) prev.henkyaku = henkyaku;
 
   doneCount++; todoCount = Math.max(0, todoCount - 1);
   updateProgress();
 
   // === ② バックグラウンドで送信 ===
   pendingUpdates.set(recId, updateData);
+  if (prev) pendingPrevUpdates.set(recId, { id: prev.id, data: { '数値_0': { value: henkyaku } } });
+  else pendingPrevUpdates.delete(recId);
   sendPendingUpdate(recId, '完了');
 }
 
@@ -1270,7 +1366,11 @@ async function sendPendingUpdate(recId, label) {
   const labelEl = document.getElementById('overlay-label-' + recId);
   try {
     await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, updateData);
+    // 返却数は前月号レコードへ（当月号レコードの更新が成功してから送る）
+    const prevUp = pendingPrevUpdates.get(recId);
+    if (prevUp) await kintoneUpdate(APP_NABON, TOKEN_NABON, prevUp.id, prevUp.data);
     pendingUpdates.delete(recId);
+    pendingPrevUpdates.delete(recId);
     if (iconEl) iconEl.textContent = (label === '不在' ? '❌' : '✅');
     if (labelEl) {
       labelEl.style.color = '';
@@ -1344,6 +1444,7 @@ async function markAbsent(recId) {
 
   // === ② バックグラウンドで送信 ===
   pendingUpdates.set(recId, updateData);
+  pendingPrevUpdates.delete(recId); // 不在では返却数を記録しない
   try {
     await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, updateData);
     pendingUpdates.delete(recId);
@@ -1633,6 +1734,7 @@ async function claimSelectedAbsent() {
     const recs = await kintoneGet(APP_NABON, TOKEN_NABON, `$id in (${idsClause}) order by 文字列__1行__4 asc, 数値_1 asc`);
     absentClaimedRecords = recs;
     records = recs; // 通常の作業ロジック（renderCard/markDone等）で使う配列に流用
+    await loadPrevMonthMap();
     showAbsentWorkCards();
   } catch(e) {
     alert('確保に失敗しました: ' + e.message);
@@ -1924,6 +2026,7 @@ async function loadGroup(groupCodes) {
     document.getElementById('work-screen').style.display = 'block';
     document.getElementById('return-footer').style.display = 'block'; document.getElementById('return-footer').style.visibility = 'visible';
     saveSession();
+    await loadPrevMonthMap();
     renderCards();
   } catch(e) {
     document.getElementById('loading-screen').style.display = 'none';

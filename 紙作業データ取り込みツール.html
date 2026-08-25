@@ -279,7 +279,7 @@ async function loadPreview() {
   // 更新予定の件数: 当月号レコードがあり、納本または返却が入っている
   let updateCount = 0;
   for (const p of updatePlan) {
-    if (p.currRecId && (p.nabon !== null || p.henkyaku !== null)) updateCount++;
+    if ((p.currRecId && p.nabon !== null) || (p.prevRecId && p.henkyaku !== null)) updateCount++;
   }
 
   document.getElementById('stat-total').textContent = excelRows.length;
@@ -287,7 +287,7 @@ async function loadPreview() {
   document.getElementById('stat-nomatch').textContent = noMatch;
   document.getElementById('stat-update').textContent = updateCount;
 
-  // プレビューテーブル（先頭30件）※すべて当月号レコードに書き込む
+  // プレビューテーブル（先頭30件）※納本数は当月号、返却数は前月号レコードに書き込む
   const table = document.getElementById('preview-table');
   table.innerHTML = `
     <thead>
@@ -296,6 +296,7 @@ async function loadPreview() {
         <th>${currMonth}<br>納本数(数値)</th>
         <th>${prevMonth}返却<br>(数値_0)</th>
         <th>${currMonth}<br>レコード</th>
+        <th>${prevMonth}<br>レコード</th>
       </tr>
     </thead>
     <tbody>
@@ -305,9 +306,10 @@ async function loadPreview() {
           <td style="text-align:right">${p.nabon ?? '<span style="color:#ccc">―</span>'}</td>
           <td style="text-align:right">${p.henkyaku ?? '<span style="color:#ccc">―</span>'}</td>
           <td>${p.currRecId ? `#${p.currRecId}` : '<span style="color:#d42020">❌ 無し</span>'}</td>
+          <td>${p.prevRecId ? `#${p.prevRecId}` : '<span style="color:#d42020">❌ 無し</span>'}</td>
         </tr>
       `).join('')}
-      ${updatePlan.length > 30 ? `<tr><td colspan="5" style="text-align:center;color:#888">... 他 ${updatePlan.length - 30}件</td></tr>` : ''}
+      ${updatePlan.length > 30 ? `<tr><td colspan="6" style="text-align:center;color:#888">... 他 ${updatePlan.length - 30}件</td></tr>` : ''}
     </tbody>
   `;
 
@@ -324,8 +326,8 @@ async function executeImport() {
   const currMonth = document.getElementById('currentMonth').value;
   const prevMonth = document.getElementById('prevMonth').value;
 
-  // 当月号レコードに「納本数(数値)」「返却数(数値_0)」「ステータス」をまとめて入れる
-  //   ※返却数は前月号の返却を当月号レコードの数値_0に記録する運用
+  // 当月号レコードには「納本数(数値)」「ステータス」を入れる
+  //   ※返却数(数値_0)は回収した号＝前月号のレコードに記録する
   const currUpdates = [];
   for (const p of updatePlan) {
     if (!p.currRecId) continue; // 当月号レコードが無ければスキップ
@@ -338,14 +340,19 @@ async function executeImport() {
       rec['文字列__1行__10'] = { value: '紙作業（取込）' };
       touched = true;
     }
-    if (p.henkyaku !== null) {
-      const hkNum = Number(p.henkyaku);
-      rec['数値_0'] = { value: String(isNaN(hkNum) ? 0 : hkNum) };
-      touched = true;
-    }
     if (touched) currUpdates.push({ id: p.currRecId, record: rec });
   }
-  const prevUpdates = []; // 前月号レコードは更新しない（返却も当月号に入れるため）
+
+  // 前月号レコードに返却数を記録する
+  const prevUpdates = [];
+  let henkyakuSkipped = 0;
+  for (const p of updatePlan) {
+    if (p.henkyaku === null) continue;
+    if (!p.prevRecId) { henkyakuSkipped++; continue; } // 前月号レコードが無ければ記録できない
+    const hkNum = Number(p.henkyaku);
+    prevUpdates.push({ id: p.prevRecId, record: { '数値_0': { value: String(isNaN(hkNum) ? 0 : hkNum) } } });
+  }
+  if (henkyakuSkipped > 0) log(`⚠️ 前月号レコードが無いため返却数を記録できない店舗: ${henkyakuSkipped}件`, 'error');
 
   log(`📦 ${currMonth} 更新予定: ${currUpdates.length}件`);
   log(`📦 ${prevMonth} 更新予定: ${prevUpdates.length}件`);
