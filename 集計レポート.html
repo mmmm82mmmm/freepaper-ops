@@ -108,7 +108,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <a href="index.html" style="color:#fff;text-decoration:none;font-size:18px;margin-right:6px;">←</a>
     <div class="app-title">📊 集計・レポート</div>
     <button onclick="forceReload()" title="最新データ取得（キャッシュクリア）" style="background:rgba(255,255,255,.15);color:#fff;border:none;padding:4px 10px;border-radius:6px;font-size:13px;cursor:pointer;margin-right:6px;">🔄</button>
-    <select class="month-sel" id="month-sel" onchange="loadData()"></select>
+    <select class="month-sel" id="month-sel" onchange="loadData()" title="どの号の作業を表示するかを選びます"></select>
   </div>
   <div class="tabs">
     <div class="tab active" onclick="switchTab('summary', this)">📈 サマリー</div>
@@ -295,7 +295,7 @@ async function initMonthSel() {
 
   months.forEach(label => {
     const o = document.createElement('option');
-    o.value = label; o.textContent = label;
+    o.value = label; o.textContent = label + ' 作業';  // 分析対象ではなく作業号であることを明示
     if (label === currentMonth) o.selected = true;
     sel.appendChild(o);
   });
@@ -759,7 +759,10 @@ function renderPrevMonth() {
         📊 ${prevMonthLabel} の実績消化分析
       </div>
       <div style="font-size:11px;color:var(--muted);margin-top:4px;">
-        ${prevMonthLabel}の納本数と返却数で計算（${storeData.length}店舗）
+        ${prevMonthLabel}の納本数と、${currentMonth}の作業で回収した返却数で計算（${storeData.length}店舗）
+      </div>
+      <div style="font-size:11px;color:var(--muted);margin-top:2px;">
+        ${currentMonth}の消化率は、返却を回収する次号の作業後に確定します
       </div>
     </div>
 
