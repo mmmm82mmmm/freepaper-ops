@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script src="config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>📅 作業号数設定 - FreePaper Ops</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;700;900&display=swap" rel="stylesheet">
@@ -82,7 +83,7 @@ button { font-family:inherit; font-weight:700; cursor:pointer; border:none; }
 
 <script>
 const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
-const TOKEN_NOHON = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const TOKEN_NOHON = KINTONE_CONFIG.TOKEN_NOHON;
 const APP_NOHON = 269;
 const SETTINGS_KEY = '__settings__'; // 作業月フィールドの予約値
 

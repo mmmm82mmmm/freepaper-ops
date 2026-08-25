@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script src="config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>納本データ ルックアップ一括更新</title>
 <style>
@@ -70,7 +71,7 @@
   </div>
   <div class="field">
     <label>APIトークン（納本データ管理 App ID: 269）</label>
-    <input type="text" id="apiToken" value="jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF" />
+    <input type="text" id="apiToken" value="" />
   </div>
   <div class="field">
     <label>作業月</label>
@@ -195,6 +196,12 @@ async function run() {
 
   document.getElementById('runBtn').disabled = false;
 }
+</script>
+<script>
+/* config.js のトークンをフォームへ自動入力 */
+document.addEventListener('DOMContentLoaded',function(){
+  var e_apiToken=document.getElementById('apiToken'); if(e_apiToken) e_apiToken.value=KINTONE_CONFIG.TOKEN_NOHON;
+});
 </script>
 </body>
 </html>

@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script src="config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>遅フラグ一括更新ツール</title>
 <style>
@@ -39,11 +40,11 @@
   </div>
   <div class="field">
     <label>APIトークン：設置店マスタ（App ID: 268）</label>
-    <input type="text" id="tokenMaster" value="STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg" />
+    <input type="text" id="tokenMaster" value="" />
   </div>
   <div class="field">
     <label>APIトークン：納本データ管理（App ID: 269）</label>
-    <input type="text" id="tokenNohon" value="jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF" />
+    <input type="text" id="tokenNohon" value="" />
   </div>
   <div class="field">
     <label>作業月</label>
@@ -171,6 +172,13 @@ async function run() {
   }
   document.getElementById('runBtn').disabled = false;
 }
+</script>
+<script>
+/* config.js のトークンをフォームへ自動入力 */
+document.addEventListener('DOMContentLoaded',function(){
+  var e_tokenMaster=document.getElementById('tokenMaster'); if(e_tokenMaster) e_tokenMaster.value=KINTONE_CONFIG.TOKEN_MASTER;
+  var e_tokenNohon=document.getElementById('tokenNohon'); if(e_tokenNohon) e_tokenNohon.value=KINTONE_CONFIG.TOKEN_NOHON;
+});
 </script>
 </body>
 </html>

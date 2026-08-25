@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script src="config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>📊 マスタ通常納本数更新ツール</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
@@ -70,7 +71,7 @@ button { font-family:inherit; font-weight:700; cursor:pointer; border:none; }
   <div class="card" id="config-card" style="display:none;">
     <div class="section-title">🔑 ② APIトークン</div>
     <label>設置店マスタ (App 268) のAPIトークン</label>
-    <input type="text" id="token" value="STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg" />
+    <input type="text" id="token" value="" />
     <button class="btn-primary" onclick="loadPreview()">プレビューを表示</button>
   </div>
 
@@ -314,5 +315,11 @@ async function executeUpdate() {
 log('💡 Excelファイルを選択してください。');
 </script>
 
+<script>
+/* config.js のトークンをフォームへ自動入力 */
+document.addEventListener('DOMContentLoaded',function(){
+  var e_token=document.getElementById('token'); if(e_token) e_token.value=KINTONE_CONFIG.TOKEN_MASTER;
+});
+</script>
 </body>
 </html>

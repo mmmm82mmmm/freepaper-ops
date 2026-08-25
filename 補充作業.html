@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script src="config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>🔄 補充作業 - FreePaper Ops</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -205,8 +206,8 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 const PROXY_URL = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
 const APP_NOHON  = 269;
 const APP_MASTER = 268;
-const TOKEN_NOHON  = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
-const TOKEN_MASTER = 'STw43jr9R6svTT6lIVPjITHQawcfHebdPtKqppkg';
+const TOKEN_NOHON  = KINTONE_CONFIG.TOKEN_NOHON;
+const TOKEN_MASTER = KINTONE_CONFIG.TOKEN_MASTER;
 
 // Field codes
 const F_TABLE   = 'テーブル_0';

@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script src="config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>📂 過去データ取り込みツール - FreePaper Ops</title>
 <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
@@ -137,7 +138,7 @@ button:disabled { opacity: 0.4; cursor: not-allowed; }
 // ===== Config =====
 const PROXY_URL = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
 const APP_ID = 269;
-const API_TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const API_TOKEN = KINTONE_CONFIG.TOKEN_NOHON;
 const BATCH_SIZE = 100;
 
 // ===== State =====

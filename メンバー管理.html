@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script src="config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>メンバー管理・URL配布</title>
 <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
@@ -156,7 +157,7 @@ const COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d4
 
 // kintone設定
 const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
-const TOKEN = 'jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF';
+const TOKEN = KINTONE_CONFIG.TOKEN_NOHON;
 const APP = 269;
 
 // 作業月（kintone設定 → 自動検出のフォールバック）

@@ -2,6 +2,7 @@
 <html lang="ja">
 <head>
 <meta charset="UTF-8">
+<script src="config.js"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <title>📋 紙作業データ取り込みツール</title>
 <script src="https://cdn.sheetjs.com/xlsx-0.20.2/package/dist/xlsx.full.min.js"></script>
@@ -84,7 +85,7 @@ button { font-family:inherit; font-weight:700; cursor:pointer; border:none; }
     </div>
 
     <label style="margin-top:14px;">APIトークン (納本データ管理アプリ)</label>
-    <input type="text" id="token" value="jQ9OU3Kp6CWMmeD1WnA32M6VPdxpt1e5La7gilcF" />
+    <input type="text" id="token" value="" />
 
     <button class="btn-primary" onclick="loadPreview()">プレビューを表示</button>
   </div>
@@ -388,5 +389,11 @@ async function executeImport() {
 log('💡 Excelファイルを選択してください。');
 </script>
 
+<script>
+/* config.js のトークンをフォームへ自動入力 */
+document.addEventListener('DOMContentLoaded',function(){
+  var e_token=document.getElementById('token'); if(e_token) e_token.value=KINTONE_CONFIG.TOKEN_NOHON;
+});
+</script>
 </body>
 </html>
