@@ -138,7 +138,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
         <div class="kpi-sub">冊</div>
       </div>
       <div class="kpi-card amber">
-        <div class="kpi-label">総返却数</div>
+        <div class="kpi-label" id="kpi-henkyaku-label">回収した返却数</div>
         <div class="kpi-val" id="kpi-henkyaku">0</div>
         <div class="kpi-sub">冊（残部率 <span id="kpi-zanbu">0</span>%）</div>
       </div>
@@ -387,6 +387,7 @@ async function loadData() {
         offset += 500;
       }
     }
+    buildPrevIndex();
 
     renderSummary();
     renderRouteTable();
@@ -408,6 +409,40 @@ async function loadData() {
 function getVal(r, key) { return r[key]?.value || ''; }
 function getNum(r, key) { return parseFloat(r[key]?.value) || 0; }
 
+// ===== 前月号レコードの索引 =====
+// 返却数は「回収した号」＝前月号のレコードに記録されるため、
+// 当月号のレコードから同じ店舗の前月号レコードを引けるようにする。
+// 設置店IDは号によって未設定のことがあるので、店名でも引けるようにしておく。
+let prevByKey = {};
+function storeIdKeyOf(r) {
+  const sid = (r?.['文字列__1行__5']?.value || '').trim();
+  return (sid && sid !== 'なし') ? 'ID:' + sid : '';
+}
+function storeNameKeyOf(r) {
+  const name = (r?.['文字列__1行__1']?.value || '').trim();
+  return name ? 'NAME:' + name : '';
+}
+function buildPrevIndex() {
+  prevByKey = {};
+  prevMonthRecords.forEach(p => {
+    const idKey = storeIdKeyOf(p), nameKey = storeNameKeyOf(p);
+    if (idKey) prevByKey[idKey] = p;
+    if (nameKey) prevByKey[nameKey] = p;
+  });
+}
+function prevOf(r) {
+  return prevByKey[storeIdKeyOf(r)] || prevByKey[storeNameKeyOf(r)] || null;
+}
+// この作業で回収した返却数（前月号レコードに記録されている値）
+function collectedHenkyaku(r) {
+  const p = prevOf(r);
+  return p ? getNum(p, '数値_0') : 0;
+}
+function collectedHenkyakuVal(r) {
+  const p = prevOf(r);
+  return p ? getVal(p, '数値_0') : '';
+}
+
 // 補充冊数合計（サブテーブル）
 function getRefillTotal(r) {
   const table = r['テーブル_0']?.value || [];
@@ -425,7 +460,8 @@ function renderSummary() {
 
   const totalNabon = done.reduce((s,r) => s + getNum(r,'数値'), 0);
   const totalRefill = done.reduce((s,r) => s + getRefillTotal(r), 0);
-  const totalHenkyaku = done.reduce((s,r) => s + getNum(r,'数値_0'), 0);
+  // 返却数は前月号レコードに入るため、店舗で突き合わせて「この作業で回収した冊数」を集計する
+  const totalHenkyaku = done.reduce((s,r) => s + collectedHenkyaku(r), 0);
   const totalSupply = totalNabon + totalRefill;
   const zanbu = totalSupply > 0 ? Math.round(totalHenkyaku / totalSupply * 100) : 0;
 
@@ -433,6 +469,8 @@ function renderSummary() {
   const nabonSub = document.querySelector('#kpi-nabon').parentElement.querySelector('.kpi-sub');
   nabonSub.innerHTML = totalRefill > 0 ? `冊 <span style="color:var(--green);font-weight:700;font-size:11px">+${totalRefill}補充</span>` : '冊';
   document.getElementById('kpi-henkyaku').textContent = totalHenkyaku.toLocaleString();
+  const hkLabel = document.getElementById('kpi-henkyaku-label');
+  if (hkLabel) hkLabel.textContent = prevMonthLabel ? `回収した返却数（${prevMonthLabel}ぶん）` : '回収した返却数';
   document.getElementById('kpi-zanbu').textContent = zanbu;
   document.getElementById('kpi-done').textContent = done.length;
   document.getElementById('kpi-done-pct').textContent = `/ ${total}件 (${total>0?Math.round(done.length/total*100):0}%)`;
@@ -529,7 +567,7 @@ function renderRouteTable() {
       routeMap[route].done++;
       routeMap[route].nabon += getNum(r,'数値');
       routeMap[route].refill += getRefillTotal(r);
-      routeMap[route].henkyaku += getNum(r,'数値_0');
+      routeMap[route].henkyaku += collectedHenkyaku(r);
     }
     else if (s === '不在') routeMap[route].absent++;
     else routeMap[route].todo++;
@@ -578,7 +616,7 @@ function renderWorkerTable() {
     const worker = getVal(r,'文字列__1行__10') || '未割当';
     if (!workerMap[worker]) workerMap[worker] = { done:0, absent:0, todo:0, nabon:0, henkyaku:0 };
     const s = getVal(r,'ドロップダウン');
-    if (s === '完了') { workerMap[worker].done++; workerMap[worker].nabon += getNum(r,'数値'); workerMap[worker].henkyaku += getNum(r,'数値_0'); }
+    if (s === '完了') { workerMap[worker].done++; workerMap[worker].nabon += getNum(r,'数値'); workerMap[worker].henkyaku += collectedHenkyaku(r); }
     else if (s === '不在') workerMap[worker].absent++;
     else workerMap[worker].todo++;
   });
@@ -623,7 +661,7 @@ function renderDetailTable() {
       <td style="color:var(--muted);font-size:11px">${getVal(r,'文字列__1行__2')}</td>
       <td>${getVal(r,'文字列__1行__10') || '―'}</td>
       <td class="mono">${getVal(r,'数値') || '―'}</td>
-      <td class="mono">${getVal(r,'数値_0') || '―'}</td>
+      <td class="mono">${collectedHenkyakuVal(r) || '―'}</td>
       <td><span class="${badgeClass}">${status}</span></td>
     </tr>`;
   }).join('');
@@ -1041,6 +1079,22 @@ function escH(s) {
 }
 
 function renderShouka() {
+  // 選択中の号の返却数がまだ記録されていない場合、消化率が100%と出てしまうため分析を出さない。
+  // （その号の返却は次号の作業で回収したときに記録される）
+  const hasHenkyaku = allRecords.some(r => (r['数値_0']?.value || '') !== '');
+  if (!hasHenkyaku) {
+    document.getElementById('shouka-content').innerHTML = `
+      <div style="text-align:center;padding:60px 20px;color:var(--muted);">
+        <div style="font-size:40px;margin-bottom:12px">⏳</div>
+        <div style="font-size:14px;font-weight:700">${currentMonth} の消化率はまだ確定していません</div>
+        <div style="font-size:12px;margin-top:10px;line-height:1.8;">
+          ${currentMonth}の返却は次の号の作業で回収するため、<br>返却数がまだ記録されていません。<br>
+          確定済みの最新の分析は「📊 前月号消化」タブをご覧ください。
+        </div>
+      </div>`;
+    return;
+  }
+
   // 供給 = 通常納本数 + 補充、消化率 = (供給 - 返却) / 供給
   const records = allRecords.filter(r => getNum(r,'数値_2') > 0 || getNum(r,'数値_0') > 0);
 
@@ -1475,7 +1529,7 @@ function exportCSV() {
       getVal(r,'文字列__1行__3'),
       getVal(r,'文字列__1行__10'),
       getVal(r,'数値'),
-      getVal(r,'数値_0'),
+      collectedHenkyakuVal(r),
       getVal(r,'ドロップダウン'),
       getVal(r,'文字列__1行__11'),
       getVal(r,'文字列__1行__12'),
