@@ -1,0 +1,450 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<script src="config.js"></script>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設置協力店リスト（営業用）</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888;
+  --border:#e0dbd0; --blue:#1a5cd4; --green:#1a8a4a; --red:#d42020;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);}
+
+/* ===== 操作パネル（印刷では消える） ===== */
+.panel{max-width:980px;margin:0 auto;padding:18px 16px 28px;}
+.panel h1{font-size:20px;font-weight:900;letter-spacing:.04em;margin-bottom:4px;}
+.panel .lead{font-size:12px;color:var(--muted);line-height:1.8;margin-bottom:16px;}
+.box{background:var(--card);border-radius:12px;padding:16px;margin-bottom:12px;
+     box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.box-title{font-size:11px;font-weight:900;letter-spacing:.08em;color:var(--muted);
+     text-transform:uppercase;margin-bottom:12px;}
+.row{display:flex;flex-wrap:wrap;gap:14px 22px;align-items:flex-end;}
+.fld{display:flex;flex-direction:column;gap:5px;}
+.fld label{font-size:11px;font-weight:700;color:var(--muted);}
+select,input[type=text],input[type=number]{
+  padding:9px 11px;font-size:14px;font-family:inherit;border:1px solid var(--border);
+  border-radius:8px;background:#fafafa;color:var(--ink);}
+select:focus,input:focus{outline:none;border-color:var(--blue);background:#fff;}
+.btn{padding:12px 20px;font-size:14px;font-weight:900;font-family:inherit;color:#fff;
+  background:var(--ink);border:none;border-radius:9px;cursor:pointer;letter-spacing:.06em;}
+.btn:active{background:#000;}
+.btn:disabled{background:#bbb;cursor:default;}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--border);}
+
+.genre-list{display:flex;flex-wrap:wrap;gap:7px;}
+.genre-chip{display:inline-flex;align-items:center;gap:6px;padding:7px 11px;border-radius:999px;
+  border:1px solid var(--border);background:#fafafa;font-size:12px;cursor:pointer;user-select:none;}
+.genre-chip input{margin:0;}
+.genre-chip.on{background:#eaf1fd;border-color:var(--blue);color:var(--blue);font-weight:700;}
+.genre-chip .n{color:var(--muted);font-size:11px;font-weight:400;}
+.genre-chip.on .n{color:var(--blue);}
+
+.stat{display:flex;gap:20px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin-top:10px;}
+.stat b{color:var(--ink);font-size:15px;font-family:monospace;}
+.note{background:#fff8e8;border:1px solid #f0d090;border-radius:9px;padding:10px 13px;
+  font-size:11px;color:#7a5a00;line-height:1.8;margin-top:10px;}
+
+/* ===== 出力（この中だけが印刷される） ===== */
+#sheets{margin:0 auto;}
+.sheet{background:#fff;margin:0 auto 24px;padding:14mm 12mm 12mm;box-shadow:0 2px 14px rgba(0,0,0,.14);}
+.sheet-head{display:flex;align-items:baseline;justify-content:space-between;
+  border-bottom:2.5px solid #1a1a1a;padding-bottom:6px;margin-bottom:9px;}
+.sheet-title{font-size:20pt;font-weight:900;letter-spacing:.06em;}
+.sheet-meta{font-size:8.5pt;color:#555;}
+.sheet-sub{font-size:9pt;color:#555;margin-bottom:9px;}
+
+.cols{column-gap:5mm;column-rule:1px solid #ccc;}
+.item{display:flex;gap:4px;align-items:baseline;break-inside:avoid;
+  padding:1.1px 0;border-bottom:1px dotted #ddd;}
+.item .no{flex:0 0 auto;font-family:monospace;color:#777;text-align:right;}
+.item .nm{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+.item .ad{flex:0 0 auto;color:#555;font-variant-numeric:tabular-nums;}
+
+.empty{padding:40px;text-align:center;color:var(--muted);font-size:13px;}
+
+@media print{
+  body{background:#fff;}
+  .panel{display:none !important;}
+  #sheets{margin:0;}
+  .sheet{box-shadow:none;margin:0;padding:10mm 9mm;break-after:page;}
+  .sheet:last-child{break-after:auto;}
+}
+</style>
+</head>
+<body>
+
+<div class="panel">
+  <h1>🏪 設置協力店リスト（営業用）</h1>
+  <div class="lead">
+    設置店マスタの<strong>稼働中</strong>の店舗から、営業説明用の一覧を作ります。<br>
+1 枚目は<strong>ホテルのみ</strong>、2 枚目は<strong>ホテルを含む全設置協力店</strong>です。<br>
+    閉店した店舗は含まれず、番号は 1 から振り直すので欠番は出ません。
+  </div>
+
+  <div class="box">
+    <div class="box-title">1. ホテル面に入れるジャンル</div>
+    <div class="genre-list" id="genres"><span style="color:var(--muted);font-size:12px">読み込み中…</span></div>
+    <div class="note" id="genre-note" style="display:none"></div>
+  </div>
+
+  <div class="box">
+    <div class="box-title">2. レイアウト</div>
+    <div class="row">
+      <div class="fld">
+        <label>用紙</label>
+        <select id="paper" onchange="render()">
+          <option value="297,420" selected>A3 縦（297×420）</option>
+          <option value="420,297">A3 横（420×297）</option>
+          <option value="257,364">B4 縦（257×364）</option>
+          <option value="364,257">B4 横（364×257）</option>
+          <option value="210,297">A4 縦（210×297）</option>
+          <option value="297,210">A4 横（297×210）</option>
+          <option value="420,594">A2 縦（420×594）</option>
+          <option value="594,420">A2 横（594×420）</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>ホテル面：段数</label>
+        <select id="colsHotel" onchange="render()"></select>
+      </div>
+      <div class="fld">
+        <label>ホテル面：文字</label>
+        <select id="fsizeHotel" onchange="render()"></select>
+      </div>
+      <div class="fld">
+        <label>全店舗面：段数</label>
+        <select id="colsOther" onchange="render()"></select>
+      </div>
+      <div class="fld">
+        <label>全店舗面：文字</label>
+        <select id="fsizeOther" onchange="render()"></select>
+      </div>
+    </div>
+  </div>
+
+  <div class="box">
+    <div class="box-title">3. 中身</div>
+    <div class="row">
+      <div class="fld">
+        <label>並び順</label>
+        <select id="order" onchange="render()">
+          <option value="kana">店名の五十音順</option>
+          <option value="genre">ジャンル別 → 五十音順</option>
+          <option value="route">ルート順（配本の順番）</option>
+          <option value="kno">kintone番号順</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>番号</label>
+        <select id="numbering" onchange="render()">
+          <option value="seq">1 から振り直す</option>
+          <option value="kno">kintone番号を使う</option>
+          <option value="none">番号を出さない</option>
+        </select>
+      </div>
+      <div class="fld">
+        <label>ホテル面の住所</label>
+        <select id="addr" onchange="render()">
+          <option value="1">表示する</option>
+          <option value="0">表示しない</option>
+        </select>
+      </div>
+      <div class="fld" style="flex:1;min-width:220px;">
+        <label>タイトル（誌名）</label>
+        <input type="text" id="brand" value="すすきのFreeC" oninput="render()">
+      </div>
+      <div class="fld">
+        <label>日付</label>
+        <input type="text" id="dt" size="12">
+      </div>
+    </div>
+    <div class="stat" id="stat"></div>
+  </div>
+
+  <div class="row" style="margin-top:16px;">
+    <button class="btn" id="printBtn" onclick="window.print()">🖨 印刷 / PDF保存</button>
+    <button class="btn ghost" onclick="forceReload()">🔄 マスタを再読み込み</button>
+  </div>
+  <div class="note">
+    印刷ダイアログで<strong>用紙サイズを上と同じに</strong>し、<strong>「背景のグラフィック」を有効</strong>、
+    余白は「なし」または「最小」にしてください。両面印刷にすると表裏 1 枚に収まります。
+  </div>
+</div>
+
+<div id="sheets"></div>
+
+<script>
+const PROXY  = KINTONE_CONFIG.PROXY;
+const DOMAIN = KINTONE_CONFIG.DOMAIN;
+const APP_MASTER = 268;
+const CACHE_KEY = 'fp_shoplist_master';
+const CACHE_HOURS = 6;
+
+// マスタのフィールド対応（設置店マスタ一括追加ツールと同じ）
+const F = {
+  kno:   '文字列__1行__0',   // kintone番号
+  genre: '文字列__1行__1',   // ジャンル
+  name:  '文字列__1行__2',   // 店名
+  bldg:  '文字列__1行__3',   // ビル名
+  jo:    '文字列__1行__7',   // 条
+  chome: '文字列__1行__8',   // 丁目
+  route: 'ドロップダウン_0', // ルート
+  order: '数値_2',           // ルート順
+  status:'ドロップダウン',   // 稼働状況
+};
+
+let master = [];        // 稼働中の店舗
+let hotelGenres = null; // ホテル面に入れるジャンル（Set）。null = 未初期化
+
+const val = (r,k) => (r[k]?.value ?? '').toString().trim();
+const num = (r,k) => parseFloat(r[k]?.value) || 0;
+
+/* ===== 読み込み ===== */
+async function loadMaster() {
+  const cached = readCache();
+  if (cached) { master = cached; return; }
+
+  const out = [];
+  let offset = 0;
+  while (true) {
+    const q = encodeURIComponent(`limit 500 offset ${offset}`);
+    const res = await fetch(`${PROXY}/k/v1/records.json?app=${APP_MASTER}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_MASTER }
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.message || `マスタの取得に失敗しました（${res.status}）`);
+    }
+    const data = await res.json();
+    const batch = data.records || [];
+    out.push(...batch);
+    if (batch.length < 500) break;
+    offset += 500;
+    if (offset > 20000) break;   // 暴走よけ
+  }
+
+  // 稼働中のみ。稼働状況フィールドが空の運用でも拾えるよう、'停止'系だけを除く。
+  master = out.filter(r => {
+    const s = val(r, F.status);
+    return s === '' || s === '稼働中';
+  });
+  writeCache(master);
+}
+
+function readCache() {
+  try {
+    const raw = localStorage.getItem(CACHE_KEY);
+    if (!raw) return null;
+    const o = JSON.parse(raw);
+    if (Date.now() - o.ts > CACHE_HOURS * 3600 * 1000) return null;
+    return o.rows;
+  } catch (e) { return null; }
+}
+function writeCache(rows) {
+  try { localStorage.setItem(CACHE_KEY, JSON.stringify({ ts: Date.now(), rows })); } catch (e) {}
+}
+function forceReload() {
+  try { localStorage.removeItem(CACHE_KEY); } catch (e) {}
+  location.reload();
+}
+
+/* ===== ジャンル選択 ===== */
+function genreCounts() {
+  const m = {};
+  master.forEach(r => {
+    const g = val(r, F.genre) || '（未設定）';
+    m[g] = (m[g] || 0) + 1;
+  });
+  return Object.entries(m).sort((a,b) => b[1] - a[1]);
+}
+
+function initGenres() {
+  const counts = genreCounts();
+
+  if (hotelGenres === null) {
+    // 初期値：ジャンル名に「ホテル」「hotel」を含むものを自動で選ぶ
+    const saved = localStorage.getItem('fp_shoplist_hotelgenres');
+    if (saved) {
+      hotelGenres = new Set(JSON.parse(saved));
+    } else {
+      // 通常はジャンル「ホテル」そのもの。無ければ「ホテル」を含むジャンルを拾う。
+      const names = counts.map(c => c[0]);
+      hotelGenres = names.includes('ホテル')
+        ? new Set(['ホテル'])
+        : new Set(names.filter(g => /ホテル|HOTEL/i.test(g)));
+    }
+  }
+
+  const box = document.getElementById('genres');
+  box.innerHTML = counts.map(([g,n]) => {
+    const on = hotelGenres.has(g);
+    return `<label class="genre-chip ${on ? 'on' : ''}">
+      <input type="checkbox" ${on ? 'checked' : ''} onchange="toggleGenre(${JSON.stringify(g).replace(/"/g,'&quot;')}, this.checked)">
+      ${escapeHtml(g)} <span class="n">${n}</span>
+    </label>`;
+  }).join('');
+
+  const note = document.getElementById('genre-note');
+  if (hotelGenres.size === 0) {
+    note.style.display = 'block';
+    note.innerHTML = 'ジャンル名に「ホテル」を含むものが見つかりませんでした。'
+      + '<strong>ホテル面に入れるジャンルを上から選んでください。</strong>'
+      + '選ばないと 1 枚目が空になります（2 枚目は全店舗なので影響しません）。';
+  } else {
+    note.style.display = 'none';
+  }
+}
+
+function toggleGenre(g, on) {
+  if (on) hotelGenres.add(g); else hotelGenres.delete(g);
+  localStorage.setItem('fp_shoplist_hotelgenres', JSON.stringify([...hotelGenres]));
+  initGenres();
+  render();
+}
+
+/* ===== 並び替え ===== */
+function sortRows(rows, mode) {
+  const kana = (a,b) => val(a,F.name).localeCompare(val(b,F.name), 'ja');
+  if (mode === 'kana')  return rows.sort(kana);
+  if (mode === 'kno')   return rows.sort((a,b) => (parseFloat(val(a,F.kno))||0) - (parseFloat(val(b,F.kno))||0));
+  if (mode === 'route') return rows.sort((a,b) => {
+    const ra = val(a,F.route), rb = val(b,F.route);
+    if (ra !== rb) return ra.localeCompare(rb, 'ja');
+    return num(a,F.order) - num(b,F.order);
+  });
+  // genre
+  return rows.sort((a,b) => {
+    const ga = val(a,F.genre), gb = val(b,F.genre);
+    if (ga !== gb) return ga.localeCompare(gb, 'ja');
+    return kana(a,b);
+  });
+}
+
+/* ===== 描画 ===== */
+/* マスタの住所ルール
+     条  … 数字だけなら頭に「南」を付ける。「北2」のように記号付きはそのまま。
+     丁目 … 数字だけなら頭に「西」を付ける。「東2」のように記号付きはそのまま。
+   例）条=3, 丁目=5   → 南3条西5丁目
+       条=北2, 丁目=東2 → 北2条東2丁目                               */
+function addrOf(r) {
+  const jo = val(r, F.jo), ch = val(r, F.chome);
+  if (!jo && !ch) return '';
+  if (jo === '100' && ch === '100') return 'エリア外';
+  const isNum = s => /^\d+$/.test(s);
+  const joPart = jo ? `${isNum(jo) ? '南' + jo : jo}条` : '';
+  const chPart = ch ? `${isNum(ch) ? '西' + ch : ch}丁目` : '';
+  return joPart + chPart;
+}
+
+function escapeHtml(s) {
+  return String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+
+function render() {
+  if (!master.length) return;
+
+  const [w,h]   = document.getElementById('paper').value.split(',').map(Number);
+  const orderBy = document.getElementById('order').value;
+  const numbering = document.getElementById('numbering').value;
+  const showAddr  = document.getElementById('addr').value === '1';
+  const brand   = document.getElementById('brand').value.trim() || 'すすきのFreeC';
+  const dt      = document.getElementById('dt').value.trim();
+
+  // 1枚目＝ホテルのみ。2枚目＝ホテルを含む全設置協力店。
+  const hotels = sortRows(master.filter(r => hotelGenres.has(val(r,F.genre) || '（未設定）')), orderBy);
+  const allShops = sortRows([...master], orderBy);
+
+  document.getElementById('stat').innerHTML =
+    `ホテル面 <b>${hotels.length}</b> 軒　／　全店舗面 <b>${allShops.length}</b> 軒`
+    + `<span style="color:var(--muted)">（全店舗面はホテルを含みます）</span>`;
+
+  document.getElementById('sheets').innerHTML =
+    sheet(`${brand}　配布先ホテル一覧`, hotels, w, h,
+          parseFloat(document.getElementById('fsizeHotel').value),
+          +document.getElementById('colsHotel').value, numbering, showAddr, dt) +
+    sheet(`${brand}　設置協力店一覧`, allShops, w, h,
+          parseFloat(document.getElementById('fsizeOther').value),
+          +document.getElementById('colsOther').value, numbering, false, dt);
+
+  // 印刷用の用紙設定を差し替える
+  let st = document.getElementById('pagecss');
+  if (!st) { st = document.createElement('style'); st.id = 'pagecss'; document.head.appendChild(st); }
+  st.textContent = `@page{size:${w}mm ${h}mm;margin:0;}`;
+}
+
+function sheet(title, rows, w, h, fsize, cols, numbering, showAddr, dt) {
+  const noW = numbering === 'none' ? 0 : (numbering === 'kno' ? 4.2 : String(rows.length).length + 0.6);
+  const body = rows.length === 0
+    ? `<div class="empty">該当する店舗がありません</div>`
+    : `<div class="cols" style="column-count:${cols};font-size:${fsize}pt;line-height:1.5;">
+        ${rows.map((r,i) => {
+          const no = numbering === 'none' ? ''
+                   : numbering === 'kno'  ? val(r,F.kno)
+                   : String(i+1);
+          const ad = showAddr ? addrOf(r) : '';
+          return `<div class="item">
+            ${numbering === 'none' ? '' : `<span class="no" style="min-width:${noW}em">${escapeHtml(no)}</span>`}
+            <span class="nm">${escapeHtml(val(r,F.name))}</span>
+            ${ad ? `<span class="ad">${escapeHtml(ad)}</span>` : ''}
+          </div>`;
+        }).join('')}
+      </div>`;
+
+  return `<div class="sheet" style="width:${w}mm;min-height:${h}mm;">
+    <div class="sheet-head">
+      <div class="sheet-title">${escapeHtml(title)}</div>
+      <div class="sheet-meta">${escapeHtml(dt)}　全${rows.length}軒</div>
+    </div>
+    ${body}
+  </div>`;
+}
+
+/* ===== 起動 ===== */
+// A3縦での既定値：ホテル145軒は3段8pt、全店舗1200軒超は10段6ptでおおむね収まる
+function fillColSelects() {
+  const defCols = { colsHotel: 3, colsOther: 10 };
+  Object.entries(defCols).forEach(([id, def]) => {
+    document.getElementById(id).innerHTML = Array.from({length:13}, (_,i) => i+2)
+      .map(n => `<option value="${n}"${n === def ? ' selected' : ''}>${n}段</option>`).join('');
+  });
+
+  const sizes = [5, 5.5, 6, 6.5, 7, 7.5, 8, 9, 10, 11, 12];
+  const defSize = { fsizeHotel: 8, fsizeOther: 6 };
+  Object.entries(defSize).forEach(([id, def]) => {
+    document.getElementById(id).innerHTML = sizes
+      .map(n => `<option value="${n}"${n === def ? ' selected' : ''}>${n}pt</option>`).join('');
+  });
+}
+
+function todayStr() {
+  const d = new Date();
+  return `${d.getFullYear()}/${d.getMonth()+1}/${d.getDate()}`;
+}
+
+(async function init() {
+  fillColSelects();
+  document.getElementById('dt').value = todayStr();
+  document.getElementById('dt').addEventListener('input', render);
+  try {
+    await loadMaster();
+    if (!master.length) {
+      document.getElementById('genres').innerHTML =
+        '<span style="color:var(--red);font-size:12px">稼働中の店舗が 0 件でした。マスタを確認してください。</span>';
+      return;
+    }
+    initGenres();
+    render();
+  } catch (e) {
+    document.getElementById('genres').innerHTML =
+      `<span style="color:var(--red);font-size:12px">${escapeHtml(e.message)}</span>`;
+  }
+})();
+</script>
+
+</body>
+</html>
