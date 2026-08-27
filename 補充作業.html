@@ -221,7 +221,13 @@ let workerName = '';
 let currentMonth = '';
 let masterRequiredIds = new Set(); // 要補充の kintone番号 set
 let monthRecords = [];              // current month's 納本データ records
-let storeMap = {};                  // kintone番号 → record
+let storeMap = {};                  // レコードID → record
+let noIdCount = 0;                  // 設置場所IDが使えない店舗の数
+
+// kintone番号が「なし」等になっている店舗がある。これを識別子に使うと
+// 全部が同じ店として扱われ、履歴も補充の記録も別店に混ざる。
+const INVALID_STORE_IDS = new Set(['', 'なし', 'ナシ', '無し', '-', '―']);
+function validStoreId(sid) { return !INVALID_STORE_IDS.has((sid || '').trim()); }
 let currentFilter = 'required';
 let currentSearch = '';
 let selectedStore = null;
@@ -373,7 +379,8 @@ async function fetchData() {
         if (!res.ok) throw new Error(`マスタ取得失敗: ${JSON.stringify(data)}`);
         for (const r of data.records) {
           const kno = getVal(r, '文字列__1行__0');
-          if (kno) masterRequiredIds.add(kno);
+          // 「なし」等を入れると、同じ値を持つ全店舗が要補充になってしまう
+          if (validStoreId(kno)) masterRequiredIds.add(kno);
         }
         if (data.records.length < 500) break;
         offset += 500;
@@ -408,11 +415,13 @@ async function fetchData() {
       offset += 500;
     }
 
-    // 3. storeMap 構築 (kintone番号 → record)
+    // 3. storeMap 構築（レコードIDで引く）
+    //    設置場所IDは重複することがあるため識別子に使えない
     storeMap = {};
+    noIdCount = 0;
     for (const r of monthRecords) {
-      const sid = getVal(r, '文字列__1行__5');
-      if (sid) storeMap[sid] = r;
+      storeMap[r.$id.value] = r;
+      if (!validStoreId(getVal(r, '文字列__1行__5'))) noIdCount++;
     }
 
     if (monthRecords.length === 0) {
@@ -464,7 +473,10 @@ function renderList() {
   // フィルタ
   let list;
   if (currentFilter === 'required') {
-    list = monthRecords.filter(r => masterRequiredIds.has(getVal(r,'文字列__1行__5')));
+    list = monthRecords.filter(r => {
+      const sid = getVal(r,'文字列__1行__5');
+      return validStoreId(sid) && masterRequiredIds.has(sid);
+    });
   } else {
     list = [...monthRecords];
   }
@@ -482,9 +494,13 @@ function renderList() {
   }
 
   // 並び替え：要補充→補充済→その他
+  const isReq = r => {
+    const sid = getVal(r, '文字列__1行__5');
+    return validStoreId(sid) && masterRequiredIds.has(sid);
+  };
   list.sort((a, b) => {
-    const ar = masterRequiredIds.has(getVal(a,'文字列__1行__5')) ? 0 : 1;
-    const br = masterRequiredIds.has(getVal(b,'文字列__1行__5')) ? 0 : 1;
+    const ar = isReq(a) ? 0 : 1;
+    const br = isReq(b) ? 0 : 1;
     if (ar !== br) return ar - br;
     return getVal(a,'文字列__1行__4').localeCompare(getVal(b,'文字列__1行__4'));
   });
@@ -498,7 +514,15 @@ function renderList() {
     return;
   }
 
-  content.innerHTML = '<div class="store-list">' + list.map(r => {
+  const notice = noIdCount > 0
+    ? `<div style="background:#fff8e8;border:1px solid #f0d090;border-radius:10px;
+         padding:10px 13px;font-size:11px;color:#7a5a00;line-height:1.8;margin-bottom:10px;">
+        ⚠️ <b>${noIdCount}店舗</b>はマスタの kintone番号 が未設定（「なし」）です。<br>
+        そのため<b>要補充の判定ができません</b>。マスタで番号を振ると判定されるようになります。
+       </div>`
+    : '';
+
+  content.innerHTML = notice + '<div class="store-list">' + list.map(r => {
     const sid       = getVal(r,'文字列__1行__5');
     const name      = getVal(r,'文字列__1行__1') || '(名称未設定)';
     const route     = getVal(r,'文字列__1行__4');
@@ -507,7 +531,7 @@ function renderList() {
     const addr      = getVal(r,'文字列__1行__8');
     const normalDel = getNum(r,'数値_2');
     const delivered = getNum(r,'数値');
-    const isRequired = masterRequiredIds.has(sid);
+    const isRequired = validStoreId(sid) && masterRequiredIds.has(sid);
 
     const table = r[F_TABLE]?.value || [];
     const refillCount = table.reduce((s, row) => s + (parseFloat(row.value[F_COUNT]?.value) || 0), 0);
@@ -520,7 +544,7 @@ function renderList() {
     })() : '';
 
     return `
-      <div class="store-card ${isRequired ? 'required' : ''} ${isRefilled ? 'refilled' : ''}" onclick="openModal('${sid}')">
+      <div class="store-card ${isRequired ? 'required' : ''} ${isRefilled ? 'refilled' : ''}" onclick="openModal('${r.$id.value}')">
         <div class="store-row">
           <div class="store-name">${name}</div>
         </div>
@@ -555,8 +579,8 @@ document.getElementById('search-input').addEventListener('input', e => {
 });
 
 // ===== Modal =====
-function openModal(sid) {
-  const r = storeMap[sid];
+function openModal(recId) {
+  const r = storeMap[recId];
   if (!r) return;
   selectedStore = r;
 
@@ -676,8 +700,7 @@ async function submitRefill() {
 
     // ローカル状態を更新（capturedStoreを使用）
     capturedStore[F_TABLE] = { value: [...currentTable, newRow] };
-    const sid = getVal(capturedStore, '文字列__1行__5');
-    if (sid) storeMap[sid] = capturedStore;
+    storeMap[capturedStore.$id.value] = capturedStore;
     const idx = monthRecords.findIndex(r => r.$id.value === recordId);
     if (idx >= 0) monthRecords[idx][F_TABLE] = { value: [...currentTable, newRow] };
 
