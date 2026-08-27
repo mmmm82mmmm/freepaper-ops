@@ -684,6 +684,12 @@ function renderPrevMonth() {
   const storeData = [];
   // 当月で稼働中の店舗のIDセット（消えた店舗を除外するため）
   const activeIds = new Set(allRecords.map(r => getVal(r,'文字列__1行__5')).filter(Boolean));
+  // 当月レコードを店舗IDで引けるようにする（返却を回収できたかの判定に使う）
+  const currentBySid = {};
+  allRecords.forEach(r => {
+    const id = getVal(r,'文字列__1行__5');
+    if (id) currentBySid[id] = r;
+  });
 
   prevMonthRecords.forEach(prev => {
     const sid = getVal(prev,'文字列__1行__5');
@@ -693,11 +699,21 @@ function renderPrevMonth() {
     const henkyaku = getNum(prev,'数値_0');  // 前月号レコードに記録された前月号の返却数
     if (prevNabon <= 0) return;
 
+    // 前月号の返却は「当月の作業」で回収する。
+    // したがって当月レコードのステータスが完了なら、返却数は確認済み（0 も本物の 0）。
+    // 不在・未着手のままなら、返却数はまだ分からない＝持去の判定に使えない。
+    const cur = currentBySid[sid];
+    const curStatus = cur ? getVal(cur,'ドロップダウン') : '';
+    const henkyakuBlank = getVal(prev,'数値_0') === '';
+    const confirmed = curStatus === '完了' && !henkyakuBlank;
+
     const supply = prevNabon + prevRefill;
     const shouka = supply - henkyaku;
     const rate = supply > 0 ? Math.round(shouka / supply * 100) : 0;
     storeData.push({
       sid,
+      curStatus,
+      confirmed,
       name: getVal(prev,'文字列__1行__1'),
       route: getVal(prev,'文字列__1行__4'),
       bldg: getVal(prev,'文字列__1行__2'),
@@ -729,6 +745,21 @@ function renderPrevMonth() {
   const totalSupply = totalPrevNabon + totalPrevRefill;
   const totalShouka = totalSupply - totalHenkyaku;
   const overallRate = totalSupply > 0 ? Math.round(totalShouka / totalSupply * 100) : 0;
+
+  // ===== 軒数（冊数ではなく「何店舗で起きたか」） =====
+  // storeData は納本数0の店舗を除いてあるので、その件数がそのまま設置軒数になる
+  const storesNabon     = storeData.length;
+  // 返却が確認できた軒数＝当月の作業が完了し、返却数が入力されている店舗
+  const storesConfirmed = storeData.filter(d => d.confirmed).length;
+  const storesPending   = storesNabon - storesConfirmed;
+  // 返却が1冊以上あった軒数（1冊も返らなかった店＝完売の裏返し）
+  const storesHenkyaku  = storeData.filter(d => d.confirmed && d.henkyaku >= 1).length;
+  // 納本(+補充)と返却が一致しない軒数＝1冊でも持ち去られた店
+  const storesMochisari = storeData.filter(d => d.confirmed && d.shouka !== 0).length;
+  // 未確定の内訳（なぜ確定していないのか）
+  const pendingAbsent = storeData.filter(d => !d.confirmed && d.curStatus === '不在').length;
+  const pendingTodo   = storeData.filter(d => !d.confirmed && d.curStatus === '未着手').length;
+  const pendingBlank  = storesPending - pendingAbsent - pendingTodo;
 
   const rateColor = rate => rate >= 80 ? 'var(--green)' : rate >= 50 ? 'var(--amber)' : 'var(--red)';
 
@@ -809,17 +840,17 @@ function renderPrevMonth() {
       <div class="kpi-card blue">
         <div class="kpi-label">${prevMonthLabel} 納本数</div>
         <div class="kpi-val">${totalPrevNabon.toLocaleString()}</div>
-        <div class="kpi-sub">${totalPrevRefill > 0 ? `+ <span style="color:var(--green);font-weight:700">${totalPrevRefill}補充</span>` : '冊'}</div>
+        <div class="kpi-sub">${totalPrevRefill > 0 ? `冊 + <span style="color:var(--green);font-weight:700">${totalPrevRefill}補充</span>` : '冊'}<br>${kenSubHtml(storesNabon, 0, 'に設置')}</div>
       </div>
       <div class="kpi-card amber">
         <div class="kpi-label">${prevMonthLabel} 返却数</div>
         <div class="kpi-val">${totalHenkyaku.toLocaleString()}</div>
-        <div class="kpi-sub">冊</div>
+        <div class="kpi-sub">冊<br>${kenSubHtml(storesHenkyaku, storesConfirmed, 'で返却あり')}</div>
       </div>
       <div class="kpi-card green">
         <div class="kpi-label">持去数</div>
         <div class="kpi-val">${totalShouka.toLocaleString()}</div>
-        <div class="kpi-sub">冊</div>
+        <div class="kpi-sub">冊<br>${kenSubHtml(storesMochisari, storesConfirmed, 'で持去あり')}</div>
       </div>
       <div class="kpi-card ${overallRate >= 70 ? 'green' : 'red'}">
         <div class="kpi-label">消化率</div>
@@ -827,6 +858,20 @@ function renderPrevMonth() {
         <div class="kpi-sub">${totalPrevRefill > 0 ? '(納本+補充)基準' : '実績ベース'}</div>
       </div>
     </div>
+
+    ${storesPending > 0 ? `
+    <div style="background:#fff8e8;border:1px solid #f0d090;border-radius:10px;padding:11px 14px;
+                font-size:11px;color:#7a5a00;line-height:1.8;margin-top:-4px;margin-bottom:14px;">
+      ⚠️ <b>${storesPending.toLocaleString()}軒は返却数が未確定です。</b>
+      ${[
+        pendingTodo   > 0 ? `未着手 ${pendingTodo}軒` : '',
+        pendingAbsent > 0 ? `不在 ${pendingAbsent}軒` : '',
+        pendingBlank  > 0 ? `完了だが返却欄が空欄 ${pendingBlank}軒` : ''
+      ].filter(Boolean).join('／')}<br>
+      上の「返却あり」「持去あり」の軒数と割合は、この${storesPending.toLocaleString()}軒を除いた
+      <b>${storesConfirmed.toLocaleString()}軒</b>で計算しています
+      （冊数の合計は従来どおり全${storesNabon.toLocaleString()}軒ぶんです）。
+    </div>` : ''}
 
     <!-- サブタブ -->
     <div class="sub-tabs">
@@ -1074,6 +1119,12 @@ function exportHaifuCSV(slot) {
   URL.revokeObjectURL(url);
 }
 
+// KPIカードの下段に「何軒で起きたか」を出す。total を渡すと割合も添える。
+function kenSubHtml(n, total, note) {
+  const pct = total > 0 ? `（${Math.round(n / total * 100)}%）` : '';
+  return `<span style="font-weight:700;color:var(--ink)">${n.toLocaleString()}</span> 軒${note}${pct}`;
+}
+
 function escH(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -1105,6 +1156,18 @@ function renderShouka() {
   const totalSupply = totalNabon + totalRefill;
   const totalShouka = totalSupply - totalHenkyaku;
   const shoukaRate = totalSupply > 0 ? Math.round(totalShouka / totalSupply * 100) : 0;
+
+  // ===== 軒数（冊数ではなく「何店舗で起きたか」） =====
+  const placedStores = allRecords.filter(r => getNum(r,'数値_2') > 0);
+  const sStoresNabon = placedStores.length;
+  // この号の返却は「次号の作業」で回収するため、この号のステータス（完了・不在）では
+  // 返却が確認済みかどうかを判定できない。返却欄が空欄かどうかで見分ける。
+  const sConfirmed       = placedStores.filter(r => getVal(r,'数値_0') !== '');
+  const sStoresConfirmed = sConfirmed.length;
+  const sStoresPending   = sStoresNabon - sStoresConfirmed;
+  const sStoresHenkyaku  = sConfirmed.filter(r => getNum(r,'数値_0') >= 1).length;
+  const sStoresMochisari = sConfirmed.filter(r =>
+    (getNum(r,'数値_2') + getRefillTotal(r)) !== getNum(r,'数値_0')).length;
 
   // マスタデータをkintone番号でインデックス化
   const masterIndex = {};
@@ -1194,17 +1257,17 @@ function renderShouka() {
       <div class="kpi-card blue">
         <div class="kpi-label">通常納本数合計</div>
         <div class="kpi-val">${totalNabon.toLocaleString()}</div>
-        <div class="kpi-sub">${totalRefill > 0 ? `+ <span style="color:var(--green);font-weight:700">${totalRefill}補充</span>` : '冊'}</div>
+        <div class="kpi-sub">${totalRefill > 0 ? `冊 + <span style="color:var(--green);font-weight:700">${totalRefill}補充</span>` : '冊'}<br>${kenSubHtml(sStoresNabon, 0, 'に設置')}</div>
       </div>
       <div class="kpi-card amber">
         <div class="kpi-label">返却数合計</div>
         <div class="kpi-val">${totalHenkyaku.toLocaleString()}</div>
-        <div class="kpi-sub">冊</div>
+        <div class="kpi-sub">冊<br>${kenSubHtml(sStoresHenkyaku, sStoresConfirmed, 'で返却あり')}</div>
       </div>
       <div class="kpi-card green">
         <div class="kpi-label">持去数合計</div>
         <div class="kpi-val">${totalShouka.toLocaleString()}</div>
-        <div class="kpi-sub">冊</div>
+        <div class="kpi-sub">冊<br>${kenSubHtml(sStoresMochisari, sStoresConfirmed, 'で持去あり')}</div>
       </div>
       <div class="kpi-card ${shoukaRate >= 70 ? 'green' : 'red'}">
         <div class="kpi-label">消化率</div>
@@ -1212,6 +1275,16 @@ function renderShouka() {
         <div class="kpi-sub">${totalRefill > 0 ? '(納本+補充)基準' : '持去率'}</div>
       </div>
     </div>
+
+    ${sStoresPending > 0 ? `
+    <div style="background:#fff8e8;border:1px solid #f0d090;border-radius:10px;padding:11px 14px;
+                font-size:11px;color:#7a5a00;line-height:1.8;margin-bottom:14px;">
+      ⚠️ <b>${sStoresPending.toLocaleString()}軒は返却欄が空欄です。</b>
+      この号の返却は次号の作業で回収するため、まだ記録されていない店舗があります。<br>
+      上の「返却あり」「持去あり」の軒数と割合は、この${sStoresPending.toLocaleString()}軒を除いた
+      <b>${sStoresConfirmed.toLocaleString()}軒</b>で計算しています
+      （冊数の合計は従来どおり全${sStoresNabon.toLocaleString()}軒ぶんです）。
+    </div>` : ''}
 
     <!-- サブタブ -->
     <div class="sub-tabs">
