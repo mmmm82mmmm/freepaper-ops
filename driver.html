@@ -553,7 +553,12 @@ async function loadSpecialRecord(monthKey) {
   if (!data.records?.length) return { _notfound: true };
   const raw = data.records[0]['文字列__複数行__0']?.value || '';
   let obj = {};
-  try { obj = JSON.parse(raw); } catch(e) {}
+  if (raw.trim()) {
+    // ★中身があるのに読めない場合は、空として扱わず必ず失敗させる。
+    //   空オブジェクトを返すとメンバー0人とみなされ、次の保存で消えるため。
+    try { obj = JSON.parse(raw); }
+    catch (e) { throw new Error(`${monthKey} のデータが壊れています。保存せずに管理者へ連絡してください。`); }
+  }
   obj._id = data.records[0]['$id'].value;
   return obj;
 }
@@ -561,6 +566,13 @@ async function loadSpecialRecord(monthKey) {
 // 特殊レコードにJSON保存（なければ作成）
 async function saveSpecialRecord(monthKey, jsonObj) {
   const existing = await loadSpecialRecord(monthKey);
+  // ★登録済みのメンバーを空で上書きしようとしたら中止する（消失事故の防止）
+  if (existing && !existing._notfound
+      && Array.isArray(existing.members) && existing.members.length > 0
+      && Array.isArray(jsonObj.members) && jsonObj.members.length === 0) {
+    throw new Error('メンバー一覧が空のため保存を中止しました。'
+      + '読み込みに失敗した可能性があります。画面を再読み込みしてからやり直してください。');
+  }
   const body = { value: JSON.stringify(jsonObj, null, 2) };
   if (existing && !existing._notfound && existing._id) {
     const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {

@@ -127,6 +127,7 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);ba
 .pc.c1{background:#eaf5fb;} .pc.c2{background:#fdeef3;}
 .pc .who{flex:1 1 auto;min-height:0;overflow:hidden;line-height:1.35;font-size:7.5pt;}
 .pc .who b{font-size:8.5pt;}
+.pc .who .ann{font-size:6pt;font-weight:900;background:#444;color:#fff;border-radius:2px;padding:0 2px;margin-left:1px;vertical-align:2px;}
 .pc .rt{flex:0 0 auto;font-size:7pt;line-height:1.45;}
 .pc .rt span{display:inline-block;border:1px solid #666;border-radius:3px;
   padding:0 3px;margin:0 2px 1px 0;background:#fff;}
@@ -658,6 +659,14 @@ function printPage(pair) {
   </div>`;
 }
 
+/* 名前の末尾に付けた「（案内所）」は印刷では外し、代わりに小さな印を付ける。
+   同姓が FreeC と案内所の両方に居るため、印が無いと区別できなくなる。 */
+function dispName(day, name) {
+  const bare = String(name).replace(/[（(]\s*(案内所|案)\s*[）)]\s*$/, '').trim() || name;
+  const isAnnai = (day.roster.annai || []).includes(name);
+  return esc(bare) + (isAnnai ? '<span class="ann">案</span>' : '');
+}
+
 function printDay(d, idx) {
   const rosterHtml = (label, list) => list.length
     ? `<div class="b"><i>${label}</i>${list.map(esc).join('　')}</div>` : '';
@@ -666,7 +675,7 @@ function printDay(d, idx) {
     const row = CARS.map((_, ci) => {
       const c = d.sections[si].cars[ci];
       const tt = carTotals(c.routes);
-      const people = [c.sup ? `<b>${esc(c.sup)}</b>` : '', ...c.members.map(esc)]
+      const people = [c.sup ? `<b>${dispName(d, c.sup)}</b>` : '', ...c.members.map(n => dispName(d, n))]
         .filter(Boolean).join('　');
       return `<div class="pc c${ci+1}">
         <div class="who">${people || '<span style="color:#999">（未定）</span>'}</div>

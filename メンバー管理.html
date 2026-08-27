@@ -193,6 +193,9 @@ async function determineWorkMonth() {
 }
 
 let members = [];
+// 読み込みが成功したかどうか。失敗したまま保存するとメンバーが消えるため見張る
+let loadFailed = false;
+let loadedMemberCount = null;
 let assignState = { members: [], cars: {}, routeCars: {}, drivers: {}, assignments: {}, returned: [], haifuItems: [{name:''},{name:''},{name:''}], updatedAt: '' };
 
 function monthSuffix(month) {
@@ -209,6 +212,8 @@ async function loadAssignState() {
   const res = await fetch(`${PROXY}/k/v1/records.json?${paramStr}`, {
     headers: { 'X-Cybozu-API-Token': TOKEN }
   });
+  // ★取得に失敗したまま先へ進むと、メンバー0人の状態で保存してしまい消える
+  if (!res.ok) { loadFailed = true; throw new Error(`メンバーの読み込みに失敗しました（${res.status}）`); }
   const data = await res.json();
   if (!data.records?.length) {
     // __common__ が無い場合、旧先頭レコードからの引き継ぎを試みる
@@ -216,15 +221,19 @@ async function loadAssignState() {
     return;
   }
   const raw = data.records[0]['文字列__複数行__0']?.value || '';
-  try {
-    const parsed = JSON.parse(raw);
-    assignState = { members:[], cars:{}, routeCars:{}, drivers:{}, assignments:{}, returned:[], haifuItems:[{name:''},{name:''},{name:''}], ...parsed };
-    if (!assignState.haifuItems || !Array.isArray(assignState.haifuItems)) {
-      assignState.haifuItems = [{name:''},{name:''},{name:''}];
-    }
-    if (!assignState.drivers) assignState.drivers = {};
-    members = assignState.members || [];
-  } catch(e) {}
+  if (!raw.trim()) { loadFailed = true; throw new Error('メンバーのデータが空でした。管理者へ連絡してください。'); }
+  let parsed;
+  try { parsed = JSON.parse(raw); }
+  catch (e) { loadFailed = true; throw new Error('メンバーのデータが壊れています。保存せずに管理者へ連絡してください。'); }
+
+  assignState = { members:[], cars:{}, routeCars:{}, drivers:{}, assignments:{}, returned:[], haifuItems:[{name:''},{name:''},{name:''}], ...parsed };
+  if (!assignState.haifuItems || !Array.isArray(assignState.haifuItems)) {
+    assignState.haifuItems = [{name:''},{name:''},{name:''}];
+  }
+  if (!assignState.drivers) assignState.drivers = {};
+  members = assignState.members || [];
+  loadedMemberCount = members.length;
+  loadFailed = false;
 }
 
 // __common__ が無い時、旧形式（先頭レコード）から読み込んで移行の土台にする
@@ -250,6 +259,16 @@ async function tryMigrateFromOld() {
 
 // __common__ レコードに保存（なければ作成）
 async function saveAssignState() {
+  // ★読み込みに失敗している、または登録済みのメンバーが0人になる保存は行わない
+  if (loadFailed) {
+    alert('メンバーの読み込みに失敗しているため保存できません。\n画面を再読み込みしてください。');
+    throw new Error('読み込み失敗のため保存中止');
+  }
+  if (loadedMemberCount > 0 && members.length === 0) {
+    alert('登録メンバーが0人になる保存を中止しました。\n'
+      + '読み込みに失敗した可能性があります。画面を再読み込みしてからやり直してください。');
+    throw new Error('メンバー0人のため保存中止');
+  }
   assignState.members = members;
   assignState.updatedAt = new Date().toISOString();
   // 共通データだけを保存（assignments等の稼働データは含めない）
@@ -298,7 +317,11 @@ async function saveAssignState() {
 async function loadMembers() {
   try {
     await loadAssignState();
-  } catch(e) { console.error(e); }
+  } catch(e) {
+    console.error(e);
+    // ★黙って空リストを表示すると、そのまま保存してメンバーが消える
+    alert('メンバーを読み込めませんでした。\n\n' + e.message + '\n\nこの状態では保存できません。通信を確認して画面を再読み込みしてください。');
+  }
   renderMembers();
   renderItems();
   renderDrivers();
