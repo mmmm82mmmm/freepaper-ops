@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<script src="config.js"></script>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>シフト表</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{
+  --bg:#f4f0e8; --card:#fff; --ink:#1a1a1a; --muted:#888;
+  --border:#e0dbd0; --blue:#1a5cd4; --green:#1a8a4a; --amber:#c47a0a; --red:#d42020;
+}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);}
+
+.app-header{background:var(--ink);color:#fff;padding:14px 16px;
+  display:flex;align-items:center;gap:10px;}
+.app-title{font-size:15px;font-weight:900;flex:1;}
+.month-sel{font-size:11px;background:#333;color:#fff;border:none;padding:5px 10px;
+  border-radius:20px;font-family:inherit;font-weight:700;}
+.icon-btn{background:rgba(255,255,255,.15);color:#fff;border:none;padding:5px 10px;
+  border-radius:6px;font-size:13px;cursor:pointer;}
+
+.container{padding:16px;max-width:820px;margin:0 auto;}
+
+.section{background:var(--card);border-radius:12px;padding:16px;margin-bottom:14px;
+  box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.section-title{font-size:12px;font-weight:900;letter-spacing:.06em;color:var(--muted);
+  text-transform:uppercase;margin-bottom:4px;}
+.section-note{font-size:11px;color:var(--muted);line-height:1.8;margin-bottom:12px;}
+
+table{width:100%;border-collapse:collapse;font-size:13px;}
+th,td{padding:7px 8px;border-bottom:1px solid var(--border);text-align:right;}
+th{font-size:10px;font-weight:900;color:var(--muted);letter-spacing:.06em;
+  background:#faf8f4;text-align:right;white-space:nowrap;}
+th:first-child,td:first-child{text-align:left;}
+td.mono{font-family:'DM Mono',monospace;}
+tr.total td{border-top:2px solid var(--ink);border-bottom:none;font-weight:900;background:#faf8f4;}
+tr.osoi td:first-child{color:var(--amber);}
+tr.zero td{color:#bbb;}
+.tag{display:inline-block;padding:1px 6px;border-radius:4px;font-size:10px;font-weight:700;
+  background:#eee;color:#666;margin-left:5px;}
+
+.loading{display:flex;flex-direction:column;align-items:center;padding:60px 0;gap:14px;}
+.spinner{width:32px;height:32px;border:3px solid var(--border);border-top-color:var(--ink);
+  border-radius:50%;animation:spin .8s linear infinite;}
+@keyframes spin{to{transform:rotate(360deg)}}
+.err{background:#fdecec;border:1px solid #f0b0b0;color:#a01818;border-radius:10px;
+  padding:12px 14px;font-size:12px;line-height:1.8;}
+.note{background:#fff8e8;border:1px solid #f0d090;border-radius:10px;padding:11px 14px;
+  font-size:11px;color:#7a5a00;line-height:1.8;}
+.kpi-row{display:flex;gap:18px;flex-wrap:wrap;margin-top:10px;font-size:12px;color:var(--muted);}
+.kpi-row b{font-family:'DM Mono',monospace;font-size:17px;color:var(--ink);}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <a href="index.html" style="color:#fff;text-decoration:none;font-size:18px;">←</a>
+  <div class="app-title">🚐 シフト表</div>
+  <button class="icon-btn" onclick="loadData()" title="最新データを取得">🔄</button>
+  <select class="month-sel" id="month-sel" onchange="loadData()" title="どの号の作業かを選びます"></select>
+</div>
+
+<div class="container" id="main">
+  <div class="loading"><div class="spinner"></div></div>
+</div>
+
+<script>
+const PROXY  = KINTONE_CONFIG.PROXY;
+const DOMAIN = KINTONE_CONFIG.DOMAIN;
+const APP    = 269;
+
+// 束の数え方（実際のシフト表の数値から確認したルール）
+//   FreeC … 1束25冊。ルートごとに束ねてから合計する
+//   MAP   … 1束50冊。冊数を合計してから束ねる
+const FREEC_PER_BUNDLE = 25;
+const MAP_PER_BUNDLE   = 50;
+
+const F = {
+  month:  '文字列__1行_',    // 作業月
+  route:  '文字列__1行__4',  // ルート
+  group:  '文字列__1行__0',  // グループ（A1, A2 …）
+  nabon:  '数値',            // 納本数
+  map:    '数値_3',          // MAP冊数
+  osoi:   'チェックボックス_0', // 遅
+  status: 'ドロップダウン',   // 完了 / 不在 / 未着手
+};
+
+let currentMonth = '';
+let records = [];
+
+const val = (r,k) => (r[k]?.value ?? '').toString().trim();
+const num = (r,k) => parseFloat(r[k]?.value) || 0;
+const isOsoi = r => ((r[F.osoi]?.value) || []).length > 0;
+const bundlesFreeC = n => Math.ceil(n / FREEC_PER_BUNDLE);
+const bundlesMap   = n => Math.ceil(n / MAP_PER_BUNDLE);
+const esc = s => String(s).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+/* ===== 読み込み ===== */
+function initMonthSel() {
+  const sel = document.getElementById('month-sel');
+  const now = new Date();
+  let y = now.getFullYear(), m = now.getMonth() + 3;
+  const months = [];
+  while (y > 2020 || (y === 2020 && m >= 12)) {
+    if (m <= 0) { m += 12; y--; continue; }
+    months.push(`${y}年${m}月号`);
+    m--;
+  }
+  const next = new Date(now.getFullYear(), now.getMonth() + 1, 1);
+  currentMonth = `${next.getFullYear()}年${next.getMonth()+1}月号`;
+  sel.innerHTML = months.map(l =>
+    `<option value="${esc(l)}"${l === currentMonth ? ' selected' : ''}>${esc(l)} 作業</option>`).join('');
+}
+
+async function loadData() {
+  currentMonth = document.getElementById('month-sel').value;
+  document.getElementById('main').innerHTML = '<div class="loading"><div class="spinner"></div></div>';
+  try {
+    records = await fetchMonth(currentMonth);
+    render();
+  } catch (e) {
+    document.getElementById('main').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+async function fetchMonth(month) {
+  const out = [];
+  let offset = 0;
+  while (true) {
+    const q = encodeURIComponent(`${F.month} = "${month}" limit 500 offset ${offset}`);
+    const res = await fetch(`${PROXY}/k/v1/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON }
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.message || `納本データの取得に失敗しました（${res.status}）`);
+    }
+    const data = await res.json();
+    const batch = data.records || [];
+    out.push(...batch);
+    if (batch.length < 500) break;
+    offset += 500;
+    if (offset > 20000) break;
+  }
+  return out;
+}
+
+/* ===== 集計 ===== */
+// ルート別。遅は別行に分ける（A / A遅）。残りは未完了ぶん。
+function byRoute() {
+  const m = {};
+  const key = r => val(r, F.route) + (isOsoi(r) ? '遅' : '');
+  records.forEach(r => {
+    const route = val(r, F.route);
+    if (!route) return;
+    const k = key(r);
+    if (!m[k]) m[k] = { key:k, base:route, osoi:isOsoi(r), nabon:0, map:0,
+                        rest:0, restMap:0, stores:0, restStores:0 };
+    const d = m[k];
+    d.stores++;
+    d.nabon += num(r, F.nabon);
+    d.map   += num(r, F.map);
+    // 「◯残り」＝ 完了していない店舗ぶん（不在・未着手）
+    if (val(r, F.status) !== '完了') {
+      d.restStores++;
+      d.rest    += num(r, F.nabon);
+      d.restMap += num(r, F.map);
+    }
+  });
+  return Object.values(m).sort((a,b) =>
+    a.base !== b.base ? a.base.localeCompare(b.base, 'ja') : (a.osoi ? 1 : -1));
+}
+
+function byGroup() {
+  const m = {};
+  records.forEach(r => {
+    const g = val(r, F.group);
+    if (!g) return;
+    if (!m[g]) m[g] = { key:g, nabon:0, map:0, stores:0 };
+    m[g].stores++;
+    m[g].nabon += num(r, F.nabon);
+    m[g].map   += num(r, F.map);
+  });
+  return Object.values(m).sort((a,b) => a.key.localeCompare(b.key, 'ja'));
+}
+
+/* ===== 描画 ===== */
+function render() {
+  if (!records.length) {
+    document.getElementById('main').innerHTML =
+      `<div class="note">${esc(currentMonth)}のデータがありません。月次納本データ作成ツールで作成してください。</div>`;
+    return;
+  }
+
+  const routes = byRoute();
+  const groups = byGroup();
+
+  const totalNabon   = routes.reduce((s,d) => s + d.nabon, 0);
+  const totalMap     = routes.reduce((s,d) => s + d.map, 0);
+  const totalBundles = routes.reduce((s,d) => s + bundlesFreeC(d.nabon), 0);
+  const totalRest    = routes.reduce((s,d) => s + d.rest, 0);
+  const restStores   = routes.reduce((s,d) => s + d.restStores, 0);
+  const doneAny      = records.some(r => val(r, F.status) === '完了');
+
+  document.getElementById('main').innerHTML = `
+    <div class="section">
+      <div class="section-title">ルート別 必要数</div>
+      <div class="section-note">
+        車に積む束数です。FreeC は 1束 ${FREEC_PER_BUNDLE}冊 でルートごとに束ね、
+        MAP は 1束 ${MAP_PER_BUNDLE}冊 で合計してから束ねます。
+      </div>
+      <table>
+        <thead><tr>
+          <th>ルート</th><th>店舗</th><th>束数</th><th>冊数</th><th>MAP冊数</th>
+        </tr></thead>
+        <tbody>
+          ${routes.map(d => `
+            <tr class="${d.osoi ? 'osoi' : ''} ${d.nabon === 0 ? 'zero' : ''}">
+              <td><strong>${esc(d.key)}</strong></td>
+              <td class="mono">${d.stores}</td>
+              <td class="mono"><strong>${bundlesFreeC(d.nabon)}</strong></td>
+              <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono">${d.map.toLocaleString()}</td>
+            </tr>`).join('')}
+          <tr class="total">
+            <td>合計</td>
+            <td class="mono">${records.length.toLocaleString()}</td>
+            <td class="mono">${totalBundles.toLocaleString()}</td>
+            <td class="mono">${totalNabon.toLocaleString()}</td>
+            <td class="mono">${totalMap.toLocaleString()}</td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="kpi-row">
+        <span>FreeC <b>${totalBundles.toLocaleString()}</b> 束 / <b>${totalNabon.toLocaleString()}</b> 冊</span>
+        <span>MAP <b>${bundlesMap(totalMap).toLocaleString()}</b> 束 / <b>${totalMap.toLocaleString()}</b> 冊</span>
+      </div>
+    </div>
+
+    <div class="section">
+      <div class="section-title">残り（未完了ぶん）</div>
+      <div class="section-note">
+        不在・未着手の店舗を集計したものです。シフト表の「A残り」などにあたります。<br>
+        作業が進むと減ります。<strong>${restStores.toLocaleString()}店舗 / ${totalRest.toLocaleString()}冊</strong>が未完了です。
+      </div>
+      ${!doneAny ? `<div class="note">まだ1店舗も完了していないため、全ルートがそのまま残りとして出ています。
+        作業開始後にご覧ください。</div>` : `
+      <table>
+        <thead><tr>
+          <th>ルート</th><th>残り店舗</th><th>残り束数</th><th>残り冊数</th><th>MAP冊数</th>
+        </tr></thead>
+        <tbody>
+          ${routes.filter(d => d.restStores > 0).map(d => `
+            <tr class="${d.osoi ? 'osoi' : ''}">
+              <td><strong>${esc(d.key)}残り</strong></td>
+              <td class="mono">${d.restStores}</td>
+              <td class="mono"><strong>${bundlesFreeC(d.rest)}</strong></td>
+              <td class="mono">${d.rest.toLocaleString()}</td>
+              <td class="mono">${d.restMap.toLocaleString()}</td>
+            </tr>`).join('')}
+          <tr class="total">
+            <td>合計</td>
+            <td class="mono">${restStores.toLocaleString()}</td>
+            <td class="mono">${routes.reduce((s,d) => s + bundlesFreeC(d.rest), 0).toLocaleString()}</td>
+            <td class="mono">${totalRest.toLocaleString()}</td>
+            <td class="mono">${routes.reduce((s,d) => s + d.restMap, 0).toLocaleString()}</td>
+          </tr>
+        </tbody>
+      </table>`}
+    </div>
+
+    <div class="section">
+      <div class="section-title">ホテル（グループ別）</div>
+      <div class="section-note">シフト表の右下の表にあたります。</div>
+      ${groups.length === 0 ? `<div class="note">グループが設定された店舗がありません。</div>` : `
+      <table>
+        <thead><tr>
+          <th>グループ</th><th>店舗</th><th>FreeC束数</th><th>FreeC冊数</th><th>MAP冊数</th>
+        </tr></thead>
+        <tbody>
+          ${groups.map(d => `
+            <tr>
+              <td><strong>${esc(d.key)}</strong></td>
+              <td class="mono">${d.stores}</td>
+              <td class="mono"><strong>${bundlesFreeC(d.nabon)}</strong></td>
+              <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono">${d.map.toLocaleString()}</td>
+            </tr>`).join('')}
+          <tr class="total">
+            <td>合計</td>
+            <td class="mono">${groups.reduce((s,d) => s + d.stores, 0).toLocaleString()}</td>
+            <td class="mono">${groups.reduce((s,d) => s + bundlesFreeC(d.nabon), 0).toLocaleString()}</td>
+            <td class="mono">${groups.reduce((s,d) => s + d.nabon, 0).toLocaleString()}</td>
+            <td class="mono">${groups.reduce((s,d) => s + d.map, 0).toLocaleString()}</td>
+          </tr>
+        </tbody>
+      </table>`}
+    </div>
+
+    <div class="note">
+      ここまでが kintone から自動計算できる部分です。<br>
+      出勤者・号車への配置・ルート割当を組む画面は次の段階で作ります。
+      まず上の数字が手元のシフト表と合っているかご確認ください。
+    </div>
+  `;
+}
+
+/* ===== 起動 ===== */
+initMonthSel();
+loadData();
+</script>
+
+</body>
+</html>
