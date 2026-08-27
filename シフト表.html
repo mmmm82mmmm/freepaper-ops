@@ -101,12 +101,51 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);ba
   display:flex;gap:10px;align-items:center;border-top:1px solid var(--border);}
 .savemsg{font-size:12px;color:var(--muted);}
 
+/* ===== 印刷レイアウト（A4ヨコ・2日で1ページ） ===== */
+.psheet{width:281mm;height:194mm;background:#fff;margin:0 auto 20px;
+  box-shadow:0 2px 14px rgba(0,0,0,.14);display:flex;flex-direction:column;gap:3mm;
+  font-size:9pt;color:#000;overflow:hidden;}
+.pday{flex:1 1 0;display:flex;flex-direction:column;min-height:0;}
+.ph{display:flex;align-items:baseline;gap:10px;border-bottom:2px solid #000;
+  padding-bottom:2px;margin-bottom:3px;flex:0 0 auto;}
+.ph .t{font-size:13pt;font-weight:900;letter-spacing:.04em;}
+.ph .d{font-size:9pt;font-weight:900;background:#000;color:#fff;padding:0 6px;border-radius:3px;}
+.ph .r{margin-left:auto;font-size:8pt;color:#333;}
+.proster{display:flex;gap:6px;font-size:7.5pt;margin-bottom:3px;flex:0 0 auto;}
+.proster .b{border:1px solid #000;padding:1px 5px;flex:1;line-height:1.45;}
+.proster .b i{font-style:normal;font-weight:900;background:#eee;padding:0 4px;margin-right:4px;}
+.pgrid{flex:1 1 auto;display:grid;grid-template-columns:15mm 1fr 1fr;
+  grid-auto-rows:1fr;gap:1.2mm;min-height:0;}
+.pgrid .gh{font-size:7.5pt;font-weight:900;text-align:center;}
+.pt{display:flex;flex-direction:column;align-items:center;justify-content:center;
+  font-size:8pt;font-weight:900;border:1px solid #000;background:#f2f2f2;text-align:center;line-height:1.2;}
+.pc{border:1px solid #000;padding:2px 5px;display:flex;flex-direction:column;min-height:0;}
+.pc.c1{background:#eaf5fb;} .pc.c2{background:#fdeef3;}
+.pc .who{flex:1 1 auto;overflow:hidden;line-height:1.4;font-size:8pt;}
+.pc .who b{font-size:9pt;}
+.pc .rt{font-size:7.5pt;line-height:1.5;}
+.pc .rt span{display:inline-block;border:1px solid #666;border-radius:3px;
+  padding:0 3px;margin:0 2px 1px 0;background:#fff;}
+.pc .load{margin-top:2px;padding-top:2px;border-top:1px dashed #666;
+  font-size:8.5pt;font-weight:900;white-space:nowrap;}
+.pc .load small{font-weight:400;font-size:7pt;}
+.pfoot{flex:0 0 auto;display:flex;gap:6px;font-size:7.5pt;}
+.pfoot .box{border:1px solid #000;padding:2px 5px;line-height:1.5;}
+.pfoot .memo{flex:1;white-space:pre-wrap;}
+.ptable{width:100%;border-collapse:collapse;font-size:8pt;}
+.ptable th,.ptable td{border:1px solid #000;padding:2px 5px;text-align:right;}
+.ptable th{background:#eee;font-weight:900;}
+.ptable th:first-child,.ptable td:first-child{text-align:left;}
+
 @media print{
   .app-header,.tabs,.savebar,.noprint{display:none !important;}
   body{background:#fff;}
   .container{max-width:none;padding:0;}
-  .section{box-shadow:none;border-radius:0;padding:0 0 8px;margin-bottom:8px;}
-  @page{size:A3 landscape;margin:8mm;}
+  #screen-need,#screen-plan{display:none !important;}
+  #screen-print{display:block !important;}
+  .psheet{box-shadow:none;margin:0;break-after:page;}
+  .psheet:last-child{break-after:auto;}
+  @page{size:A4 landscape;margin:8mm;}
 }
 </style>
 </head>
@@ -121,11 +160,13 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);ba
 <div class="tabs">
   <div class="tab active" onclick="switchTab('need',this)">📦 必要数</div>
   <div class="tab" onclick="switchTab('plan',this)">👥 配置</div>
+  <div class="tab" onclick="switchTab('print',this)">🖨 印刷</div>
 </div>
 
 <div class="container">
   <div class="screen active" id="screen-need"><div class="loading"><div class="spinner"></div></div></div>
   <div class="screen" id="screen-plan"></div>
+  <div class="screen" id="screen-print"></div>
 </div>
 
 <script>
@@ -288,13 +329,14 @@ function blankShift() {
       roster: { freec: [], annai: [] },
       sections: TIMES.map(() => ({ cars: CARS.map(() => ({ sup:'', members:[], routes:[] })) }))
     })),
-    annaiNote: '', updatedAt: ''
+    startPoints: {}, annaiNote: '', updatedAt: ''
   };
 }
 
 function normalizeShift(o) {
   const base = blankShift();
   if (!o || typeof o !== 'object') return base;
+  base.startPoints = o.startPoints || {};
   base.annaiNote = o.annaiNote || '';
   base.updatedAt = o.updatedAt || '';
   (o.days || []).slice(0, DAYS).forEach((d, i) => {
@@ -356,6 +398,7 @@ function switchTab(name, el) {
   el.classList.add('active');
   document.querySelectorAll('.screen').forEach(s => s.classList.remove('active'));
   document.getElementById('screen-' + name).classList.add('active');
+  if (name === 'print') renderPrint();
 }
 
 /* ===== 必要数タブ ===== */
@@ -463,6 +506,16 @@ function renderPlan() {
     </div>
 
     <div class="section">
+      <div class="section-title">スタート地点</div>
+      <div class="section-note">印刷したシフト表の下に載ります。一度入れれば翌月以降も引き継げます。</div>
+      <div style="display:flex;flex-wrap:wrap;gap:8px;">
+        ${baseRoutes().map(r => `<label style="font-size:11px;font-weight:700;color:var(--muted)">${esc(r)}<br>
+          <input type="text" style="width:130px" value="${esc(shift.startPoints[r] || '')}"
+                 placeholder="南3西1" oninput="setStart(${q(r)}, this.value)"></label>`).join('')}
+      </div>
+    </div>
+
+    <div class="section">
       <div class="section-title">案内所 FreeC 交換 ほか（自由記入）</div>
       <textarea style="width:100%;min-height:70px;" oninput="setAnnai(this.value)"
         placeholder="案内所FreeC交換 66束&#10;日劇 4 → 駅前本店 12 → 6条 8 → 新宿 4 → WEST 4 …">${esc(shift.annaiNote)}</textarea>
@@ -533,6 +586,126 @@ function carCell(si, ci) {
   </div>`;
 }
 
+/* ===== 印刷タブ（A4ヨコ・2日で1ページ＝両面1枚） ===== */
+function dayHasContent(d) {
+  if (d.date || d.roster.freec.length || d.roster.annai.length) return true;
+  return d.sections.some(s => s.cars.some(c => c.sup || c.members.length || c.routes.length));
+}
+
+function renderPrint() {
+  const el = document.getElementById('screen-print');
+  if (!records.length) { el.innerHTML = `<div class="note">先に月次納本データを作成してください。</div>`; return; }
+
+  const days = shift.days.map((d,i) => ({ d, i })).filter(x => dayHasContent(x.d));
+  if (!days.length) {
+    el.innerHTML = `<div class="note">まだ配置が入っていません。「👥 配置」タブで組んでから印刷してください。</div>`;
+    return;
+  }
+
+  // 2日ずつ1ページに載せる
+  const pages = [];
+  for (let i = 0; i < days.length; i += 2) pages.push(days.slice(i, i + 2));
+  const withNeed = document.getElementById('pn-need') ? document.getElementById('pn-need').checked : true;
+  const total = pages.length + (withNeed ? 1 : 0);
+
+  el.innerHTML = `
+    <div class="note noprint">
+      A4ヨコ・<strong>2日で1ページ</strong>で出ます（全${total}ページ）。
+      両面印刷にすると${Math.ceil(total/2)}枚に収まります。<br>
+      印刷ダイアログで用紙をA4・向きを横にし、「背景のグラフィック」を有効、余白は「なし」にしてください。
+      <label style="display:inline-block;margin-top:6px;">
+        <input type="checkbox" id="pn-need" ${withNeed ? 'checked' : ''} onchange="renderPrint()">
+        ルート別必要数のページを付ける
+      </label>
+    </div>
+    ${pages.map(printPage).join('')}
+    ${withNeed ? printNeed() : ''}
+    <div class="savebar noprint"><button class="btn" onclick="window.print()">🖨 印刷 / PDF保存</button></div>`;
+}
+
+function printPage(pair) {
+  const sp = baseRoutes().filter(r => shift.startPoints[r]);
+  const foot = (sp.length || shift.annaiNote) ? `<div class="pfoot">
+      ${sp.length ? `<div class="box"><b>スタート地点</b>　${
+        sp.map(r => `${esc(r)}：${esc(shift.startPoints[r])}`).join('　')}</div>` : ''}
+      ${shift.annaiNote ? `<div class="box memo">${esc(shift.annaiNote)}</div>` : ''}
+    </div>` : '';
+  return `<div class="psheet">${pair.map(x => printDay(x.d, x.i)).join('')}${foot}</div>`;
+}
+
+function printDay(d, idx) {
+  const rosterHtml = (label, list) => list.length
+    ? `<div class="b"><i>${label}</i>${list.map(esc).join('　')}</div>` : '';
+
+  const cells = TIMES.map((t, si) => {
+    const row = CARS.map((_, ci) => {
+      const c = d.sections[si].cars[ci];
+      const tt = carTotals(c.routes);
+      const people = [c.sup ? `<b>${esc(c.sup)}</b>` : '', ...c.members.map(esc)]
+        .filter(Boolean).join('　');
+      return `<div class="pc c${ci+1}">
+        <div class="who">${people || '<span style="color:#999">（未定）</span>'}</div>
+        <div class="rt">${(c.routes || []).map(r => `<span>${esc(r)}</span>`).join('')}</div>
+        <div class="load">
+          FreeC ${tt.fb}束 <small>(${tt.fc.toLocaleString()}冊)</small>　
+          MAP ${tt.mb}束 <small>(${tt.mc.toLocaleString()}冊)</small>
+          ${tt.manual ? '　<small>＋案内所</small>' : ''}
+          <small style="float:right">${(c.sup?1:0)+c.members.length}人</small>
+        </div>
+      </div>`;
+    }).join('');
+    const sub = si === 1 ? '' : '<span style="font-weight:400;font-size:6.5pt">目安</span>';
+    return `<div class="pt">${esc(t)}${sub}</div>${row}`;
+  }).join('');
+
+  return `<div class="pday">
+    <div class="ph">
+      <div class="t">${esc(d.date || (idx+1) + '日目')}</div>
+      <div class="d">${idx+1}日目</div>
+      <div class="r">${esc(currentMonth)}${d.bento !== '' ? '　弁当 ' + esc(d.bento) + '個' : ''}</div>
+    </div>
+    <div class="proster">
+      ${rosterHtml('FreeC', d.roster.freec)}
+      ${rosterHtml('案内所', d.roster.annai)}
+    </div>
+    <div class="pgrid">
+      <div class="gh"></div><div class="gh">1号車</div><div class="gh">2号車</div>
+      ${cells}
+    </div>
+  </div>`;
+}
+
+function printNeed() {
+  const rows = routeAgg.filter(d => d.stores > 0);
+  const rest = routeAgg.filter(d => d.restStores > 0);
+  const half = Math.ceil(rows.length / 2);
+  const tbl = list => `<table class="ptable">
+    <thead><tr><th>ルート</th><th>束数</th><th>冊数</th><th>MAP</th></tr></thead>
+    <tbody>${list.map(d => `<tr><td><strong>${esc(d.key)}</strong></td>
+      <td>${bFreeC(d.nabon)}</td><td>${d.nabon.toLocaleString()}</td>
+      <td>${d.map.toLocaleString()}</td></tr>`).join('')}</tbody></table>`;
+
+  return `<div class="psheet">
+    <div class="ph">
+      <div class="t">ルート別 必要数</div>
+      <div class="r">${esc(currentMonth)}　FreeC 1束${FREEC_PER_BUNDLE}冊（ルートごとに束ねる）／ MAP 1束${MAP_PER_BUNDLE}冊（合計してから束ねる）</div>
+    </div>
+    <div style="display:flex;gap:6mm;flex:1;min-height:0;align-items:flex-start;">
+      <div style="flex:1">${tbl(rows.slice(0, half))}</div>
+      <div style="flex:1">${tbl(rows.slice(half))}</div>
+      <div style="flex:1">
+        ${rest.length ? `<div style="font-size:8pt;font-weight:900;margin-bottom:3px;">残り（不在・未着手ぶん）</div>
+        <table class="ptable">
+          <thead><tr><th>ルート</th><th>店</th><th>束数</th><th>冊数</th></tr></thead>
+          <tbody>${rest.map(d => `<tr><td><strong>${esc(d.key)}残り</strong></td>
+            <td>${d.restStores}</td><td>${bFreeC(d.rest)}</td>
+            <td>${d.rest.toLocaleString()}</td></tr>`).join('')}</tbody>
+        </table>` : ''}
+      </div>
+    </div>
+  </div>`;
+}
+
 /* ===== 操作 ===== */
 function touch() {
   dirty = true;
@@ -543,6 +716,9 @@ function setDay(i)   { activeDay = i; renderPlan(); }
 function setDate(v)  { shift.days[activeDay].date = v; touch(); }
 function setBento(v) { shift.days[activeDay].bento = v; touch(); }
 function setAnnai(v) { shift.annaiNote = v; touch(); }
+function setStart(route, v) { shift.startPoints[route] = v; touch(); }
+// 遅を除いた素のルート名（A, B, D …）
+function baseRoutes() { return [...new Set(routeAgg.map(r => r.base))].sort((a,b) => a.localeCompare(b,'ja')); }
 
 function addRoster(kind, name) {
   name = (name || '').trim();
