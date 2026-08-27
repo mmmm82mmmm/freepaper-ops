@@ -101,36 +101,40 @@ input:focus,select:focus,textarea:focus{outline:none;border-color:var(--blue);ba
   display:flex;gap:10px;align-items:center;border-top:1px solid var(--border);}
 .savemsg{font-size:12px;color:var(--muted);}
 
-/* ===== 印刷レイアウト（A4ヨコ・2日で1ページ） ===== */
+/* ===== 印刷レイアウト（A4ヨコ・2日を左右に） ===== */
 .psheet{width:281mm;height:194mm;background:#fff;margin:0 auto 20px;
-  box-shadow:0 2px 14px rgba(0,0,0,.14);display:flex;flex-direction:column;gap:3mm;
+  box-shadow:0 2px 14px rgba(0,0,0,.14);display:flex;flex-direction:column;gap:2mm;
   font-size:9pt;color:#000;overflow:hidden;}
-.pday{flex:1 1 0;display:flex;flex-direction:column;min-height:0;}
-.ph{display:flex;align-items:baseline;gap:10px;border-bottom:2px solid #000;
-  padding-bottom:2px;margin-bottom:3px;flex:0 0 auto;}
+.pdays{flex:1 1 auto;display:flex;gap:3mm;min-height:0;}
+.pday{flex:1 1 0;display:flex;flex-direction:column;min-width:0;min-height:0;}
+.ph{display:flex;align-items:baseline;gap:6px;border-bottom:2px solid #000;
+  padding-bottom:2px;margin-bottom:2px;flex:0 0 auto;}
 .ph .t{font-size:13pt;font-weight:900;letter-spacing:.04em;}
-.ph .d{font-size:9pt;font-weight:900;background:#000;color:#fff;padding:0 6px;border-radius:3px;}
-.ph .r{margin-left:auto;font-size:8pt;color:#333;}
-.proster{display:flex;gap:6px;font-size:7.5pt;margin-bottom:3px;flex:0 0 auto;}
-.proster .b{border:1px solid #000;padding:1px 5px;flex:1;line-height:1.45;}
-.proster .b i{font-style:normal;font-weight:900;background:#eee;padding:0 4px;margin-right:4px;}
-.pgrid{flex:1 1 auto;display:grid;grid-template-columns:15mm 1fr 1fr;
-  grid-auto-rows:1fr;gap:1.2mm;min-height:0;}
-.pgrid .gh{font-size:7.5pt;font-weight:900;text-align:center;}
+.ph .d{font-size:8pt;font-weight:900;background:#000;color:#fff;padding:0 5px;border-radius:3px;}
+.ph .r{margin-left:auto;font-size:7.5pt;color:#333;white-space:nowrap;}
+.proster{display:flex;flex-direction:column;gap:1mm;font-size:7pt;margin-bottom:2px;flex:0 0 auto;}
+.proster .b{border:1px solid #000;padding:1px 4px;line-height:1.4;}
+.proster .b i{font-style:normal;font-weight:900;background:#eee;padding:0 3px;margin-right:3px;}
+/* 見出し行は文字ぶんだけ、時間帯の3行で残りを等分する */
+.pgrid{flex:1 1 auto;display:grid;grid-template-columns:12mm 1fr 1fr;
+  grid-template-rows:auto repeat(3, minmax(0,1fr));gap:1mm;min-height:0;}
+.pgrid .gh{font-size:7pt;font-weight:900;text-align:center;}
 .pt{display:flex;flex-direction:column;align-items:center;justify-content:center;
-  font-size:8pt;font-weight:900;border:1px solid #000;background:#f2f2f2;text-align:center;line-height:1.2;}
-.pc{border:1px solid #000;padding:2px 5px;display:flex;flex-direction:column;min-height:0;}
+  font-size:7.5pt;font-weight:900;border:1px solid #000;background:#f2f2f2;
+  text-align:center;line-height:1.2;}
+.pc{border:1px solid #000;padding:2px 4px;display:flex;flex-direction:column;
+  min-height:0;overflow:hidden;}
 .pc.c1{background:#eaf5fb;} .pc.c2{background:#fdeef3;}
-.pc .who{flex:1 1 auto;overflow:hidden;line-height:1.4;font-size:8pt;}
-.pc .who b{font-size:9pt;}
-.pc .rt{font-size:7.5pt;line-height:1.5;}
+.pc .who{flex:1 1 auto;min-height:0;overflow:hidden;line-height:1.35;font-size:7.5pt;}
+.pc .who b{font-size:8.5pt;}
+.pc .rt{flex:0 0 auto;font-size:7pt;line-height:1.45;}
 .pc .rt span{display:inline-block;border:1px solid #666;border-radius:3px;
   padding:0 3px;margin:0 2px 1px 0;background:#fff;}
-.pc .load{margin-top:2px;padding-top:2px;border-top:1px dashed #666;
-  font-size:8.5pt;font-weight:900;white-space:nowrap;}
-.pc .load small{font-weight:400;font-size:7pt;}
-.pfoot{flex:0 0 auto;display:flex;gap:6px;font-size:7.5pt;}
-.pfoot .box{border:1px solid #000;padding:2px 5px;line-height:1.5;}
+.pc .load{flex:0 0 auto;margin-top:2px;padding-top:2px;border-top:1px dashed #666;
+  font-size:8pt;font-weight:900;white-space:nowrap;}
+.pc .load small{font-weight:400;font-size:6.5pt;}
+.pfoot{flex:0 0 auto;display:flex;gap:4px;font-size:7pt;}
+.pfoot .box{border:1px solid #000;padding:2px 5px;line-height:1.45;}
 .pfoot .memo{flex:1;white-space:pre-wrap;}
 .ptable{width:100%;border-collapse:collapse;font-size:8pt;}
 .ptable th,.ptable td{border:1px solid #000;padding:2px 5px;text-align:right;}
@@ -621,6 +625,23 @@ function renderPrint() {
     ${pages.map(printPage).join('')}
     ${withNeed ? printNeed() : ''}
     <div class="savebar noprint"><button class="btn" onclick="window.print()">🖨 印刷 / PDF保存</button></div>`;
+
+  fitPrintCells();
+}
+
+/* 人数が多いマスは名前がはみ出す。束数の行が切れないよう、
+   収まるまで名前だけ小さくする。 */
+function fitPrintCells() {
+  document.querySelectorAll('#screen-print .pc').forEach(cell => {
+    const who = cell.querySelector('.who');
+    if (!who) return;
+    let pt = 7.5;
+    who.style.fontSize = pt + 'pt';
+    while (who.scrollHeight > who.clientHeight + 1 && pt > 5) {
+      pt = Math.round((pt - 0.25) * 100) / 100;
+      who.style.fontSize = pt + 'pt';
+    }
+  });
 }
 
 function printPage(pair) {
@@ -630,7 +651,11 @@ function printPage(pair) {
         sp.map(r => `${esc(r)}：${esc(shift.startPoints[r])}`).join('　')}</div>` : ''}
       ${shift.annaiNote ? `<div class="box memo">${esc(shift.annaiNote)}</div>` : ''}
     </div>` : '';
-  return `<div class="psheet">${pair.map(x => printDay(x.d, x.i)).join('')}${foot}</div>`;
+  // 元のシート同様、2日を左右に並べる
+  return `<div class="psheet">
+    <div class="pdays">${pair.map(x => printDay(x.d, x.i)).join('')}</div>
+    ${foot}
+  </div>`;
 }
 
 function printDay(d, idx) {
