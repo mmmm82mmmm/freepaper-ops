@@ -204,6 +204,8 @@ let routeAgg = [];
 let shift = null;
 let memberPool = [];
 let activeDay = 0;
+// 準備設定へ反映する時間帯。'0'|'1'|'2' か 'all'（1日ぶんをまとめる）
+let prepScope = null;
 let dirty = false;
 
 const val = (r,k) => (r[k]?.value ?? '').toString().trim();
@@ -511,6 +513,26 @@ function renderPlan() {
     </div>
 
     <div class="section">
+      <div class="section-title">通常納本の準備設定へ反映</div>
+      <div class="section-note">
+        この日の配置を、運転手画面の「準備設定」（車の編成・ルートの号車割当）へ書き写します。
+        同じことを二度入力せずに済みます。<strong>メンバー一覧や配布物設定には触れません。</strong>
+      </div>
+      <div style="display:flex;gap:10px;align-items:flex-end;margin-bottom:10px;">
+        <label style="font-size:11px;font-weight:700;color:var(--muted)">反映する時間帯<br>
+          <select id="prep-scope" onchange="setPrepScope(this.value)">
+            ${TIMES.map((t,i) => `<option value="${i}">${esc(t)}</option>`).join('')}
+            <option value="all">この日すべて（まとめる）</option>
+          </select></label>
+      </div>
+      <div id="prep-preview"></div>
+      <div style="display:flex;gap:10px;align-items:center;margin-top:10px;">
+        <button class="btn" id="prep-btn" onclick="reflectToPrep()">⚙️ 準備設定へ反映</button>
+        <span class="savemsg" id="prep-msg"></span>
+      </div>
+    </div>
+
+    <div class="section">
       <div class="section-title">スタート地点</div>
       <div class="section-note">印刷したシフト表の下に載ります。一度入れれば翌月以降も引き継げます。</div>
       <div style="display:flex;flex-wrap:wrap;gap:8px;">
@@ -532,6 +554,8 @@ function renderPlan() {
       <span class="savemsg" id="save-msg">${shift.updatedAt
         ? '最終保存 ' + esc(new Date(shift.updatedAt).toLocaleString('ja-JP')) : '未保存'}</span>
     </div>`;
+
+  renderPrepPreview();
 }
 
 function rosterBox(kind, label, list) {
@@ -740,13 +764,162 @@ function printNeed() {
   </div>`;
 }
 
+/* ===== 通常納本の準備設定へ反映 =====
+   運転手画面の準備設定は __common__ レコードの cars / routeCars を見ている。
+   キーの形はシフト表のルート表記と同じ（A, B遅 …）なのでそのまま渡せる。
+   ※ このレコードはメンバー一覧も持っている。過去に読み込み失敗から
+     空で上書きされてメンバーが消えた経緯があるため、
+     読めない・空・メンバー0人のときは何も書かずに中止する。 */
+
+// その日の配置から 車の編成 と ルートの号車割当 を組み立てる
+function buildPrep(day, scope) {
+  const cars = {};
+  const routeCars = {};
+  const carConflicts = [];
+  const routeConflicts = [];
+
+  // 準備設定は編成を1組しか持てないので、どの時間帯を反映するかを選ぶ
+  const secs = (scope === 'all')
+    ? day.sections
+    : [day.sections[Number(scope)]].filter(Boolean);
+
+  secs.forEach(sec => {
+    sec.cars.forEach((c, ci) => {
+      const carNo = ci + 1;
+      [c.sup, ...c.members].filter(Boolean).forEach(name => {
+        if (cars[name] && cars[name] !== carNo) {
+          if (!carConflicts.includes(name)) carConflicts.push(name);
+        }
+        cars[name] = carNo;
+      });
+      (c.routes || []).forEach(tok => {
+        // 「残り」と「案内所」は準備設定の対象外
+        if (tok === '案内所' || tok.endsWith('残り')) return;
+        if (routeCars[tok] && routeCars[tok] !== carNo) {
+          if (!routeConflicts.includes(tok)) routeConflicts.push(tok);
+        }
+        routeCars[tok] = carNo;
+      });
+    });
+  });
+  return { cars, routeCars, carConflicts, routeConflicts };
+}
+
+// 配置が入っている最初の時間帯を既定にする
+function defaultScope(day) {
+  for (let i = 0; i < day.sections.length; i++) {
+    const cs = day.sections[i].cars;
+    if (cs.some(c => c.sup || c.members.length || c.routes.length)) return String(i);
+  }
+  return '0';
+}
+
+function setPrepScope(v) { prepScope = v; renderPrepPreview(); }
+
+function renderPrepPreview() {
+  const el = document.getElementById('prep-preview');
+  if (!el) return;
+  const d = shift.days[activeDay];
+  if (prepScope === null) prepScope = defaultScope(d);
+  const p = buildPrep(d, prepScope);
+  const nCar = Object.keys(p.cars).length;
+  const nRoute = Object.keys(p.routeCars).length;
+
+  if (!nCar && !nRoute) {
+    el.innerHTML = '<div class="note">'
+      + (prepScope === 'all' ? 'この日はまだ配置が入っていません。'
+                             : 'この時間帯にはまだ配置が入っていません。')
+      + '</div>';
+    return;
+  }
+  const list = no => Object.entries(p.cars).filter(e => e[1] === no).map(e => esc(e[0])).join('　') || '（なし）';
+  const rts  = no => Object.entries(p.routeCars).filter(e => e[1] === no).map(e => esc(e[0])).join('　') || '（なし）';
+  const warn = [];
+  if (p.carConflicts.length)
+    warn.push(`${p.carConflicts.map(esc).join('、')} は時間帯によって号車が違います。`
+      + `まとめると最後の時間帯の号車で登録されます。時間帯を選んで反映してください。`);
+  if (p.routeConflicts.length)
+    warn.push(`ルート ${p.routeConflicts.map(esc).join('、')} が両方の号車に入っています。最後の号車で登録されます。`);
+
+  const sel = document.getElementById('prep-scope');
+  if (sel && sel.value !== prepScope) sel.value = prepScope;
+
+  el.innerHTML = `
+    <table style="font-size:12px">
+      <thead><tr><th></th><th style="text-align:left">作業者</th><th style="text-align:left">ルート</th></tr></thead>
+      <tbody>
+        <tr><td><strong>1号車</strong></td><td style="text-align:left">${list(1)}</td><td style="text-align:left">${rts(1)}</td></tr>
+        <tr><td><strong>2号車</strong></td><td style="text-align:left">${list(2)}</td><td style="text-align:left">${rts(2)}</td></tr>
+      </tbody>
+    </table>
+    <div class="kpi-row"><span>作業者 <b>${nCar}</b> 人　／　ルート <b>${nRoute}</b> 件</span></div>
+    ${warn.length ? `<div class="note" style="border-color:#f0b0b0;background:#fdecec;color:#a01818;">
+      ${warn.map(w => '⚠️ ' + w).join('<br>')}</div>` : ''}`;
+}
+
+async function reflectToPrep() {
+  const btn = document.getElementById('prep-btn');
+  const msg = document.getElementById('prep-msg');
+  const d = shift.days[activeDay];
+  if (prepScope === null) prepScope = defaultScope(d);
+  const p = buildPrep(d, prepScope);
+
+  if (!Object.keys(p.cars).length && !Object.keys(p.routeCars).length) {
+    msg.textContent = 'この時間帯にはまだ配置が入っていません。'; return;
+  }
+
+  btn.disabled = true; msg.textContent = '確認中…';
+  try {
+    // 現在の準備設定を読む。少しでも怪しければ書かない。
+    const rows = await kget(`${F.month} = "${commonKey(currentMonth)}" limit 1`);
+    if (!rows.length) throw new Error('準備設定（共通データ）が見つかりません。メンバー管理を先に開いてください。');
+    const raw = val(rows[0], F.body);
+    if (!raw.trim()) throw new Error('準備設定が空でした。安全のため反映を中止しました。');
+    let common;
+    try { common = JSON.parse(raw); }
+    catch (e) { throw new Error('準備設定のデータが読めません。安全のため反映を中止しました。'); }
+    if (!Array.isArray(common.members) || common.members.length === 0) {
+      throw new Error('メンバー一覧が空でした。安全のため反映を中止しました。');
+    }
+
+    const before = Object.keys(common.cars || {}).length;
+    const scopeLabel = prepScope === 'all' ? 'この日すべて' : TIMES[Number(prepScope)];
+    const ok = confirm(
+      `${activeDay + 1}日目 ${scopeLabel} の配置を準備設定へ反映します。` + String.fromCharCode(10, 10) +
+      `車の編成　　： ${before}人分 → ${Object.keys(p.cars).length}人分` + String.fromCharCode(10) +
+      `ルート割当　： ${Object.keys(common.routeCars || {}).length}件 → ${Object.keys(p.routeCars).length}件` +
+      String.fromCharCode(10, 10) +
+      `メンバー一覧（${common.members.length}名）・運転手・配布物設定は変更しません。` +
+      String.fromCharCode(10) + 'よろしいですか？');
+    if (!ok) { msg.textContent = '取り消しました'; return; }
+
+    // 他のキーはそのまま残し、2つだけ差し替える
+    common.cars = p.cars;
+    common.routeCars = p.routeCars;
+    common.updatedAt = new Date().toISOString();
+
+    const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON },
+      body: JSON.stringify({ app: APP, id: rows[0].$id.value,
+        record: { [F.body]: { value: JSON.stringify(common, null, 2) } } })
+    });
+    if (!res.ok) throw new Error((await res.json().catch(() => ({}))).message || '反映に失敗しました');
+    msg.textContent = `反映しました（作業者 ${Object.keys(p.cars).length}人 / ルート ${Object.keys(p.routeCars).length}件）`;
+  } catch (e) {
+    msg.innerHTML = `<span style="color:var(--red)">${esc(e.message)}</span>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 /* ===== 操作 ===== */
 function touch() {
   dirty = true;
   const m = document.getElementById('save-msg');
   if (m) m.textContent = '未保存の変更があります';
 }
-function setDay(i)   { activeDay = i; renderPlan(); }
+function setDay(i)   { activeDay = i; prepScope = null; renderPlan(); }
 function setDate(v)  { shift.days[activeDay].date = v; touch(); }
 function setBento(v) { shift.days[activeDay].bento = v; touch(); }
 function setAnnai(v) { shift.annaiNote = v; touch(); }
