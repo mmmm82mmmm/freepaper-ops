@@ -51,16 +51,22 @@ select:focus,input:focus{outline:none;border-color:var(--blue);background:#fff;}
 
 /* ===== 出力（この中だけが印刷される） ===== */
 #sheets{margin:0 auto;}
-.sheet{background:#fff;margin:0 auto 24px;padding:14mm 12mm 12mm;box-shadow:0 2px 14px rgba(0,0,0,.14);}
-.sheet-head{display:flex;align-items:baseline;justify-content:space-between;
+/* 用紙の高さで固定する。はみ出した分が次ページへ流れないようにするため。 */
+.sheet{background:#fff;margin:0 auto 24px;padding:14mm 12mm 12mm;box-shadow:0 2px 14px rgba(0,0,0,.14);
+  display:flex;flex-direction:column;overflow:hidden;}
+.sheet-head{flex:0 0 auto;display:flex;align-items:baseline;justify-content:space-between;
   border-bottom:2.5px solid #1a1a1a;padding-bottom:6px;margin-bottom:9px;}
 .sheet-title{font-size:20pt;font-weight:900;letter-spacing:.06em;}
 .sheet-meta{font-size:8.5pt;color:#555;}
 .sheet-sub{font-size:9pt;color:#555;margin-bottom:9px;}
 
-.cols{column-gap:5mm;column-rule:1px solid #ccc;}
-.item{display:flex;gap:4px;align-items:baseline;break-inside:avoid;
-  padding:1.1px 0;border-bottom:1px dotted #ddd;}
+/* column-fill:auto ＝ 1段目を上から下まで埋めてから次の段へ（元の一覧と同じ流れ） */
+.cols{flex:1 1 auto;min-height:0;column-gap:5mm;column-rule:1px solid #ccc;column-fill:auto;}
+/* 余白は em 指定にする。px 固定だと文字を縮めても行の高さが減らず、
+   自動調整がほとんど効かなくなるため。 */
+.item{display:flex;gap:.3em;align-items:baseline;break-inside:avoid;
+  padding:.1em 0;border-bottom:1px dotted #ddd;}
+.cols.noline .item{border-bottom:none;}
 .item .no{flex:0 0 auto;font-family:monospace;color:#777;text-align:right;}
 .item .nm{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
 .item .ad{flex:0 0 auto;color:#555;font-variant-numeric:tabular-nums;}
@@ -124,7 +130,15 @@ select:focus,input:focus{outline:none;border-color:var(--blue);background:#fff;}
         <label>全店舗面：文字</label>
         <select id="fsizeOther" onchange="render()"></select>
       </div>
+      <div class="fld">
+        <label>はみ出し</label>
+        <label class="genre-chip on" style="padding:9px 12px;">
+          <input type="checkbox" id="autofit" checked onchange="render()">
+          自動で1ページに収める
+        </label>
+      </div>
     </div>
+    <div class="note" id="fitmsg" style="display:none"></div>
   </div>
 
   <div class="box">
@@ -375,27 +389,86 @@ function render() {
   let st = document.getElementById('pagecss');
   if (!st) { st = document.createElement('style'); st.id = 'pagecss'; document.head.appendChild(st); }
   st.textContent = `@page{size:${w}mm ${h}mm;margin:0;}`;
+
+  autoFitAll();
+}
+
+/* ===== 1ページに収める =====
+   段組みの高さを用紙で固定してあるので、入りきらない分は「段の外」へはみ出す。
+   はみ出しは scrollWidth > clientWidth で判定できるので、収まるまで文字を縮める。 */
+function fitSheet(sheetEl, allowShrink) {
+  const cols = sheetEl.querySelector('.cols');
+  if (!cols) return null;
+
+  const overflowing = () => cols.scrollWidth > cols.clientWidth + 2;
+
+  const start = parseFloat(cols.dataset.basept);
+  if (!overflowing()) return { pt: start, shrunk: false, cut: false };
+  if (!allowShrink) return { pt: start, shrunk: false, cut: true };
+
+  const MIN = 3.5;
+  let pt = start;
+  while (pt > MIN && overflowing()) {
+    pt = Math.round((pt - 0.25) * 100) / 100;
+    cols.style.fontSize = pt + 'pt';
+  }
+  return { pt, shrunk: true, cut: overflowing() };
+}
+
+function autoFitAll() {
+  const allowShrink = document.getElementById('autofit').checked;
+  const labels = ['ホテル面', '全店舗面'];
+  const msgs = [];
+  let anyCut = false;
+
+  document.querySelectorAll('.sheet').forEach((s, i) => {
+    const r = fitSheet(s, allowShrink);
+    if (!r) return;
+    if (r.cut) {
+      anyCut = true;
+      msgs.push(`<b>${labels[i]}：入りきらない店舗があります。このままでは印刷されません。</b>`
+        + `<br>　段数を増やすか、${allowShrink ? '用紙を大きく' : '「自動で1ページに収める」を有効に'}してください。`);
+    } else if (r.shrunk) {
+      msgs.push(`${labels[i]}：収めるため <b>${r.pt}pt</b> に縮小しました`);
+    }
+
+    // 段が狭くて店名が「…」で切れているものを数える
+    const names = [...s.querySelectorAll('.item .nm')];
+    const cut = names.filter(n => n.scrollWidth > n.clientWidth + 1).length;
+    if (cut > 0) {
+      msgs.push(`${labels[i]}：<b>${cut}軒</b>の店名が枠に入りきらず「…」で省略されています`
+        + `（段数を減らすと1段が広くなります）`);
+    }
+  });
+
+  const box = document.getElementById('fitmsg');
+  box.style.display = msgs.length ? 'block' : 'none';
+  box.innerHTML = msgs.join('<br>');
+  box.style.background = anyCut ? '#fdecec' : '#fff8e8';
+  box.style.borderColor = anyCut ? '#f0b0b0' : '#f0d090';
+  box.style.color = anyCut ? '#a01818' : '#7a5a00';
+  document.getElementById('printBtn').disabled = anyCut;
 }
 
 function sheet(title, rows, w, h, fsize, cols, numbering, showAddr, dt) {
-  const noW = numbering === 'none' ? 0 : (numbering === 'kno' ? 4.2 : String(rows.length).length + 0.6);
+  const noW = numbering === 'none' ? 0 : (numbering === 'kno' ? 5 : String(rows.length).length + 0.5);
   const body = rows.length === 0
     ? `<div class="empty">該当する店舗がありません</div>`
-    : `<div class="cols" style="column-count:${cols};font-size:${fsize}pt;line-height:1.5;">
+    : `<div class="cols" data-basept="${fsize}" style="column-count:${cols};font-size:${fsize}pt;line-height:1.32;">
         ${rows.map((r,i) => {
           const no = numbering === 'none' ? ''
                    : numbering === 'kno'  ? val(r,F.kno)
                    : String(i+1);
           const ad = showAddr ? addrOf(r) : '';
           return `<div class="item">
-            ${numbering === 'none' ? '' : `<span class="no" style="min-width:${noW}em">${escapeHtml(no)}</span>`}
+            ${numbering === 'none' ? '' : `<span class="no" style="min-width:${noW}ch">${escapeHtml(no)}</span>`}
             <span class="nm">${escapeHtml(val(r,F.name))}</span>
             ${ad ? `<span class="ad">${escapeHtml(ad)}</span>` : ''}
           </div>`;
         }).join('')}
       </div>`;
 
-  return `<div class="sheet" style="width:${w}mm;min-height:${h}mm;">
+  return `<div class="sheet" style="width:${w}mm;height:${h}mm;">
     <div class="sheet-head">
       <div class="sheet-title">${escapeHtml(title)}</div>
       <div class="sheet-meta">${escapeHtml(dt)}　全${rows.length}軒</div>
@@ -413,7 +486,7 @@ function fillColSelects() {
       .map(n => `<option value="${n}"${n === def ? ' selected' : ''}>${n}段</option>`).join('');
   });
 
-  const sizes = [5, 5.5, 6, 6.5, 7, 7.5, 8, 9, 10, 11, 12];
+  const sizes = [4, 4.5, 5, 5.5, 6, 6.5, 7, 7.5, 8, 9, 10, 11, 12];
   const defSize = { fsizeHotel: 8, fsizeOther: 6 };
   Object.entries(defSize).forEach(([id, def]) => {
     document.getElementById(id).innerHTML = sizes
