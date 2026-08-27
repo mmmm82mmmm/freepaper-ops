@@ -1,0 +1,542 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<script src="config.js"></script>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>設置場所ID更新ツール</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f0e8;--card:#fff;--ink:#1a1a1a;--muted:#888;--border:#e0dbd0;
+  --blue:#1a5cd4;--green:#1a8a4a;--amber:#c47a0a;--red:#d42020;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);}
+.app-header{background:var(--ink);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;}
+.app-title{font-size:15px;font-weight:900;flex:1;}
+.container{padding:16px;max-width:960px;margin:0 auto;}
+.step{background:var(--card);border-radius:12px;padding:16px;margin-bottom:14px;
+  box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.step-no{display:inline-block;background:var(--ink);color:#fff;font-size:11px;font-weight:900;
+  border-radius:999px;padding:2px 9px;margin-right:8px;}
+.step-title{font-size:14px;font-weight:900;margin-bottom:6px;}
+.step-note{font-size:11px;color:var(--muted);line-height:1.9;margin-bottom:12px;}
+.btn{padding:10px 18px;font-size:13px;font-weight:900;font-family:inherit;color:#fff;
+  background:var(--ink);border:none;border-radius:8px;cursor:pointer;}
+.btn:disabled{background:#bbb;cursor:default;}
+.btn.ghost{background:#fff;color:var(--ink);border:1px solid var(--border);}
+.btn.go{background:var(--green);}
+select,input[type=file]{padding:8px;font-size:13px;font-family:inherit;
+  border:1px solid var(--border);border-radius:8px;background:#fafafa;}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
+th,td{padding:5px 7px;border-bottom:1px solid var(--border);text-align:left;vertical-align:middle;}
+th{background:#faf8f4;font-size:10px;font-weight:900;color:var(--muted);}
+td.mono{font-family:'DM Mono',monospace;}
+.note{background:#fff8e8;border:1px solid #f0d090;border-radius:9px;padding:10px 13px;
+  font-size:11px;color:#7a5a00;line-height:1.9;margin-top:10px;}
+.err{background:#fdecec;border:1px solid #f0b0b0;color:#a01818;border-radius:9px;
+  padding:10px 13px;font-size:12px;line-height:1.8;margin-top:10px;}
+.ok{background:#eaf5ec;border:1px solid #a8d5b5;color:#1a6b32;border-radius:9px;
+  padding:10px 13px;font-size:12px;line-height:1.8;margin-top:10px;}
+.stat{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:10px 0;}
+.stat b{font-family:'DM Mono',monospace;font-size:16px;color:var(--ink);}
+.log{font-family:'DM Mono',monospace;font-size:11px;background:#1a1a1a;color:#ddd;
+  border-radius:8px;padding:10px;max-height:200px;overflow:auto;white-space:pre-wrap;margin-top:10px;}
+.scroll{max-height:340px;overflow:auto;border:1px solid var(--border);border-radius:8px;}
+.pick{width:100%;font-size:12px;padding:5px;}
+.hint{font-size:10px;color:var(--muted);}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <a href="index.html" style="color:#fff;text-decoration:none;font-size:18px;">←</a>
+  <div class="app-title">🔢 設置場所ID更新ツール</div>
+</div>
+
+<div class="container">
+
+  <div class="note" style="margin-top:0">
+    設置店マスタの <b>kintone番号</b>（＝営業先アプリのレコード番号）が「なし」の店舗に、
+    正しい番号を設定します。番号は店舗を突き合わせる鍵なので、未設定のままだと
+    補充作業・月次データ作成・集計が正しく動きません。<br>
+    <b>有効な番号が入っているレコードには一切触れません。</b>
+  </div>
+
+  <div class="step">
+    <div class="step-title"><span class="step-no">1</span>現状を読み込む</div>
+    <div class="step-note">設置店マスタと、番号が入っていない月号レコードを取得します。</div>
+    <button class="btn" id="btn-load" onclick="loadAll()">📥 読み込む</button>
+    <div id="load-result"></div>
+  </div>
+
+  <div class="step">
+    <div class="step-title"><span class="step-no">2</span>営業先アプリのCSVと突き合わせる</div>
+    <div class="step-note">
+      アプリ45「FreeC営業先」から書き出したCSVを選んでください
+      （<b>レコード番号・店名</b>が含まれていれば、条・丁目やビル名は無くても動きます）。<br>
+      店名が完全に一致するものは自動で確定します。表記ゆれで一致しないものは、
+      <b>候補を出すので画面で選んで</b>ください。取り違えを防ぐため自動では決めません。
+    </div>
+    <input type="file" id="csv-file" accept=".csv,text/csv" onchange="onCsv(this)" disabled>
+    <div id="match-result"></div>
+  </div>
+
+  <div class="step">
+    <div class="step-title"><span class="step-no">3</span>マスタを更新する</div>
+    <div class="step-note">確定したぶんと、上で選んだぶんをまとめて書き込みます。</div>
+    <button class="btn go" id="btn-master" onclick="applyMaster()" disabled>✅ マスタを更新</button>
+    <div id="master-result"></div>
+  </div>
+
+  <div class="step">
+    <div class="step-title"><span class="step-no">4</span>月号レコードへ反映する</div>
+    <div class="step-note">
+      マスタの番号を、作成済みの月号レコードの<b>設置場所ID</b>へ書き写します。<br>
+      直近の号だけでも実用上は足りますが、過去の号も直すと
+      月次データ作成ツールの「過去2ヶ月の実績」が正しく集計されます。
+    </div>
+    <div id="month-picker"></div>
+    <div style="display:flex;gap:10px;margin-top:10px;">
+      <button class="btn ghost" onclick="previewMonths()">🔍 内容を確認（書き込みません）</button>
+      <button class="btn go" id="btn-months" onclick="applyMonths()" disabled>✅ 月号レコードを更新</button>
+    </div>
+    <div id="month-result"></div>
+  </div>
+
+  <div class="log" id="log" style="display:none"></div>
+</div>
+
+<script>
+const PROXY  = KINTONE_CONFIG.PROXY;
+const DOMAIN = KINTONE_CONFIG.DOMAIN;
+const APP_MASTER = 268;
+const APP_NOHON  = 269;
+
+// 番号として使えない値。「なし」は空欄チェックをすり抜けるため明示的に弾く
+const INVALID = new Set(['', 'なし', 'ナシ', '無し', '-', '―', '－']);
+const validId = x => !INVALID.has(String(x == null ? '' : x).trim());
+
+const MF = { kno:'文字列__1行__0', name:'文字列__1行__2', bldg:'文字列__1行__3',
+             floor:'文字列__1行__4', jo:'文字列__1行__7', chome:'文字列__1行__8' };
+const NF = { month:'文字列__1行_', sid:'文字列__1行__5', name:'文字列__1行__1',
+             bldg:'文字列__1行__2', floor:'文字列__1行__3' };
+
+let master = [], monthsIndex = {}, plan = null, monthPlan = null;
+
+const val = (r,k) => (r[k]?.value ?? '').toString().trim();
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+
+// 全角半角・記号のゆれを吸収する
+function nz(s) {
+  let t = String(s ?? '');
+  try { t = t.normalize('NFKC'); } catch (e) {}
+  return t.replace(/[\s　・\-ー－()（）&＆.,／\/]/g, '').toLowerCase();
+}
+
+// 2文字ずつの重なりで似ている度合いを測る（日本語の表記ゆれに強い）
+function similar(a, b) {
+  a = nz(a); b = nz(b);
+  if (!a || !b) return 0;
+  if (a === b) return 1;
+  const bi = s => { const m = new Map();
+    for (let i = 0; i < s.length - 1; i++) { const g = s.slice(i, i+2); m.set(g, (m.get(g)||0)+1); }
+    return m; };
+  const A = bi(a), B = bi(b);
+  if (!A.size || !B.size) return a.includes(b) || b.includes(a) ? 0.7 : 0;
+  let hit = 0;
+  A.forEach((n, g) => { if (B.has(g)) hit += Math.min(n, B.get(g)); });
+  return 2 * hit / (a.length - 1 + b.length - 1);
+}
+
+function log(msg) {
+  const el = document.getElementById('log');
+  el.style.display = 'block';
+  el.textContent += msg + '\n';
+  el.scrollTop = el.scrollHeight;
+}
+
+/* ===== 通信 ===== */
+async function kget(app, query) {
+  const out = [];
+  let offset = 0;
+  while (true) {
+    const q = encodeURIComponent(`${query} limit 500 offset ${offset}`.trim());
+    const res = await fetch(`${PROXY}/k/v1/records.json?app=${app}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': app === APP_MASTER ? KINTONE_CONFIG.TOKEN_MASTER : KINTONE_CONFIG.TOKEN_NOHON }
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.message || `取得に失敗しました（${res.status}）`);
+    }
+    const batch = (await res.json()).records || [];
+    out.push(...batch);
+    if (batch.length < 500) break;
+    offset += 500;
+    if (offset > 30000) break;
+  }
+  return out;
+}
+
+async function kput(app, updates) {
+  let done = 0;
+  for (let i = 0; i < updates.length; i += 100) {
+    const chunk = updates.slice(i, i + 100);
+    const res = await fetch(`${PROXY}/k/v1/records.json?subdomain=${DOMAIN}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json',
+                 'X-Cybozu-API-Token': app === APP_MASTER ? KINTONE_CONFIG.TOKEN_MASTER : KINTONE_CONFIG.TOKEN_NOHON },
+      body: JSON.stringify({ app, records: chunk })
+    });
+    if (!res.ok) throw new Error(`更新に失敗しました（${res.status}）: ${(await res.text()).slice(0,200)}`);
+    done += chunk.length;
+    log(`  更新 ${done}/${updates.length} 件`);
+  }
+  return done;
+}
+
+/* ===== 1. 読み込み ===== */
+async function loadAll() {
+  const btn = document.getElementById('btn-load');
+  const box = document.getElementById('load-result');
+  btn.disabled = true;
+  box.innerHTML = '<div class="step-note">読み込み中…</div>';
+  try {
+    master = await kget(APP_MASTER, '');
+    log(`設置店マスタ: ${master.length}件`);
+
+    // 納本データは全件だと数万件になるため、番号が入っていないものだけを取る
+    const bad = [...INVALID].filter(x => x !== '').map(x => `"${x}"`).join(',');
+    const all = await kget(APP_NOHON, `(${NF.sid} in (${bad}) or ${NF.sid} = "")`);
+    monthsIndex = {};
+    all.forEach(r => {
+      const m = val(r, NF.month);
+      if (!m || m.startsWith('__')) return;
+      (monthsIndex[m] = monthsIndex[m] || []).push(r);
+    });
+    log(`番号なしの納本データ: ${all.length}件 / ${Object.keys(monthsIndex).length}月号`);
+
+    const badMaster = master.filter(r => !validId(val(r, MF.kno)));
+    const monthRows = Object.entries(monthsIndex)
+      .map(([m, rs]) => ({ month:m, bad:rs.length }))
+      .sort((a,b) => b.month.localeCompare(a.month, 'ja'));
+
+    box.innerHTML = `
+      <div class="stat">
+        <span>マスタ <b>${master.length}</b> 件</span>
+        <span>うち番号なし <b style="color:var(--red)">${badMaster.length}</b> 件</span>
+        <span>月号レコードの番号なし <b style="color:var(--red)">${all.length}</b> 件</span>
+      </div>`;
+    document.getElementById('csv-file').disabled = badMaster.length === 0;
+    renderMonthPicker(monthRows);
+    if (badMaster.length === 0) box.innerHTML += '<div class="ok">マスタに番号なしはありません。</div>';
+  } catch (e) {
+    box.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+/* ===== CSV ===== */
+function parseCsv(text) {
+  const rows = [];
+  let row = [], cell = '', q = false;
+  for (let i = 0; i < text.length; i++) {
+    const c = text[i];
+    if (q) {
+      if (c === '"') { if (text[i+1] === '"') { cell += '"'; i++; } else q = false; }
+      else cell += c;
+    } else if (c === '"') q = true;
+    else if (c === ',') { row.push(cell); cell = ''; }
+    else if (c === '\n') { row.push(cell); rows.push(row); row = []; cell = ''; }
+    else if (c !== '\r') cell += c;
+  }
+  if (cell !== '' || row.length) { row.push(cell); rows.push(row); }
+  return rows.filter(r => r.some(x => x.trim() !== ''));
+}
+
+function findCol(head, cands) {
+  for (let i = 0; i < head.length; i++)
+    if (cands.some(c => nz(head[i]) === nz(c))) return i;
+  for (let i = 0; i < head.length; i++)
+    if (cands.some(c => nz(head[i]).includes(nz(c)))) return i;
+  return -1;
+}
+
+// kintoneの書き出しは Shift_JIS が既定。UTF-8 の場合も読めるようにする
+async function readCsvFile(file) {
+  const buf = await file.arrayBuffer();
+  const bytes = new Uint8Array(buf);
+  if (bytes[0] === 0xEF && bytes[1] === 0xBB && bytes[2] === 0xBF)
+    return new TextDecoder('utf-8').decode(buf);
+  const sjis = new TextDecoder('shift_jis').decode(buf);
+  const utf8 = new TextDecoder('utf-8').decode(buf);
+  const bad = s => (s.match(/�/g) || []).length;
+  return bad(sjis) <= bad(utf8) ? sjis : utf8;
+}
+
+/* ===== 2. 突き合わせ ===== */
+async function onCsv(input) {
+  const box = document.getElementById('match-result');
+  const file = input.files && input.files[0];
+  if (!file) return;
+  box.innerHTML = '<div class="step-note">読み込み中…</div>';
+  try {
+    const rows = parseCsv(await readCsvFile(file));
+    if (rows.length < 2) throw new Error('見出し行とデータ行が必要です。');
+    const head = rows[0];
+    const iNo   = findCol(head, ['レコード番号','レコードNo','番号','$id']);
+    const iName = findCol(head, ['店名','名称','店舗名','会社名']);
+    const iBldg = findCol(head, ['ビル名','建物名']);
+    const iJo   = findCol(head, ['条']);
+    const iCh   = findCol(head, ['丁目']);
+    if (iNo < 0)   throw new Error('「レコード番号」の列が見つかりません。');
+    if (iName < 0) throw new Error('「店名」の列が見つかりません。');
+
+    const targets = rows.slice(1).map(c => ({
+      no:(c[iNo]||'').trim(), name:(c[iName]||'').trim(),
+      bldg: iBldg>=0 ? (c[iBldg]||'').trim() : '',
+      jo:   iJo  >=0 ? (c[iJo]  ||'').trim() : '',
+      ch:   iCh  >=0 ? (c[iCh]  ||'').trim() : ''
+    })).filter(x => x.no && x.name);
+
+    log(`営業先CSV: ${targets.length}件`);
+    buildPlan(targets);
+    renderMatch();
+  } catch (e) {
+    box.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+function buildPlan(targets) {
+  const byNB = new Map(), byName = new Map();
+  targets.forEach(t => {
+    const k1 = nz(t.name) + '|' + nz(t.bldg);
+    (byNB.get(k1) || byNB.set(k1, []).get(k1)).push(t);
+    const k2 = nz(t.name);
+    (byName.get(k2) || byName.set(k2, []).get(k2)).push(t);
+  });
+
+  const used = new Set(master.map(r => val(r, MF.kno)).filter(validId));
+  const fixed = [], choose = [], none = [];
+
+  master.filter(r => !validId(val(r, MF.kno))).forEach(r => {
+    const nm = val(r, MF.name), bd = val(r, MF.bldg);
+    const jo = val(r, MF.jo), ch = val(r, MF.chome);
+
+    let c = byNB.get(nz(nm) + '|' + nz(bd)) || [];
+    if (c.length === 1) { fixed.push({ rec:r, name:nm, no:c[0].no, how:'店名＋ビル名' }); return; }
+    c = byName.get(nz(nm)) || [];
+    if (c.length === 1) { fixed.push({ rec:r, name:nm, no:c[0].no, how:'店名' }); return; }
+
+    // 表記ゆれの候補を拾う。
+    // 「カワラヤ」＝「居酒屋 KAWARAYA 札幌すすきの店」のように名前が全く重ならない例が
+    // あるため、住所（条・丁目）とビル名も手掛かりに使う。
+    const cands = [];
+    targets.forEach(t => {
+      const addr = !!(jo && ch && t.jo === jo && t.ch === ch);
+      const sc   = similar(nm, t.name);
+      const inc  = !!(nz(nm) && nz(t.name) && (nz(t.name).includes(nz(nm)) || nz(nm).includes(nz(t.name))));
+      const bOk  = !!(nz(bd) && nz(t.bldg) &&
+                     (nz(t.bldg).includes(nz(bd)) || nz(bd).includes(nz(t.bldg)) || similar(bd, t.bldg) >= 0.6));
+      const take = inc || sc >= 0.45 || (addr && bOk) || (addr && sc >= 0.15);
+      if (take)
+        cands.push({ t, sc, addr, bOk,
+                     score: sc + (addr ? 0.4 : 0) + (bOk ? 0.35 : 0) + (inc ? 0.2 : 0) });
+    });
+    cands.sort((a,b) => b.score - a.score);
+    if (cands.length) choose.push({ rec:r, name:nm, bldg:bd, jo, ch, cands: cands.slice(0, 8), pick:'' });
+    else none.push({ rec:r, name:nm, bldg:bd, jo, ch });
+  });
+
+  plan = { fixed, choose, none, used };
+}
+
+function renderMatch() {
+  const box = document.getElementById('match-result');
+  const p = plan;
+  box.innerHTML = `
+    <div class="stat">
+      <span>自動で確定 <b style="color:var(--green)">${p.fixed.length}</b> 件</span>
+      <span>候補から選ぶ <b style="color:var(--amber)">${p.choose.length}</b> 件</span>
+      <span>見つからない <b>${p.none.length}</b> 件</span>
+    </div>
+
+    ${p.choose.length ? `
+      <div class="step-note" style="margin:12px 0 0">
+        <b>表記ゆれの可能性があるものです。</b>正しいものを選んでください（既定は「登録しない」）。
+      </div>
+      <div class="scroll"><table>
+        <thead><tr><th style="width:34%">マスタの店舗</th><th>営業先の候補</th></tr></thead>
+        <tbody>${p.choose.map((x,i) => `<tr>
+          <td><b>${esc(x.name)}</b><br>
+            <span class="hint">${esc(x.bldg) || 'ビル名なし'}${x.jo ? ' / ' + esc(x.jo) + '条' + esc(x.ch) + '丁目' : ''}</span></td>
+          <td><select class="pick" onchange="plan.choose[${i}].pick=this.value">
+            <option value="">— 登録しない —</option>
+            ${x.cands.map(c => `<option value="${esc(c.t.no)}">
+              ${esc(c.t.no)}　${esc(c.t.name)}${c.t.bldg ? '（' + esc(c.t.bldg) + '）' : ''}
+              ${c.addr ? ' ★住所' : ''}${c.bOk ? ' ★ビル名' : ''}　類似${Math.round(c.sc*100)}%</option>`).join('')}
+          </select>
+          <div style="margin-top:4px" class="hint">候補に無い場合はレコード番号を直接入力：
+            <input type="text" inputmode="numeric" style="width:90px;padding:3px 6px;font-size:12px;
+              border:1px solid var(--border);border-radius:6px;"
+              oninput="plan.choose[${i}].pick=this.value.trim(); if(this.value.trim()) this.previousElementSibling.previousElementSibling.value='';">
+          </div></td></tr>`).join('')}</tbody>
+      </table></div>` : ''}
+
+    ${p.none.length ? `
+      <div class="note">
+        <b>営業先に見つからない ${p.none.length}件</b>：${p.none.map(x => esc(x.name)).join('、')}<br>
+        営業先アプリに登録してから、書き出したCSVをもう一度選び直してください。
+        <div style="margin-top:8px"><button class="btn ghost" onclick="downloadMissing()">📤 この${p.none.length}件をCSVで書き出す</button></div>
+      </div>` : ''}
+
+    ${p.fixed.length ? `<div class="scroll" style="margin-top:10px"><table>
+      <thead><tr><th>自動で確定した店舗</th><th>番号</th><th>一致</th></tr></thead>
+      <tbody>${p.fixed.map(x => `<tr><td>${esc(x.name)}</td>
+        <td class="mono">${esc(x.no)}</td><td class="hint">${esc(x.how)}</td></tr>`).join('')}</tbody>
+    </table></div>` : ''}`;
+
+  document.getElementById('btn-master').disabled = (p.fixed.length + p.choose.length) === 0;
+}
+
+function csvCell(s) {
+  const v = String(s ?? '');
+  return /[",\n]/.test(v) ? '"' + v.replace(/"/g, '""') + '"' : v;
+}
+
+function downloadMissing() {
+  const lines = [['店名','ビル名','条','丁目'].join(',')].concat(
+    plan.none.map(x => [x.name, x.bldg, x.jo, x.ch].map(csvCell).join(',')));
+  const blob = new Blob(['﻿' + lines.join('\r\n')], { type:'text/csv;charset=utf-8;' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = '営業先へ新規登録_' + plan.none.length + '件.csv';
+  a.click();
+  URL.revokeObjectURL(a.href);
+}
+
+/* ===== 3. マスタ更新 ===== */
+async function applyMaster() {
+  const picks = plan.choose.filter(x => x.pick)
+    .map(x => ({ rec:x.rec, name:x.name, no:x.pick }));
+  const all = plan.fixed.concat(picks);
+  if (!all.length) return;
+
+  // 同じ番号を二重に割り当てないか確認
+  const seen = new Map(), clash = [];
+  all.forEach(x => {
+    if (plan.used.has(x.no)) clash.push(`${x.name}（${x.no}）… 既にマスタの他店が使用`);
+    else if (seen.has(x.no)) clash.push(`${x.name} と ${seen.get(x.no)} が同じ番号 ${x.no}`);
+    else seen.set(x.no, x.name);
+  });
+  if (clash.length) {
+    document.getElementById('master-result').innerHTML =
+      `<div class="err"><b>番号が重複しています。修正してからやり直してください。</b><br>${clash.map(esc).join('<br>')}</div>`;
+    return;
+  }
+  if (!confirm(`設置店マスタの ${all.length}件 に番号を設定します。よろしいですか？`)) return;
+
+  const btn = document.getElementById('btn-master');
+  btn.disabled = true;
+  try {
+    log(`マスタ更新: ${all.length}件`);
+    await kput(APP_MASTER, all.map(x => ({ id:x.rec.$id.value, record:{ [MF.kno]:{ value:x.no } } })));
+    all.forEach(x => { x.rec[MF.kno] = { value: x.no }; });
+    document.getElementById('master-result').innerHTML =
+      `<div class="ok">マスタを更新しました（${all.length}件）。手順4へ進んでください。</div>`;
+    plan.fixed = []; plan.choose = [];
+    renderMatch();
+  } catch (e) {
+    document.getElementById('master-result').innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    btn.disabled = false;
+  }
+}
+
+/* ===== 4. 月号へ反映 ===== */
+function renderMonthPicker(monthRows) {
+  const el = document.getElementById('month-picker');
+  if (!monthRows.length) { el.innerHTML = '<div class="step-note">対象の月号はありません。</div>'; return; }
+  el.innerHTML = monthRows.map((x,i) => `
+    <label style="display:inline-flex;align-items:center;gap:6px;margin:0 14px 6px 0;font-size:12px;">
+      <input type="checkbox" class="mchk" value="${esc(x.month)}" ${i < 3 ? 'checked' : ''}>
+      ${esc(x.month)}<span style="color:var(--muted)">（${x.bad}件）</span></label>`).join('');
+}
+
+function buildMonthPlan() {
+  const months = [...document.querySelectorAll('.mchk:checked')].map(c => c.value);
+  if (!months.length) throw new Error('対象の月号を選んでください。');
+
+  const byNB = new Map(), byName = new Map();
+  master.filter(r => validId(val(r, MF.kno))).forEach(r => {
+    const k1 = nz(val(r,MF.name)) + '|' + nz(val(r,MF.bldg));
+    (byNB.get(k1) || byNB.set(k1, []).get(k1)).push(r);
+    const k2 = nz(val(r,MF.name));
+    (byName.get(k2) || byName.set(k2, []).get(k2)).push(r);
+  });
+
+  const ok = [], miss = [], amb = [];
+  months.forEach(m => {
+    (monthsIndex[m] || []).forEach(r => {
+      if (validId(val(r, NF.sid))) return;   // 有効な番号は触らない
+      const nm = val(r, NF.name);
+      let c = byNB.get(nz(nm) + '|' + nz(val(r, NF.bldg))) || [];
+      if (c.length !== 1) c = byName.get(nz(nm)) || [];
+      if (c.length === 1) ok.push({ rec:r, month:m, name:nm, no: val(c[0], MF.kno) });
+      else if (c.length === 0) miss.push({ month:m, name:nm, why:'マスタに該当なし' });
+      else amb.push({ month:m, name:nm, why:`マスタに${c.length}件該当` });
+    });
+  });
+  return { ok, miss, amb };
+}
+
+function previewMonths() {
+  const box = document.getElementById('month-result');
+  try {
+    monthPlan = buildMonthPlan();
+    const p = monthPlan;
+    const byMonth = {};
+    p.ok.forEach(x => { byMonth[x.month] = (byMonth[x.month] || 0) + 1; });
+    box.innerHTML = `
+      <div class="stat">
+        <span>更新できる <b style="color:var(--green)">${p.ok.length}</b> 件</span>
+        <span>該当なし <b>${p.miss.length}</b> 件</span>
+        <span>複数該当 <b>${p.amb.length}</b> 件</span>
+      </div>
+      ${Object.keys(byMonth).length ? `<table><thead><tr><th>月号</th><th>更新件数</th></tr></thead>
+        <tbody>${Object.entries(byMonth).map(([m,n]) =>
+          `<tr><td>${esc(m)}</td><td class="mono">${n}</td></tr>`).join('')}</tbody></table>` : ''}
+      ${(p.miss.length || p.amb.length) ? `<div class="note">
+        <b>次のレコードは更新しません。</b>マスタ側にその店名が無いか、まだ番号が入っていません。<br>
+        ${[...p.miss, ...p.amb].slice(0,40).map(x => `・${esc(x.month)} ${esc(x.name)} … ${esc(x.why)}`).join('<br>')}
+        ${(p.miss.length + p.amb.length) > 40 ? '<br>…ほか' : ''}
+      </div>` : ''}`;
+    document.getElementById('btn-months').disabled = p.ok.length === 0;
+  } catch (e) {
+    box.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    document.getElementById('btn-months').disabled = true;
+  }
+}
+
+async function applyMonths() {
+  if (!monthPlan || !monthPlan.ok.length) return;
+  if (!confirm(`月号レコード ${monthPlan.ok.length}件 の設置場所IDを更新します。よろしいですか？`)) return;
+  const btn = document.getElementById('btn-months');
+  btn.disabled = true;
+  try {
+    log(`月号レコード更新: ${monthPlan.ok.length}件`);
+    await kput(APP_NOHON, monthPlan.ok.map(x => ({ id:x.rec.$id.value, record:{ [NF.sid]:{ value:x.no } } })));
+    monthPlan.ok.forEach(x => { x.rec[NF.sid] = { value: x.no }; });
+    document.getElementById('month-result').innerHTML =
+      `<div class="ok">月号レコードを更新しました（${monthPlan.ok.length}件）。
+       補充作業・集計レポートで正しく判定されるようになります。</div>`;
+    monthPlan = null;
+  } catch (e) {
+    document.getElementById('month-result').innerHTML += `<div class="err">${esc(e.message)}</div>`;
+    btn.disabled = false;
+  }
+}
+</script>
+
+</body>
+</html>
