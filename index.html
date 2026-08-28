@@ -78,6 +78,8 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 }
 .tip-box strong{color:#5a4500;}
 </style>
+<script src="config.js"></script>
+<script src="auth.js"></script>
 </head>
 <body>
 
@@ -237,6 +239,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   </div>
 
   <div class="footer-note">
+    <div id="who" style="margin-bottom:10px;"></div>
     Ver 3.2 / 株式会社ホワイトカンパニー<br>
     <strong>困ったときは管理者へ連絡してください</strong>
   </div>
@@ -263,6 +266,23 @@ if (localStorage.getItem('fp_admin_open') === '1') {
   document.getElementById('admin-tools').classList.add('open');
   document.getElementById('admin-arrow').textContent = '▲';
 }
+
+// ログイン中の人を表示し、切り替え（ログアウト）の導線を出す
+(function () {
+  var u = window.FP_AUTH && FP_AUTH.user;
+  if (!u) return;
+  var roles = Array.isArray(u.roles) ? u.roles.join('・') : (u.role || '');
+  document.getElementById('who').innerHTML =
+    '<strong>' + (u.name || u.no) + '</strong> さん' +
+    (roles ? '（' + roles + '）' : '') +
+    ' <a href="#" id="logout" style="color:#1a5cd4;margin-left:6px;">別の人に切り替え</a>';
+  document.getElementById('logout').onclick = function (ev) {
+    ev.preventDefault();
+    if (confirm('ログアウトします。\n\n次に使う人が従業員NOとPINを入力し直すことになります。よろしいですか？')) {
+      FP_AUTH.logout();
+    }
+  };
+})();
 </script>
 
 </body>
