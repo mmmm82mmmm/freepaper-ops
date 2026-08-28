@@ -119,6 +119,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
     <div class="tab" onclick="switchTab('prevmon', this)">📊 前月号消化</div>
     <div class="tab" onclick="switchTab('haifu', this)">📦 配布物</div>
     <div class="tab" onclick="switchTab('shouka', this)">🔥 消化分析</div>
+    <div class="tab" onclick="switchTab('annai', this)">🏢 案内所</div>
     <div class="tab" onclick="switchTab('map', this)">🗾 配布マップ</div>
   </div>
 </div>
@@ -231,6 +232,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 <!-- 消化分析 -->
 <div class="screen container" id="screen-shouka">
   <div id="shouka-content"></div>
+</div>
+
+<!-- 案内所 -->
+<div class="screen container" id="screen-annai">
+  <div id="annai-content"></div>
 </div>
 
 <div class="screen container" id="screen-map">
@@ -397,6 +403,7 @@ async function loadData() {
     renderPrevMonth();
     renderHaifu();
     renderShouka();
+    renderAnnai();
 
   } catch(e) {
     alert('データ取得エラー: ' + e.message);
@@ -1127,6 +1134,153 @@ function kenSubHtml(n, total, note) {
 
 function escH(s) {
   return String(s == null ? '' : s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
+}
+
+/* ===== 案内所 =====
+   案内所は配布場所であると同時に在庫拠点でもある。
+   営業マンが補充用に持ち出したぶんを引かないと、店頭での消化が
+   実際より多く見えてしまう。
+
+     店頭消化 ＝ 納本 ＋ 補充 － 返却 － 持ち出し
+
+   どの店舗が案内所かは「マスタの現在のジャンル」で判定する。
+   月号レコードのジャンルは作成時点のコピーなので、あとで
+   ジャンルを変えても古い値が残る（Night&day無料案内所がその例）。 */
+
+const SRC_OFFICE_R = '事務所';
+const F_SRC_R = '文字列__1行__15';
+
+function annaiMasterList() {
+  return masterRecords.filter(m => (m['文字列__1行__1']?.value || '').trim() === '案内所');
+}
+
+// 全店舗の補充行から、案内所ごとの持ち出しを集める
+function collectTakeouts() {
+  const rows = [];
+  allRecords.forEach(r => {
+    (r['テーブル_0']?.value || []).forEach(t => {
+      const src = (t.value[F_SRC_R]?.value || '').trim();
+      if (!src || src === SRC_OFFICE_R) return;
+      rows.push({
+        src,
+        date:  t.value['日付']?.value || '',
+        count: parseFloat(t.value['数値_4']?.value) || 0,
+        who:   t.value['文字列__1行__14']?.value || '',
+        note:  t.value['文字列__1行__16']?.value || '',
+        store: getVal(r, '文字列__1行__1'),
+        route: getVal(r, '文字列__1行__4'),
+      });
+    });
+  });
+  return rows.sort((a, b) => (b.date || '').localeCompare(a.date || ''));
+}
+
+function renderAnnai() {
+  const el = document.getElementById('annai-content');
+  if (!allRecords.length) { el.innerHTML = '<div class="note">データを読み込んでいます。</div>'; return; }
+
+  const masters = annaiMasterList();
+  if (!masters.length) {
+    el.innerHTML = `<div class="note">
+      設置店マスタにジャンル「案内所」の店舗がありません。<br>
+      案内所を登録すると、ここに納本・返却・持ち出しが出ます。</div>`;
+    return;
+  }
+
+  const idToName = {};
+  masters.forEach(m => { idToName[(m['文字列__1行__0']?.value || '').trim()] = (m['文字列__1行__2']?.value || '').trim(); });
+
+  const takeouts = collectTakeouts();
+  const outBySrc = {};
+  takeouts.forEach(t => { outBySrc[t.src] = (outBySrc[t.src] || 0) + t.count; });
+
+  // 当月の案内所レコード
+  const rows = allRecords
+    .filter(r => idToName.hasOwnProperty(getVal(r, '文字列__1行__5')))
+    .map(r => {
+      const name   = getVal(r, '文字列__1行__1');
+      const nabon  = getNum(r, '数値');
+      const refill = getRefillTotal(r);
+      const hasRet = getVal(r, '数値_0') !== '';
+      const ret    = getNum(r, '数値_0');
+      const out    = outBySrc[name] || 0;
+      const stock  = nabon + refill - out;          // 店頭に置かれたぶん
+      const shouka = hasRet ? stock - ret : null;   // 返却が入るまでは確定しない
+      return { name, nabon, refill, ret, hasRet, out, stock, shouka,
+               rate: (hasRet && stock > 0) ? Math.round(shouka / stock * 100) : null };
+    })
+    .sort((a, b) => b.nabon - a.nabon);
+
+  const sum = k => rows.reduce((s, d) => s + (d[k] || 0), 0);
+  const anyRet = rows.some(d => d.hasRet);
+
+  // 案内所名が一致しない持ち出し（案内所を改名した場合など）
+  const known = new Set(Object.values(idToName));
+  const orphan = [...new Set(takeouts.filter(t => !known.has(t.src)).map(t => t.src))];
+
+  el.innerHTML = `
+    <div class="section">
+      <div class="section-title">案内所 ${currentMonth}</div>
+      <div class="section-note">
+        案内所は配る場所であると同時に、営業の補充用の在庫置き場でもあります。<br>
+        <strong>店頭消化 ＝ 納本 ＋ 補充 － 返却 － 持ち出し</strong>。
+        持ち出しを引かないと、店頭での消化が実際より多く見えます。
+      </div>
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr>
+            <th>案内所</th><th>納本</th><th>補充</th><th>持ち出し</th><th>返却</th><th>店頭消化</th><th>消化率</th>
+          </tr></thead>
+          <tbody>
+            ${rows.map(d => `<tr>
+              <td><strong>${escH(d.name)}</strong></td>
+              <td class="mono">${d.nabon.toLocaleString()}</td>
+              <td class="mono">${d.refill ? '+' + d.refill : '-'}</td>
+              <td class="mono" style="color:${d.out ? 'var(--amber)' : 'inherit'}">${d.out ? '-' + d.out : '-'}</td>
+              <td class="mono">${d.hasRet ? d.ret.toLocaleString() : '<span style="color:#bbb">未</span>'}</td>
+              <td class="mono">${d.shouka === null ? '<span style="color:#bbb">未確定</span>' : d.shouka.toLocaleString()}</td>
+              <td class="mono">${d.rate === null ? '-' : d.rate + '%'}</td>
+            </tr>`).join('')}
+            <tr class="total">
+              <td>合計</td>
+              <td class="mono">${sum('nabon').toLocaleString()}</td>
+              <td class="mono">${sum('refill') ? '+' + sum('refill') : '-'}</td>
+              <td class="mono">${sum('out') ? '-' + sum('out') : '-'}</td>
+              <td class="mono">${anyRet ? sum('ret').toLocaleString() : '-'}</td>
+              <td class="mono">${anyRet ? sum('shouka').toLocaleString() : '-'}</td>
+              <td class="mono">-</td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      ${!anyRet ? `<div class="note" style="margin-top:10px">
+        ${escH(currentMonth)}の返却数はまだ記録されていません。
+        返却は次の号の作業で回収するため、<strong>消化が確定するのは次号の作業後</strong>です。
+        納本・補充・持ち出しは今の時点でも正しく出ています。</div>` : ''}
+    </div>
+
+    <div class="section">
+      <div class="section-title">持ち出し一覧<span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:8px">${takeouts.length}件 / ${takeouts.reduce((s,t)=>s+t.count,0)}冊</span></div>
+      <div class="section-note">案内所から本をもらって、他の店舗を補充した記録です。</div>
+      ${takeouts.length === 0 ? '<div class="note">まだ記録がありません。</div>' : `
+      <div style="overflow-x:auto">
+        <table class="data-table">
+          <thead><tr><th>日付</th><th>案内所</th><th>補充した店舗</th><th>冊数</th><th>担当</th></tr></thead>
+          <tbody>${takeouts.map(t => `<tr>
+            <td class="mono">${escH(t.date)}</td>
+            <td>${escH(t.src)}</td>
+            <td>${escH(t.store)}${t.route ? `<span class="tag" style="margin-left:5px">${escH(t.route)}</span>` : ''}
+              ${t.note ? `<div style="font-size:10px;color:var(--muted)">${escH(t.note)}</div>` : ''}</td>
+            <td class="mono">${t.count}</td>
+            <td>${escH(t.who)}</td>
+          </tr>`).join('')}</tbody>
+        </table>
+      </div>`}
+      ${orphan.length ? `<div class="note" style="margin-top:10px">
+        <b>次の補充元は、いまのマスタの案内所と名前が一致しません。</b>
+        案内所を改名すると、それ以前の記録は古い名前のまま残ります。<br>
+        ${orphan.map(escH).join('、')}</div>` : ''}
+    </div>`;
 }
 
 function renderShouka() {
