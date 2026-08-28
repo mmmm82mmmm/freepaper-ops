@@ -94,9 +94,11 @@ function readRoles(row, roleCols, iRoleOld) {
   });
 
   // チェックボックス列が無い／全部空の場合は、旧「役割」列の文字を読む
+  // 区切りは中黒・読点・カンマ・スラッシュ・空白のいずれも受け付ける。
+  // （「作業者・管理者」を分解できず、既定の「作業者」だけになる不具合があった）
   if (!roles.length && iRoleOld >= 0) {
     String(row[iRoleOld] || '')
-      .split(/[、,\/／\s]+/)
+      .split(/[・、，,\/／\s]+/)
       .map(s => s.trim())
       .filter(s => ROLE_LABELS.indexOf(s) >= 0)
       .forEach(s => { if (roles.indexOf(s) < 0) roles.push(s); });
