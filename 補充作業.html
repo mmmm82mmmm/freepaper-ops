@@ -187,6 +187,15 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
       </div>
 
       <div class="form-group">
+        <label>補充元</label>
+        <select id="form-source"></select>
+        <div style="font-size:11px;color:var(--muted);margin-top:5px;line-height:1.6;">
+          案内所から本をもらってきた場合は、その案内所を選んでください。<br>
+          事務所の在庫から補充した場合は「事務所」のままで構いません。
+        </div>
+      </div>
+
+      <div class="form-group">
         <label>備考（任意）</label>
         <input type="text" id="form-note" placeholder="例: スタンド追加、ラック交換など" />
       </div>
@@ -215,6 +224,9 @@ const F_DATE    = '日付';
 const F_COUNT   = '数値_4';
 const F_WORKER  = '文字列__1行__14';
 const F_NOTE    = '文字列__1行__16';
+const F_SOURCE  = '文字列__1行__15';   // 補充元（事務所 / 案内所名）
+const SRC_OFFICE = '事務所';           // 自社在庫からの純粋な補充
+let annaiList = [];                   // 補充元に選べる案内所（マスタのジャンル＝案内所）
 
 // ===== State =====
 let workerName = '';
@@ -341,11 +353,53 @@ function initWorker() {
 
 // ===== Data Fetching =====
 const MASTER_CACHE_KEY = 'fp_master_required_cache';
+const ANNAI_CACHE_KEY = 'fp_refill_annai';
 const MASTER_CACHE_TTL = 60 * 60 * 1000; // 1時間
 
 // 必要なフィールドのみ取得（通信量・パース時間削減）
 function buildFieldsParam(fields) {
   return fields.map(f => `&fields=${encodeURIComponent(f)}`).join('');
+}
+
+// 補充元の選択肢。マスタのジャンルが「案内所」のものだけを対象にする。
+// （「案内所（外）」は在庫拠点ではないので出さない）
+function escHtml(x) {
+  return String(x ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+function escAttr(x) { return escHtml(x); }
+
+async function loadAnnaiList() {
+  try {
+    const cached = localStorage.getItem(ANNAI_CACHE_KEY);
+    if (cached) {
+      const o = JSON.parse(cached);
+      if (Date.now() - o.ts <= MASTER_CACHE_TTL) return o.list;
+    }
+  } catch (e) {}
+
+  const out = [];
+  let offset = 0;
+  while (true) {
+    const q = encodeURIComponent(`文字列__1行__1 in ("案内所") order by 文字列__1行__2 asc limit 500 offset ${offset}`);
+    const res = await fetch(`${PROXY_URL}/k/v1/records.json?app=${APP_MASTER}&query=${q}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN_MASTER }
+    });
+    const data = await res.json();
+    if (!res.ok) throw new Error(`案内所の取得に失敗: ${JSON.stringify(data).slice(0,150)}`);
+    for (const r of data.records) {
+      out.push({ id: getVal(r, '文字列__1行__0'), name: getVal(r, '文字列__1行__2') });
+    }
+    if (data.records.length < 500) break;
+    offset += 500;
+  }
+
+  // 同じ名前が複数ある場合は番号を添えて区別できるようにする
+  const dup = {};
+  out.forEach(a => { dup[a.name] = (dup[a.name] || 0) + 1; });
+  out.forEach(a => { a.label = dup[a.name] > 1 ? `${a.name}（${a.id}）` : a.name; });
+
+  try { localStorage.setItem(ANNAI_CACHE_KEY, JSON.stringify({ ts: Date.now(), list: out })); } catch (e) {}
+  return out;
 }
 
 async function fetchData() {
@@ -394,6 +448,9 @@ async function fetchData() {
       } catch(e) {}
       console.log(`🌐 マスタ取得: ${masterRequiredIds.size}件`);
     }
+
+    // 1-b. 補充元に選べる案内所を取得（ジャンル＝案内所。「案内所（外）」は含まれない）
+    annaiList = await loadAnnaiList();
 
     // 2. 現在月の納本データ管理レコードを全件取得（必要フィールドのみ）
     let offset = 0;
@@ -600,6 +657,12 @@ function openModal(recId) {
   document.getElementById('form-count').value = '';
   document.getElementById('form-note').value = '';
 
+  // 補充元（既定は事務所）。案内所を選ぶと、その案内所から出た冊数として集計される
+  const srcEl = document.getElementById('form-source');
+  srcEl.innerHTML = `<option value="${SRC_OFFICE}">${SRC_OFFICE}（自社在庫）</option>`
+    + annaiList.map(a => `<option value="${escAttr(a.name)}">${escHtml(a.label)}</option>`).join('');
+  srcEl.value = SRC_OFFICE;
+
   // 過去履歴
   const table = r[F_TABLE]?.value || [];
   const pastEl = document.getElementById('past-refills');
@@ -613,11 +676,14 @@ function openModal(recId) {
         const c = row.value[F_COUNT]?.value || '0';
         const w = row.value[F_WORKER]?.value || '';
         const n = row.value[F_NOTE]?.value || '';
+        const src = row.value[F_SOURCE]?.value || '';
+        const srcTxt = (src && src !== SRC_OFFICE) ? `${src} から` : src;
         return `<div class="past-refill-item">
           <span class="date">${d}</span>
           <span class="count">+${c}冊</span>
           <span class="by">${w}</span>
-          ${n ? `<span class="note">${n}</span>` : ''}
+          ${srcTxt ? `<span class="note">${escHtml(srcTxt)}</span>` : ''}
+          ${n ? `<span class="note">${escHtml(n)}</span>` : ''}
         </div>`;
       }).join('');
   } else {
@@ -655,6 +721,7 @@ async function submitRefill() {
   const date = document.getElementById('form-date').value;
   const count = parseInt(document.getElementById('form-count').value);
   const note = document.getElementById('form-note').value.trim();
+  const source = document.getElementById('form-source').value || SRC_OFFICE;
 
   if (!date) { showToast('補充日を入力してください', true); return; }
   if (!count || count <= 0) { showToast('補充冊数を入力してください', true); return; }
@@ -678,7 +745,8 @@ async function submitRefill() {
         [F_DATE]:   { value: date },
         [F_COUNT]:  { value: String(count) },
         [F_WORKER]: { value: workerName },
-        [F_NOTE]:   { value: note }
+        [F_NOTE]:   { value: note },
+        [F_SOURCE]: { value: source }
       }
     };
 
@@ -696,7 +764,9 @@ async function submitRefill() {
     const putText = await putRes.text();
     if (!putRes.ok) throw new Error(`更新失敗: HTTP ${putRes.status}: ${putText.substring(0,200)}`);
 
-    showToast(`✅ ${count}冊の補充を記録しました`);
+    showToast(source === SRC_OFFICE
+      ? `✅ ${count}冊の補充を記録しました`
+      : `✅ ${count}冊の補充を記録しました（${source} から）`);
 
     // ローカル状態を更新（capturedStoreを使用）
     capturedStore[F_TABLE] = { value: [...currentTable, newRow] };
