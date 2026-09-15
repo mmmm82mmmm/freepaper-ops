@@ -144,7 +144,7 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <!-- 今月の配布物設定 -->
   <div class="add-form" style="margin-top:20px;">
     <div class="add-form-title">📋 今月の配布物設定</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">今月配る配布物を最大3つまで設定できます。名前を空欄にするとその枠は非表示になります。作業者は各店舗で「配布済／未配布／対象外」を選択します。</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:12px;">今月配る配布物を最大3つまで設定できます。名前を空欄にするとその枠は非表示になります。作業者は各店舗で「配布済／未配布／対象外」を選択します。「お願い」にすると作業者画面の表示が「OK／NG／対象外」になります（記録上は OK＝配布済、NG＝未配布として残ります。集計レポートは配布済／未配布の名前のまま出ます）。</div>
     <div id="haifu-list"></div>
     <button class="btn-save" onclick="saveItems()">💾 保存する</button>
     <div class="save-status" id="save-status"></div>
@@ -497,7 +497,8 @@ function getHaifuItems() {
   // 常に3枠に正規化
   const normalized = [];
   for (let i = 0; i < 3; i++) {
-    normalized.push({ name: items[i]?.name || '' });
+    // mode: 'distribute'（配布：配布済/未配布/対象外） or 'request'（お願い：OK/NG/対象外）
+    normalized.push({ name: items[i]?.name || '', mode: items[i]?.mode === 'request' ? 'request' : 'distribute' });
   }
   return normalized;
 }
@@ -514,6 +515,10 @@ function renderItems() {
           <span style="font-size:11px;font-weight:900;color:var(--blue);white-space:nowrap;">配布物${i+1}</span>
           <input class="item-label-input" style="flex:1;" value="${(item.name || '').replace(/"/g,'&quot;')}" placeholder="配布物名（空欄=非表示）" oninput="updateHaifu(${i}, this.value)">
         </div>
+        <div style="display:flex;gap:14px;margin-top:6px;font-size:12px;padding-left:2px;">
+          <label><input type="radio" name="haifu-mode-${i}" ${item.mode !== 'request' ? 'checked' : ''} onchange="updateHaifuMode(${i}, 'distribute')"> 配布（配布済／未配布／対象外）</label>
+          <label><input type="radio" name="haifu-mode-${i}" ${item.mode === 'request' ? 'checked' : ''} onchange="updateHaifuMode(${i}, 'request')"> お願い（OK／NG／対象外）</label>
+        </div>
       </div>
     </div>`).join('');
 }
@@ -521,7 +526,15 @@ function renderItems() {
 function updateHaifu(i, value) {
   if (!assignState.haifuItems) assignState.haifuItems = [{name:''},{name:''},{name:''}];
   while (assignState.haifuItems.length < 3) assignState.haifuItems.push({name:''});
-  assignState.haifuItems[i] = { name: value };
+  // 種類（mode）を消さないよう、名前だけ差し替える
+  assignState.haifuItems[i] = { ...(assignState.haifuItems[i] || {}), name: value };
+}
+
+// 作業者画面の表示だけを切り替える。kintone に保存する値は配布済/未配布/対象外のまま。
+function updateHaifuMode(i, mode) {
+  if (!assignState.haifuItems) assignState.haifuItems = [{name:''},{name:''},{name:''}];
+  while (assignState.haifuItems.length < 3) assignState.haifuItems.push({name:''});
+  assignState.haifuItems[i] = { ...(assignState.haifuItems[i] || {}), mode };
 }
 
 async function saveItems() {

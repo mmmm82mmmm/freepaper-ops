@@ -429,6 +429,7 @@ function DYNAMIC_ITEMS_load(state) {
       HAIFU_ITEMS.push({
         idx: i + 1,
         name: name.trim(),
+        mode: raw[i]?.mode === 'request' ? 'request' : 'distribute',
         nameField: `haifu${i+1}_name`,
         statusField: `haifu${i+1}_status`
       });
@@ -1207,9 +1208,12 @@ function renderCard(r, container) {
         <div class="dynamic-section-title">今月の配布物</div>
         ${HAIFU_ITEMS.map(item => {
           const currentStatus = r[item.statusField]?.value || '';
+          // 保存する値は常に 配布済/未配布/対象外。「お願い」の時は表示だけ OK/NG にする
+          const shown = item.mode === 'request' ? { '配布済':'OK', '未配布':'NG', '対象外':'対象外' } : null;
           const btn = (label) => {
             const sel = currentStatus === label ? (label==='配布済'?'sel-ok':'sel-ng') : '';
-            return `<button class="toggle-btn ${sel}" onclick="toggleHaifu(this,'${recId}','${item.statusField}','${label}')">${label}</button>`;
+            const text = shown ? shown[label] : label;
+            return `<button class="toggle-btn ${sel}" onclick="toggleHaifu(this,'${recId}','${item.statusField}','${label}')">${text}</button>`;
           };
           return `
           <div class="dynamic-item">
