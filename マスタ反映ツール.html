@@ -1,0 +1,224 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<script src="config.js"></script>
+<script src="auth.js"></script>
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マスタ反映ツール</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f0e8;--card:#fff;--ink:#1a1a1a;--muted:#888;--border:#e0dbd0;
+  --blue:#1a5cd4;--green:#1a8a4a;--amber:#c47a0a;--red:#d42020;}
+*{margin:0;padding:0;box-sizing:border-box;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);}
+.app-header{background:var(--ink);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;}
+.app-title{font-size:15px;font-weight:900;flex:1;}
+.container{padding:16px;max-width:900px;margin:0 auto;}
+.step{background:var(--card);border-radius:12px;padding:16px;margin-bottom:14px;box-shadow:0 1px 4px rgba(0,0,0,.06);}
+.step-title{font-size:14px;font-weight:900;margin-bottom:6px;}
+.step-note{font-size:11px;color:var(--muted);line-height:1.9;margin-bottom:12px;}
+.btn{padding:10px 18px;font-size:13px;font-weight:900;font-family:inherit;color:#fff;
+  background:var(--ink);border:none;border-radius:8px;cursor:pointer;}
+.btn:disabled{background:#bbb;cursor:default;}
+.btn.go{background:var(--green);}
+select{padding:8px;font-size:13px;font-family:inherit;border:1px solid var(--border);border-radius:8px;background:#fafafa;}
+table{width:100%;border-collapse:collapse;font-size:12px;margin-top:10px;}
+th,td{padding:5px 7px;border-bottom:1px solid var(--border);text-align:left;}
+th{background:#faf8f4;font-size:10px;font-weight:900;color:var(--muted);}
+.note{background:#fff8e8;border:1px solid #f0d090;border-radius:9px;padding:10px 13px;font-size:11px;color:#7a5a00;line-height:1.9;margin-top:10px;}
+.err{background:#fdecec;border:1px solid #f0b0b0;color:#a01818;border-radius:9px;padding:10px 13px;font-size:12px;line-height:1.8;margin-top:10px;}
+.ok{background:#eaf5ec;border:1px solid #a8d5b5;color:#1a6b32;border-radius:9px;padding:10px 13px;font-size:12px;line-height:1.8;margin-top:10px;}
+.stat{display:flex;gap:18px;flex-wrap:wrap;font-size:12px;color:var(--muted);margin:10px 0;}
+.stat b{font-family:'DM Mono',monospace;font-size:16px;color:var(--ink);}
+.scroll{max-height:380px;overflow:auto;border:1px solid var(--border);border-radius:8px;}
+.old{color:#999;text-decoration:line-through;}
+</style>
+</head>
+<body>
+
+<div class="app-header">
+  <a href="index.html" style="color:#fff;text-decoration:none;font-size:18px;">←</a>
+  <div class="app-title">🔁 マスタ反映ツール</div>
+</div>
+
+<div class="container">
+  <div class="note" style="margin-top:0">
+    設置店マスタで直した内容を、<b>作成済みの月号レコード</b>へ書き写します。<br>
+    対象は <b>束渡し</b>・<b>時間指定</b>・<b>MAP冊数（納本頻度「毎月（MAPは発行月のみ）」の店は発行月以外 0 冊）</b> の 3 つだけです。
+    ほかの項目（納本数・作業状況など）には触れません。
+  </div>
+
+  <div class="step">
+    <div class="step-title">1. 月号を選んで差分を確認</div>
+    <div class="step-note">まだ何も書き込みません。変わる内容を一覧で出します。</div>
+    <select id="month-sel"></select>
+    <button class="btn" id="btn-check" onclick="check()">🔍 差分を確認</button>
+    <div id="check-result"></div>
+  </div>
+
+  <div class="step">
+    <div class="step-title">2. 書き込む</div>
+    <button class="btn go" id="btn-apply" onclick="apply()" disabled>✅ 月号レコードへ反映</button>
+    <div id="apply-result"></div>
+  </div>
+</div>
+
+<script>
+const PROXY  = KINTONE_CONFIG.PROXY;
+const DOMAIN = KINTONE_CONFIG.DOMAIN;
+const APP_MASTER = 268;
+const APP_NOHON  = 269;
+
+// マスタ(268) と 月号(269) で同じ意味の項目でもフィールドコードが違うので注意
+const M = { id:'文字列__1行__0', name:'文字列__1行__2', freq:'ドロップダウン_1', map:'数値_3',
+            bundle:'チェックボックス_4', time:'文字列__1行__5' };
+const N = { month:'文字列__1行_', sid:'文字列__1行__5', name:'文字列__1行__1', map:'数値_3',
+            bundle:'チェックボックス_4', time:'文字列__1行__17' };
+
+const FREQ_MAP_ISSUE_ONLY = '毎月（MAPは発行月のみ）';
+const INVALID = new Set(['', 'なし', 'ナシ', '無し', '-', '―', '－']);
+
+let plan = null;
+
+const val = (r,k) => (r[k]?.value ?? '').toString().trim();
+const arr = (r,k) => (Array.isArray(r[k]?.value) ? r[k].value : []).slice().sort();
+const esc = s => String(s ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+function isMapMonth(m) {
+  const x = (m || '').match(/(\d{4})年(\d{1,2})月号/);
+  return !!x && [2, 5, 8, 11].includes(parseInt(x[2]));
+}
+
+(function initMonthSel() {
+  const sel = document.getElementById('month-sel');
+  const now = new Date();
+  const opts = [];
+  for (let d = -2; d <= 2; d++) {
+    const t = new Date(now.getFullYear(), now.getMonth() + 1 + d, 1);
+    opts.push(`${t.getFullYear()}年${t.getMonth() + 1}月号`);
+  }
+  sel.innerHTML = opts.map((m, i) => `<option${i === 2 ? ' selected' : ''}>${m}</option>`).join('');
+})();
+
+async function kget(app, query) {
+  const out = [];
+  let offset = 0;
+  while (true) {
+    const q = encodeURIComponent(`${query} limit 500 offset ${offset}`.trim());
+    const res = await fetch(`${PROXY}/k/v1/records.json?app=${app}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': app === APP_MASTER ? KINTONE_CONFIG.TOKEN_MASTER : KINTONE_CONFIG.TOKEN_NOHON }
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.message || `取得に失敗しました（${res.status}）`);
+    }
+    const batch = (await res.json()).records || [];
+    out.push(...batch);
+    if (batch.length < 500) break;
+    offset += 500;
+  }
+  return out;
+}
+
+async function check() {
+  const box = document.getElementById('check-result');
+  const btn = document.getElementById('btn-check');
+  const month = document.getElementById('month-sel').value;
+  btn.disabled = true;
+  document.getElementById('btn-apply').disabled = true;
+  box.innerHTML = '<div class="step-note">読み込み中…</div>';
+  plan = null;
+  try {
+    const [master, recs] = await Promise.all([
+      kget(APP_MASTER, ''),
+      kget(APP_NOHON, `${N.month} = "${month}"`)
+    ]);
+    if (!recs.length) throw new Error(`${month}のレコードがありません。`);
+
+    // フィールドが納本アプリに作られているか（無いと書き込みで失敗する）
+    const missing = [N.bundle, N.time].filter(k => !(k in recs[0]));
+    if (missing.length) throw new Error(`納本アプリ(269)にフィールドが見つかりません：${missing.join(', ')}`);
+
+    const byId = {};
+    master.forEach(m => { const id = val(m, M.id); if (!INVALID.has(id)) byId[id] = m; });
+    const mapOff = !isMapMonth(month);
+    const freqCount = master.filter(m => val(m, M.freq) === FREQ_MAP_ISSUE_ONLY).length;
+
+    const changes = [];
+    let noMaster = 0;
+    recs.forEach(r => {
+      const m = byId[val(r, N.sid)];
+      if (!m) { noMaster++; return; }
+      const rec = {}; const what = [];
+      const mb = arr(m, M.bundle), nb = arr(r, N.bundle);
+      if (mb.join('|') !== nb.join('|')) {
+        rec[N.bundle] = { value: mb };
+        what.push(`束渡し：<span class="old">${nb.length ? 'あり' : 'なし'}</span> → ${mb.length ? 'あり' : 'なし'}`);
+      }
+      const mt = val(m, M.time), nt = val(r, N.time);
+      if (mt !== nt) {
+        rec[N.time] = { value: mt };
+        what.push(`時間指定：<span class="old">${esc(nt) || '(空)'}</span> → ${esc(mt) || '(空)'}`);
+      }
+      if (mapOff && val(m, M.freq) === FREQ_MAP_ISSUE_ONLY && (parseFloat(val(r, N.map)) || 0) !== 0) {
+        rec[N.map] = { value: '0' };
+        what.push(`MAP：<span class="old">${esc(val(r, N.map))}冊</span> → 0冊`);
+      }
+      if (what.length) changes.push({ id: r.$id.value, name: val(r, N.name), rec, what });
+    });
+
+    plan = { month, changes };
+    box.innerHTML = `
+      <div class="stat">
+        <span>${esc(month)} <b>${recs.length}</b> 件</span>
+        <span>変更 <b style="color:var(--green)">${changes.length}</b> 件</span>
+        <span>マスタに見つからない <b>${noMaster}</b> 件</span>
+      </div>
+      <div class="note">
+        納本頻度「${FREQ_MAP_ISSUE_ONLY}」の店：マスタに <b>${freqCount}</b> 件。
+        ${mapOff ? `${esc(month)}は MAP 発行月ではないので、これらの店の MAP を 0 冊にします。`
+                 : `${esc(month)}は MAP 発行月なので、MAP はそのままです。`}
+        ${freqCount === 0 ? '<br><b>0件の場合は、ドロップダウンの選択肢名が一字一句同じか確認してください。</b>' : ''}
+      </div>
+      ${changes.length ? `<div class="scroll"><table>
+        <thead><tr><th>店名</th><th>変わる内容</th></tr></thead>
+        <tbody>${changes.map(c => `<tr><td>${esc(c.name)}</td><td>${c.what.join('<br>')}</td></tr>`).join('')}</tbody>
+      </table></div>` : '<div class="ok">マスタと月号の内容は一致しています。反映の必要はありません。</div>'}`;
+    document.getElementById('btn-apply').disabled = changes.length === 0;
+  } catch (e) {
+    box.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
+async function apply() {
+  if (!plan || !plan.changes.length) return;
+  if (!confirm(`${plan.month} の ${plan.changes.length} 件を更新します。よろしいですか？`)) return;
+  const btn = document.getElementById('btn-apply');
+  const box = document.getElementById('apply-result');
+  btn.disabled = true;
+  try {
+    const all = plan.changes.map(c => ({ id: c.id, record: c.rec }));
+    let done = 0;
+    for (let i = 0; i < all.length; i += 100) {
+      const res = await fetch(`${PROXY}/k/v1/records.json?subdomain=${DOMAIN}`, {
+        method: 'PUT',
+        headers: { 'Content-Type': 'application/json', 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON },
+        body: JSON.stringify({ app: APP_NOHON, records: all.slice(i, i + 100) })
+      });
+      if (!res.ok) throw new Error(`更新に失敗しました（${res.status}）：${(await res.text()).slice(0, 200)}（${done}件までは反映済み）`);
+      done += Math.min(100, all.length - i);
+      box.innerHTML = `<div class="step-note">更新中… ${done}/${all.length}</div>`;
+    }
+    box.innerHTML = `<div class="ok">${done} 件を反映しました。運転手画面はリロードすると反映されます。</div>`;
+    plan = null;
+  } catch (e) {
+    box.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+    btn.disabled = false;
+  }
+}
+</script>
+</body>
+</html>
