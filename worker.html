@@ -1197,6 +1197,7 @@ function renderCard(r, container) {
       <div class="absent-overlay">
         <div class="absent-label">🚫 不在記録</div>
         <div class="absent-times-display">${absentText || '記録なし'}</div>
+        ${(r['文字列__複数行_']?.value || '').trim() ? `<div style="margin-top:6px;font-size:12px;color:#7a5a00;">📝 ${String(r['文字列__複数行_'].value).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}</div>` : ''}
       </div>
       <div style="padding:0 14px 14px;display:flex;gap:8px">
         <button onclick="reopenCard('${recId}')" style="flex:1;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
@@ -1430,6 +1431,11 @@ async function markAbsent(recId) {
     '文字列__1行__12': { value: newT2 },
     '文字列__1行__13': { value: newT3 },
   };
+  // メモ（臨時休業など）も一緒に送る。以前は完了ボタンでしか保存しておらず、
+  // 不在を押すと書いたメモが消えていた。欄が無い経路では既存のメモを消さない。
+  const memoEl = document.getElementById('memo-' + recId);
+  const absentMemo = memoEl ? memoEl.value : null;
+  if (absentMemo !== null) updateData['文字列__複数行_'] = { value: absentMemo };
 
   // === ① 即座にUI更新（楽観的UI） ===
   const card = document.getElementById('card-' + recId);
@@ -1449,6 +1455,7 @@ async function markAbsent(recId) {
     <div class="absent-overlay" id="overlay-${recId}">
       <div class="absent-label" id="overlay-label-${recId}"><span id="overlay-icon-${recId}">⏳</span> 不在記録（送信中...）</div>
       <div class="absent-times-display">${absentText}</div>
+      ${absentMemo ? `<div style="margin-top:6px;font-size:12px;color:#7a5a00;">📝 ${absentMemo.replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}</div>` : ''}
     </div>
     <div style="padding:0 14px 14px">
       <button onclick="reopenCard('${recId}')" style="width:100%;padding:9px;border:2px solid var(--amber);border-radius:8px;background:white;color:var(--amber);font-weight:700;font-size:12px;cursor:pointer">修正・再訪</button>
@@ -1456,6 +1463,7 @@ async function markAbsent(recId) {
   card.appendChild(div);
 
   if (rec) { rec['ドロップダウン'] = { value: '不在' }; rec['文字列__1行__11'] = { value: newT1 }; rec['文字列__1行__12'] = { value: newT2 }; rec['文字列__1行__13'] = { value: newT3 }; }
+  if (rec && absentMemo !== null) rec['文字列__複数行_'] = { value: absentMemo };
   absentCount++; todoCount = Math.max(0, todoCount - 1);
   updateProgress();
 
@@ -1484,10 +1492,10 @@ function reopenCard(recId) {
   // ステータスをリセットして再表示
   const rec = records.find(r => r['$id'].value == recId);
   if (rec) {
+    const prevStatus = rec['ドロップダウン']?.value;
+    if (prevStatus === '完了') { doneCount--; todoCount++; }
+    else if (prevStatus === '不在') { absentCount--; todoCount++; }
     rec['ドロップダウン'] = { value: '未着手' };
-    if (rec['ドロップダウン'].value === '完了') doneCount--;
-    else if (rec['ドロップダウン'].value === '不在') absentCount--;
-    todoCount++;
   }
   // 不在店モードで作業中なら、そのカード群を再描画
   if (document.getElementById('absent-work-area')?.style.display === 'block') {
