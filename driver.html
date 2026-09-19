@@ -2256,7 +2256,16 @@ async function assignWorker(groupCode, workerName) {
   // ★号車チェック: この端末は __car<MY_CAR>__ にしか書けない。別の号車の人に
   //   割り当てても、その人の端末は自分の号車の箱しか読まないので永久に届かない。
   const wCar = getCarOfWorker(assignState, workerName);
-  if (MY_CAR && wCar && wCar !== MY_CAR) {
+  if (MY_CAR && wCar !== MY_CAR) {
+    if (!wCar) {
+      // 車編成から外れている人。この人は作業者画面を開くことすらできない
+      alert(
+        `⚠️ ${workerName} さんは、どの号車にも入っていません。\n\n` +
+        `このままでは ${workerName} さんは作業者画面を開けません。\n\n` +
+        `「🚐 車の編成」で ${workerName} さんを号車に入れてから割り当ててください。`
+      );
+      return;
+    }
     alert(
       `⚠️ ${workerName} さんは ${wCar}号車です。\n\n` +
       `この画面は今 ${MY_CAR}号車として操作しています。\n` +
@@ -2598,8 +2607,8 @@ function renderAssign() {
   }
   // 別号車の人が自車の割当に混ざっていたら警告（号車取り違えの後始末用）
   const misplaced = Object.keys(assignState.assignments || {}).filter(w => {
-    const c = getCarOfWorker(assignState, w);
-    return c && MY_CAR && c !== MY_CAR;
+    if (!MY_CAR) return false;
+    return getCarOfWorker(assignState, w) !== MY_CAR;
   });
   let warnHtml = '';
   if (misplaced.length) {
@@ -2607,12 +2616,14 @@ function renderAssign() {
       const gs = getWorkerGroups(w);
       // ★解除ボタンはここに置く。完了したグループは下の割当欄に出ないため、
       //   そちらの「✕ 解除」では外せない。
+      const wc = getCarOfWorker(assignState, w);
+      const carText = wc ? `${wc}号車` : '号車が未設定';
       return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">`
-        + `<span style="flex:1">${escDrv(w)}（${getCarOfWorker(assignState, w)}号車・${escDrv(gs.join('+').toUpperCase())}）</span>`
+        + `<span style="flex:1">${escDrv(w)}（${carText}・${escDrv(gs.join('+').toUpperCase())}）</span>`
         + `<button onclick="releaseMisplacedWorker('${escDrv(w)}')" style="background:#fff;color:#d42020;border:none;border-radius:5px;padding:5px 10px;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">✕ 解除</button></div>`;
     }).join('');
     warnHtml = `<div style="background:#d42020;color:#fff;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;line-height:1.7;">`
-      + `⚠️ <strong>${MY_CAR}号車の割当に別の号車の人が入っています</strong>${detail}`
+      + `⚠️ <strong>${MY_CAR}号車の割当に、この車の人ではない割当が残っています</strong>${detail}`
       + `<span style="font-size:11px;opacity:.9">この割当は本人の画面には届きません。解除してから、正しい号車に切り替えて割り当て直してください。納本の記録は消えません。</span></div>`;
   }
 
