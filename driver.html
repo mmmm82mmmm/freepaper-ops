@@ -2205,6 +2205,39 @@ async function confirmSoloRevisit() {
   }
 }
 
+// 号車を取り違えて入った割当を外す。完了したグループでも外せる
+async function releaseMisplacedWorker(workerName) {
+  const gs = getWorkerGroups(workerName);
+  if (!gs.length) { renderAssign(); return; }
+  const wCar = getCarOfWorker(assignState, workerName);
+  const ok = confirm(
+    `${workerName} さん（${wCar}号車）の割当「${gs.join('+').toUpperCase()}」を\n`
+    + `${MY_CAR}号車から外します。\n\n`
+    + `※ 納本の記録（完了・不在・冊数・メモ）は消えません。\n\nよろしいですか？`
+  );
+  if (!ok) return;
+  // 最新の自車データを取り込んでから外す（他の端末の操作を巻き戻さない）
+  try {
+    const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
+    if (fresh && !fresh._notfound && fresh.sessionDate === todayStr()) {
+      assignState.assignments = fresh.assignments || {};
+      assignState.returned = fresh.returned || [];
+      assignState.paused = fresh.paused || {};
+      assignState.revisitMap = fresh.revisitMap || assignState.revisitMap || {};
+    }
+  } catch(e) { console.warn('最新データ取得に失敗:', e); }
+  delete assignState.assignments[workerName];
+  assignState.updatedAt = new Date().toISOString();
+  try {
+    await saveAssign();
+  } catch(e) {
+    alert('解除の保存に失敗しました。通信を確認してもう一度お試しください。\n\n' + e.message);
+    return;
+  }
+  renderCars();
+  renderAssign();
+}
+
 async function assignWorker(groupCode, workerName) {
   // 「✕ 解除」モード: workerName=''
   if (!workerName) {
@@ -2572,11 +2605,15 @@ function renderAssign() {
   if (misplaced.length) {
     const detail = misplaced.map(w => {
       const gs = getWorkerGroups(w);
-      return `${w}（${getCarOfWorker(assignState, w)}号車・${gs.join('+').toUpperCase()}）`;
-    }).join('、');
+      // ★解除ボタンはここに置く。完了したグループは下の割当欄に出ないため、
+      //   そちらの「✕ 解除」では外せない。
+      return `<div style="display:flex;align-items:center;gap:8px;margin:4px 0;">`
+        + `<span style="flex:1">${escDrv(w)}（${getCarOfWorker(assignState, w)}号車・${escDrv(gs.join('+').toUpperCase())}）</span>`
+        + `<button onclick="releaseMisplacedWorker('${escDrv(w)}')" style="background:#fff;color:#d42020;border:none;border-radius:5px;padding:5px 10px;font-size:11px;font-weight:900;cursor:pointer;font-family:inherit;white-space:nowrap;">✕ 解除</button></div>`;
+    }).join('');
     warnHtml = `<div style="background:#d42020;color:#fff;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;line-height:1.7;">`
-      + `⚠️ <strong>${MY_CAR}号車の割当に別の号車の人が入っています</strong><br>${detail}<br>`
-      + `<span style="font-size:11px;opacity:.9">この割当は本人の画面には届きません。下の「✕ 解除」で外してから、正しい号車に切り替えて割り当て直してください。</span></div>`;
+      + `⚠️ <strong>${MY_CAR}号車の割当に別の号車の人が入っています</strong>${detail}`
+      + `<span style="font-size:11px;opacity:.9">この割当は本人の画面には届きません。解除してから、正しい号車に切り替えて割り当て直してください。納本の記録は消えません。</span></div>`;
   }
 
   assignEl.innerHTML = warnHtml + (html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>');
