@@ -300,6 +300,9 @@ body.text-xlarge .btn-modal-confirm{font-size:19px;}
       <div class="spinner"></div>
       <div style="font-size:13px;color:var(--muted)">割当を待っています</div>
     </div>
+    <!-- 待機の経過時間・戻り報告が届いているか・長引いた時の案内 -->
+    <div id="wait-info" style="width:100%;max-width:320px;"></div>
+
     <div style="font-size:12px;color:var(--muted);margin-top:16px">次のグループ: <strong id="waiting-group" style="font-family:'DM Mono',monospace;color:var(--ink)">待機中</strong></div>
 
     <!-- 受付停止トグル -->
@@ -1850,6 +1853,13 @@ async function confirmReturn(withPause) {
   }
   isReturning = true;
   window.lastReturnAt = Date.now();
+  // この待機は戻り報告から始まった＝報告が届いたか確認する対象
+  waitReported = true;
+  returnAcked = null;
+  try {
+    localStorage.setItem(waitKey(), String(window.lastReturnAt));
+    localStorage.setItem(waitKey() + '_rep', '1');
+  } catch(e) {}
 
   const btn = document.getElementById('btn-modal-confirm');
   const btn2 = document.getElementById('btn-modal-pause');
@@ -1963,6 +1973,7 @@ function showWaitingScreen() {
   document.getElementById('work-screen').style.display = 'none';
   document.getElementById('return-footer').style.display = 'none';
   document.getElementById('waiting-screen').style.display = 'block';
+  startWaitClock();
   // 受付停止状態を初期表示＋未完了モード解放フラグの確認
   getAssignState().then(state => {
     const isPaused = (state.paused || {})[currentWorker] === true;
@@ -1976,6 +1987,69 @@ function showWaitingScreen() {
 }
 
 let pollTimer = null;
+
+// ===== 待機画面の状況表示 =====
+// 「割当が来ない」時に、何が起きているのか作業者が自分で判断できるようにする。
+const WAIT_NUDGE_SEC = 180;   // これを超えたら運転手に声をかけるよう促す
+let waitStartAt = 0;          // 待機を始めた時刻(ms)
+let waitTimer = null;         // 1秒ごとの表示更新
+let waitReported = false;     // この待機は「車に戻る」を押して始まったか
+let returnAcked = null;       // 戻り報告が自車データに載っているか（null=未確認）
+let isPausedNow = false;      // 受付停止中か
+
+function waitKey() { return 'fp_wait_' + (currentWorker || ''); }
+
+function startWaitClock() {
+  // 画面が再読み込みされても待機開始時刻を保つ（スマホでは頻繁に起きる）
+  let saved = 0;
+  try { saved = parseInt(localStorage.getItem(waitKey()) || '0') || 0; } catch(e) {}
+  waitStartAt = saved || window.lastReturnAt || Date.now();
+  try { localStorage.setItem(waitKey(), String(waitStartAt)); } catch(e) {}
+  if (!waitReported) {
+    try { waitReported = localStorage.getItem(waitKey() + '_rep') === '1'; } catch(e) {}
+  }
+  if (waitTimer) clearInterval(waitTimer);
+  waitTimer = setInterval(renderWaitInfo, 1000);
+  renderWaitInfo();
+}
+
+function stopWaitClock() {
+  if (waitTimer) { clearInterval(waitTimer); waitTimer = null; }
+  waitStartAt = 0;
+  waitReported = false;
+  returnAcked = null;
+  try { localStorage.removeItem(waitKey()); localStorage.removeItem(waitKey() + '_rep'); } catch(e) {}
+  const el = document.getElementById('wait-info');
+  if (el) el.innerHTML = '';
+}
+
+function renderWaitInfo() {
+  const el = document.getElementById('wait-info');
+  if (!el) return;
+  if (!waitStartAt) { el.innerHTML = ''; return; }
+  const sec = Math.max(0, Math.floor((Date.now() - waitStartAt) / 1000));
+  const m = Math.floor(sec / 60), ss = sec % 60;
+  const elapsed = m > 0 ? `${m}分${String(ss).padStart(2, '0')}秒` : `${ss}秒`;
+  const t = new Date(waitStartAt).toLocaleTimeString('ja-JP', { hour: '2-digit', minute: '2-digit' });
+
+  let html = `<div style="font-size:13px;color:var(--muted);text-align:center;">`
+    + `待機 <strong style="font-family:'DM Mono',monospace;color:var(--ink);font-size:16px;">${elapsed}</strong></div>`;
+
+  // 戻り報告が運転手側のデータに載っているか（押したつもりで届いていない事故を見つける）
+  if (waitReported && returnAcked === true) {
+    html += `<div style="font-size:12px;color:var(--green);margin-top:5px;text-align:center;">✅ ${t} の戻り報告は届いています</div>`;
+  } else if (waitReported && returnAcked === false) {
+    html += `<div style="font-size:12px;color:var(--red);margin-top:5px;text-align:center;font-weight:700;">⚠️ 戻り報告が確認できません<br>下の「🔄 今すぐ更新」を押してください</div>`;
+  }
+
+  // 長引いたら声をかけるよう促す（受付停止中は出さない）
+  if (!isPausedNow && sec >= WAIT_NUDGE_SEC) {
+    html += `<div style="margin-top:12px;background:#fff8e8;border:1px solid #f0d090;border-radius:8px;padding:10px 12px;font-size:12px;color:#7a5a00;line-height:1.7;text-align:left;">`
+      + `⏳ <strong>${m}分以上待っています。</strong><br>運転手に「次のグループをください」と声をかけてください。<br>`
+      + `<span style="font-size:11px;">ルートを配り終わっている、運転手が別の作業をしている、などの可能性があります。</span></div>`;
+  }
+  el.innerHTML = html;
+}
 async function pollAssignment() {
   // 戻り処理中はスキップ（レース条件回避）
   if (isReturning) {
@@ -2001,6 +2075,11 @@ async function pollAssignment() {
       }
     }
 
+    // 戻り報告が自車データに載っているか（載っていれば運転手の画面から見えている）
+    returnAcked = Array.isArray(state.returned) && state.returned.includes(currentWorker);
+    isPausedNow = (state.paused || {})[currentWorker] === true;
+    renderWaitInfo();
+
     const myGroupRaw = state.assignments[currentWorker];
     const myGroups = Array.isArray(myGroupRaw) ? myGroupRaw : (myGroupRaw ? [myGroupRaw] : []);
     if (myGroups.length > 0) {
@@ -2015,6 +2094,7 @@ async function pollAssignment() {
 }
 
 async function loadGroup(groupCodes) {
+  stopWaitClock();   // 割当が来た＝待機おわり
   // 配列でも単一でも受付（後方互換）
   const groups = Array.isArray(groupCodes) ? groupCodes : [groupCodes];
   const groupLabel = groups.join(' + ').toUpperCase();
@@ -2134,6 +2214,8 @@ async function togglePause() {
 }
 
 function updatePauseUI(isPaused) {
+  isPausedNow = !!isPaused;
+  renderWaitInfo();
   const btn = document.getElementById('pause-toggle');
   const msg = document.getElementById('waiting-msg');
   const spinner = document.getElementById('waiting-spinner-wrap');
