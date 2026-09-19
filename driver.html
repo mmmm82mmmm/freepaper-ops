@@ -971,7 +971,9 @@ function renderProgress() {
 function renderRoute() {
   const routeMap = {};
   allRecords.forEach(r => {
-    const route = r['文字列__1行__4']?.value || '未設定';
+    // 遅フラグの店は「G遅」として別の見出しにする（割当画面・シフト表と同じ扱い）
+    const base = r['文字列__1行__4']?.value || '未設定';
+    const route = base + ((r['チェックボックス_0']?.value || []).length > 0 ? '遅' : '');
     if (!routeMap[route]) routeMap[route] = [];
     routeMap[route].push(r);
   });
@@ -1015,6 +1017,8 @@ function renderRoute() {
               ${floor ? `<span>${floor}階</span>` : ''}
               ${worker ? `<span class="item-worker">${worker}</span>` : ''}
               ${nabon ? `<span style="background:#e8f0ff;color:var(--blue);padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">📦${nabon}冊</span>` : ''}
+              ${bundleBadge(r, parseInt(nabon) || 0, '1px 6px')}
+              ${timeBadge(r, '1px 6px')}
               ${mapNum > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🗺️MAP${mapNum}冊</span>` : ''}
               ${rackChange ? `<span style="background:#ffebeb;color:#d42020;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🔧ラック交換</span>` : ''}
               ${popChange ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 6px;border-radius:3px;font-weight:700;font-size:10px;">🏷️POP貼替</span>` : ''}
@@ -1442,6 +1446,41 @@ function getGroupLetter(g) {
   return hasOsoi ? letter + '遅' : letter;
 }
 
+// ===== 束渡し・時間指定（表示用） =====
+// 束渡し … 月号レコードの チェックボックス_4。25冊単位で束のまま渡す店
+// 時間指定 … 月号レコードの 文字列__1行__17（マスタ側は 文字列__1行__5）
+const BUNDLE_SIZE = 25;
+// 遅グループか（グループ内に遅フラグの店があるか）。個別訪問グループは中の店で判定
+function isOsoiGroup(g) {
+  const flag = r => (r['チェックボックス_0']?.value || []).length > 0;
+  const real = allRecords.filter(r => r['文字列__1行__0']?.value === g);
+  if (real.length) return real.some(flag);
+  const ids = ((assignState.revisitMap || {})[g] || []).map(String);
+  return allRecords.some(r => ids.includes(String(r['$id'].value)) && flag(r));
+}
+const OSOI_TAG = '<span style="font-size:9px;color:#fff;background:#d42020;padding:1px 5px;border-radius:3px;font-weight:900;margin-left:4px;">🌙遅</span>';
+
+function isBundleShop(r) { return (r['チェックボックス_4']?.value || []).length > 0; }
+function timeNoteOf(r) { return (r['文字列__1行__17']?.value || '').trim(); }
+function escDrv(x) {
+  return String(x ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]));
+}
+// 「1束」「2束＋5冊」のように表す
+function bundleText(n) {
+  const b = Math.floor(n / BUNDLE_SIZE), rest = n % BUNDLE_SIZE;
+  if (b === 0) return `${rest}冊`;
+  return rest ? `${b}束＋${rest}冊` : `${b}束`;
+}
+function bundleBadge(r, n, pad) {
+  if (!isBundleShop(r) || !n) return '';
+  return `<span style="background:#1a5cd4;color:#fff;padding:${pad};border-radius:3px;font-weight:900;font-size:10px;">🎁${bundleText(n)}</span>`;
+}
+function timeBadge(r, pad) {
+  const t = timeNoteOf(r);
+  if (!t) return '';
+  return `<span style="background:#fde8e8;color:#b01818;padding:${pad};border-radius:3px;font-weight:900;font-size:10px;">⏰${escDrv(t)}</span>`;
+}
+
 function autoAssign(workerName, justAssigned = new Set()) {
   // 作業者の車番号を取得
   const carNum = assignState.cars?.[workerName] || 0;
@@ -1746,7 +1785,7 @@ function renderRevisit() {
       return `
         <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:10px;border:2px solid ${isOsoi ? '#d42020' : 'var(--amber)'};">
           <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
-            <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:2px 6px;border-radius:4px;">${groupCode} 不在</span>
+            <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:2px 6px;border-radius:4px;">${groupCode}${isOsoiGroup(groupCode) ? '（遅）' : ''} 不在</span>
             ${osoiBadge}
             ${teikyuBadge}
             <span style="font-size:10px;color:#1a5cd4;font-weight:700;background:#e8f0ff;padding:2px 6px;border-radius:4px;">📦${parseInt(r['数値_2']?.value) || 0}冊</span>
@@ -1754,6 +1793,7 @@ function renderRevisit() {
           </div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
           ${fuzaiInfo}
+          ${(r['文字列__複数行_']?.value || '').trim() ? `<div style="font-size:11px;color:#b01818;background:#fdecec;padding:4px 8px;border-radius:4px;margin-bottom:6px;font-weight:700;">📝 作業者メモ: ${escDrv(r['文字列__複数行_'].value)}</div>` : ''}
           ${comment ? `<div style="font-size:11px;color:#7a5a00;background:#fff8e8;padding:4px 8px;border-radius:4px;margin-bottom:6px;">💬 ${comment}</div>` : ''}
           <div style="margin-top:10px;">
             <button onclick="openSoloModal('${route.toUpperCase()}', ${recId})" style="width:100%;padding:12px;background:#7a3dc4;color:white;border:none;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;">📍 差し込み位置を選んで追加</button>
@@ -1782,7 +1822,7 @@ function renderRevisit() {
           <div style="background:var(--card);border-radius:8px;padding:10px 12px;margin-bottom:6px;display:flex;align-items:center;gap:8px;border-left:4px solid var(--green);">
             <div style="flex:1;">
               <div style="font-size:13px;font-weight:700;">${shop}</div>
-              <div style="font-size:10px;color:var(--muted);">${building} → <strong style="color:var(--green)">${targetGroup}に追加済</strong></div>
+              <div style="font-size:10px;color:var(--muted);">${building} → <strong style="color:var(--green)">${targetGroup}${isOsoiGroup(targetGroup) ? '（遅）' : ''}に追加済</strong></div>
             </div>
             <button onclick="removeFromRevisit('${targetGroup}', ${recId})" style="padding:5px 9px;background:#fff;color:#888;border:1px solid var(--border);border-radius:5px;font-size:10px;cursor:pointer;font-weight:700;">取消</button>
           </div>`;
@@ -1835,7 +1875,8 @@ function renderUnfinished() {
   // ルート別にまとめてグループ順で並べる
   const byRoute = {};
   filtered.forEach(r => {
-    const rt = (r['文字列__1行__4']?.value || '?').toUpperCase();
+    const rt = (r['文字列__1行__4']?.value || '?').toUpperCase()
+      + ((r['チェックボックス_0']?.value || []).length > 0 ? '遅' : '');
     if (!byRoute[rt]) byRoute[rt] = [];
     byRoute[rt].push(r);
   });
@@ -1881,6 +1922,7 @@ function renderUnfinished() {
             <span style="font-size:13px;font-weight:900;">${name}</span>
           </div>
           <div style="font-size:10px;color:var(--muted);margin-top:2px;">${bldg}${addr ? ` / 📍${addr}` : ''}</div>
+          <div style="margin-top:4px">${(r['文字列__複数行_']?.value || '').trim() ? `<div style="font-size:11px;color:#b01818;background:#fdecec;padding:4px 8px;border-radius:4px;margin-bottom:6px;font-weight:700;">📝 作業者メモ: ${escDrv(r['文字列__複数行_'].value)}</div>` : ''}</div>
           ${comment ? `<div style="font-size:11px;color:#7a5a00;background:#fff8e8;padding:3px 7px;border-radius:4px;margin-top:4px;font-weight:700;">💬 ${comment}</div>` : ''}
         </div>`;
     }).join('');
@@ -1936,6 +1978,8 @@ async function removeFromRevisit(groupCode, recordId) {
 // ===== 個別訪問機能 =====
 let soloModalRecordId = null;
 let soloSelectedPosition = null;
+let soloShowDone = false;   // 差し込み先に完了済みグループも出すか
+function toggleSoloDone() { soloShowDone = !soloShowDone; updateSoloPositions(); }
 
 function openSoloModal(defaultRoute, recordId) {
   soloModalRecordId = recordId;
@@ -1946,6 +1990,7 @@ function openSoloModal(defaultRoute, recordId) {
   const routes = [...new Set(allGroups.map(g => g.replace(/[0-9.]/g, '').toUpperCase()))].sort();
   routeSel.innerHTML = routes.map(r => `<option value="${r}" ${r === defaultRoute ? 'selected' : ''}>${r}</option>`).join('');
 
+  soloShowDone = false;
   updateSoloPositions();
   modal.style.display = 'flex';
 }
@@ -1994,7 +2039,11 @@ function updateSoloPositions() {
   Object.keys(assignState.revisitMap || {}).forEach(k => {
     if (k.replace(/[0-9.]/g, '').toLowerCase() !== route) return;
     const realRecs = allRecords.filter(r => r['文字列__1行__0']?.value === k).length;
-    if (realRecs === 0) existingVirtual.push({ code: k, count: (assignState.revisitMap[k] || []).length });
+    if (realRecs !== 0) return;
+    const ids = (assignState.revisitMap[k] || []).map(String);
+    const allDone = ids.length > 0 && ids.every(id => allRecords.find(r => String(r['$id'].value) === id)?.['ドロップダウン']?.value === '完了');
+    if (allDone && !soloShowDone) return;   // 全店完了した個別訪問グループも畳む
+    existingVirtual.push({ code: k, count: ids.length });
   });
 
   let html = '';
@@ -2009,12 +2058,40 @@ function updateSoloPositions() {
     html = '<div style="padding:12px;text-align:center;color:var(--muted);font-size:12px;">このルートにグループがありません</div>';
     html += addHereBtn(0.5, route.toUpperCase() + '0.5');
   } else {
+    // 完了済みグループは普段は畳む。差し込み番号は全グループで計算するので、
+    // 隠しても既存グループと番号が重なることはない。
+    const doneCount = groupNums.filter(g => groupDone(g.code)).length;
+    if (doneCount > 0) {
+      html += `<button onclick="toggleSoloDone()" style="width:100%;padding:6px;margin:0 0 6px;background:#fff;color:#3a9a5a;border:1px dashed #3a9a5a;border-radius:6px;font-size:11px;font-weight:700;cursor:pointer;">${
+        soloShowDone ? `✅ 完了済み ${doneCount} グループを隠す` : `✅ 完了済み ${doneCount} グループを非表示中（表示する）`}</button>`;
+    }
+
     // ルート先頭
     const firstNum = (groupNums[0].num - 0.5);
     html += addHereBtn(firstNum, route.toUpperCase() + firstNum.toFixed(1) + '・先頭');
 
+    let prevOsoi = null;
     groupNums.forEach((g, i) => {
       const done = groupDone(g.code);
+      const next = groupNums[i + 1];
+      const osoi = isOsoiGroup(g.code);
+      // 通常⇔遅が切り替わる所に区切りを入れる（完了で畳んでいても出す）
+      if (prevOsoi !== null && osoi !== prevOsoi) {
+        html += osoi
+          ? `<div style="margin:8px 0 4px;padding:4px 8px;background:#d42020;color:#fff;border-radius:5px;font-size:11px;font-weight:900;">🌙 ここから遅（${g.code}〜）</div>`
+          : `<div style="margin:8px 0 4px;padding:4px 8px;background:#555;color:#fff;border-radius:5px;font-size:11px;font-weight:900;">☀️ ここから通常（${g.code}〜）</div>`;
+      } else if (prevOsoi === null && osoi) {
+        html += `<div style="margin:8px 0 4px;padding:4px 8px;background:#d42020;color:#fff;border-radius:5px;font-size:11px;font-weight:900;">🌙 このルートは先頭から遅</div>`;
+      }
+      prevOsoi = osoi;
+      if (done && !soloShowDone) {
+        // 隠す。ただし最後のグループなら末尾への追加だけは残す
+        if (!next) {
+          const tail = g.num + 0.5;
+          html += addHereBtn(tail, `末尾・${route.toUpperCase() + (Number.isInteger(tail) ? tail.toFixed(1) : tail.toString())}`);
+        }
+        return;
+      }
       const buildings = groupBuildings(g.code);
       const books = groupBooks(g.code);
       // 冊数バッジ（残り／合計。完了があれば残りを強調）
@@ -2025,7 +2102,7 @@ function updateSoloPositions() {
       html += `
         <div style="background:var(--card);border:1px solid var(--border);border-radius:6px;padding:8px 10px;margin:4px 0;">
           <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-            <span style="font-size:12px;font-weight:900;color:${done ? '#888' : 'var(--ink)'};">${g.code}</span>
+            <span style="font-size:12px;font-weight:900;color:${done ? '#888' : 'var(--ink)'};">${g.code}</span>${osoi ? OSOI_TAG : ''}
             ${done ? '<span style="font-size:9px;color:#fff;background:#3a9a5a;padding:1px 5px;border-radius:3px;">完了</span>' : ''}
             ${booksBadge}
           </div>
@@ -2033,7 +2110,6 @@ function updateSoloPositions() {
           <button onclick="pickSoloPosition('__merge__${g.code}')" style="width:100%;padding:8px;background:#1a5cd4;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🔵 ${g.code} に合流（同じビル・一緒に回る）</button>
         </div>`;
       // このグループの後に「間に差し込み」（紫）
-      const next = groupNums[i + 1];
       const newNum = next ? ((g.num + next.num) / 2) : (g.num + 0.5);
       const newCode = route.toUpperCase() + (Number.isInteger(newNum) ? newNum.toFixed(1) : newNum.toString());
       const label = next ? `${g.code}と${next.code}の間・${newCode}` : `末尾・${newCode}`;
@@ -2046,7 +2122,7 @@ function updateSoloPositions() {
     html += '<div style="font-size:10px;font-weight:700;color:var(--muted);margin:10px 0 4px;border-top:1px dashed var(--border);padding-top:8px;">既存の個別訪問グループに合流:</div>';
     existingVirtual.sort((a,b) => (parseFloat(a.code.replace(/[^0-9.]/g,''))||0) - (parseFloat(b.code.replace(/[^0-9.]/g,''))||0));
     existingVirtual.forEach(v => {
-      html += `<button onclick="pickSoloPosition('__merge__${v.code}')" style="width:100%;padding:8px;margin:3px 0;background:#5a8ac4;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🔗 既存「${v.code}」(${v.count}件) に合流</button>`;
+      html += `<button onclick="pickSoloPosition('__merge__${v.code}')" style="width:100%;padding:8px;margin:3px 0;background:#5a8ac4;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🔗 既存「${v.code}」${isOsoiGroup(v.code) ? '（🌙遅）' : ''}(${v.count}件) に合流</button>`;
     });
   }
 
@@ -2419,6 +2495,8 @@ function renderAssign() {
             <div style="font-size:10px;color:var(--muted);">${building}${floor ? ` ${floor}階` : ''}${genre ? ` / ${genre}` : ''}${address ? ` / 📍${address}` : ''}</div>
             <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
               ${nabonNum ? `<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">📦${nabonNum}冊</span>` : ''}
+              ${bundleBadge(r, parseInt(nabonNum) || 0, '1px 5px')}
+              ${timeBadge(r, '1px 5px')}
               ${mapNum && parseFloat(mapNum) > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🗺️MAP${mapNum}冊</span>` : ''}
               ${rackChange ? `<span style="background:#ffebeb;color:#d42020;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🔧ラック交換</span>` : ''}
               ${popChange ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">🏷️POP貼替</span>` : ''}
@@ -2429,12 +2507,24 @@ function renderAssign() {
         </div>`;
     }).join('');
 
+    // 閉じた見出しにも出す：束の合計と、時間指定のある店（④ 開かなくても見える）
+    const bundleSum = groupRecs.filter(isBundleShop)
+      .reduce((s, r) => s + Math.floor((parseInt(r['数値_2']?.value) || 0) / BUNDLE_SIZE), 0);
+    const timedRecs = groupRecs.filter(r => timeNoteOf(r) && r['ドロップダウン']?.value !== '完了');
+    const bundleHead = bundleSum > 0
+      ? `<span style="background:#1a5cd4;color:#fff;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🎁${bundleSum}束</span>` : '';
+    const timedLine = timedRecs.length > 0
+      ? `<div style="margin-top:3px;font-size:10px;color:#b01818;font-weight:700;line-height:1.5;">⏰ ${
+          timedRecs.slice(0, 3).map(r => `${escDrv(r['文字列__1行__1']?.value || '')}：${escDrv(timeNoteOf(r))}`).join(' ／ ')
+        }${timedRecs.length > 3 ? ` ほか${timedRecs.length - 3}件` : ''}</div>` : '';
+
     return `
       <div class="assign-group" style="${isDone ? 'opacity:0.4' : ''}">
         <div class="assign-group-header" onclick="toggleGroupDetail('detail-${g}')" style="cursor:pointer;">
-          <div class="assign-group-code">${g}${virtualBadge}</div>
+          <div class="assign-group-code">${g}${isOsoiGroup(g) ? OSOI_TAG : ''}${virtualBadge}</div>
           <div style="flex:1">
-            <div class="assign-group-info">${count}件 ${done > 0 ? `完了${done}/` : ''}<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">📦${nabon}冊</span>${mapTotal > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🗺️MAP${mapTotal}冊</span>` : ''}${rackTotal > 0 ? `<span style="background:#ffebeb;color:#d42020;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🔧${rackTotal}</span>` : ''}${popTotal > 0 ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🏷️${popTotal}</span>` : ''}${groupClosed[g] ? ` <span style="color:var(--amber);font-size:10px;">🚫定休${groupClosed[g]}件除外</span>` : ''}</div>
+            <div class="assign-group-info">${count}件 ${done > 0 ? `完了${done}/` : ''}<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">📦${nabon}冊</span>${bundleHead}${mapTotal > 0 ? `<span style="background:#fff3e0;color:#c47a0a;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🗺️MAP${mapTotal}冊</span>` : ''}${rackTotal > 0 ? `<span style="background:#ffebeb;color:#d42020;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🔧${rackTotal}</span>` : ''}${popTotal > 0 ? `<span style="background:#f0e8ff;color:#7a3dc4;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🏷️${popTotal}</span>` : ''}${groupClosed[g] ? ` <span style="color:var(--amber);font-size:10px;">🚫定休${groupClosed[g]}件除外</span>` : ''}</div>
+            ${timedLine}
             <div style="margin-top:2px">${routeCarLabel}</div>
           </div>
           <div class="assign-group-worker">${assignedWorker ? `${carLabel}👤 ${assignedWorker}` : isDone ? '✅ 完了' : '未割当'}</div>
