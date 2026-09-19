@@ -2220,6 +2220,21 @@ async function assignWorker(groupCode, workerName) {
     return;
   }
 
+  // ★号車チェック: この端末は __car<MY_CAR>__ にしか書けない。別の号車の人に
+  //   割り当てても、その人の端末は自分の号車の箱しか読まないので永久に届かない。
+  const wCar = getCarOfWorker(assignState, workerName);
+  if (MY_CAR && wCar && wCar !== MY_CAR) {
+    alert(
+      `⚠️ ${workerName} さんは ${wCar}号車です。\n\n` +
+      `この画面は今 ${MY_CAR}号車として操作しています。\n` +
+      `このまま割り当てても ${workerName} さんの画面には表示されません。\n\n` +
+      (IS_ADMIN_MODE
+        ? `画面上の「🔑 管理者」バッジをタップして ${wCar}号車に切り替えてから割り当ててください。`
+        : `${wCar}号車の運転手に依頼してください。`)
+    );
+    return;
+  }
+
   // 受付停止中の作業者を割り当てる時は確認ダイアログ
   if ((assignState.paused || {})[workerName] === true) {
     const ok = confirm(
@@ -2548,7 +2563,23 @@ function renderAssign() {
     html += `<div style="font-size:11px;color:var(--muted);margin:12px 0 6px;font-weight:700;">✅ 完了済みグループ</div>`;
     html += doneGroups.map(g => renderGroup(g, true)).join('');
   }
-  assignEl.innerHTML = html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>';
+  // 別号車の人が自車の割当に混ざっていたら警告（号車取り違えの後始末用）
+  const misplaced = Object.keys(assignState.assignments || {}).filter(w => {
+    const c = getCarOfWorker(assignState, w);
+    return c && MY_CAR && c !== MY_CAR;
+  });
+  let warnHtml = '';
+  if (misplaced.length) {
+    const detail = misplaced.map(w => {
+      const gs = getWorkerGroups(w);
+      return `${w}（${getCarOfWorker(assignState, w)}号車・${gs.join('+').toUpperCase()}）`;
+    }).join('、');
+    warnHtml = `<div style="background:#d42020;color:#fff;border-radius:8px;padding:10px 12px;margin-bottom:10px;font-size:12px;line-height:1.7;">`
+      + `⚠️ <strong>${MY_CAR}号車の割当に別の号車の人が入っています</strong><br>${detail}<br>`
+      + `<span style="font-size:11px;opacity:.9">この割当は本人の画面には届きません。下の「✕ 解除」で外してから、正しい号車に切り替えて割り当て直してください。</span></div>`;
+  }
+
+  assignEl.innerHTML = warnHtml + (html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>');
 }
 
 // ===== 作業日変更 =====
@@ -2617,7 +2648,9 @@ function restoreTab() {
     switchTab(saved, tabs[idx]);
   }
   // 車フィルタを復元
-  const savedCar = localStorage.getItem('fp_car_filter') || '';
+  // 初めて開いた時は自分の号車で絞る（「全車」は明示的に選んだ時だけ＝空文字が保存済みの時）
+  const savedCarRaw = localStorage.getItem('fp_car_filter');
+  const savedCar = (savedCarRaw === null) ? (MY_CAR ? String(MY_CAR) : '') : savedCarRaw;
   const carFilter = document.getElementById('car-filter');
   if (carFilter) {
     carFilter.value = savedCar;
@@ -2646,11 +2679,18 @@ let COMMON_CACHE = null; // ログイン画面用の共通データキャッシ�
 
   // セッション復元（前回ログインした運転手）
   const savedDriver = localStorage.getItem('fp_driver_name');
-  if (savedDriver === '__admin__') {
+  const savedAdminCar = adminCarOf(savedDriver);
+  if (savedAdminCar) {
     IS_ADMIN_MODE = true;
-    MY_CAR = 1;
+    MY_CAR = savedAdminCar;
     MY_DRIVER_NAME = '管理者';
     startDriverUI();
+    return;
+  }
+  // 旧形式の「__admin__」は号車が分からない。1号車と決めつけず選び直してもらう
+  if (savedDriver === '__admin__') {
+    localStorage.removeItem('fp_driver_name');
+    showDriverLogin();
     return;
   }
   if (savedDriver && COMMON_CACHE && !COMMON_CACHE._notfound) {
@@ -2665,6 +2705,12 @@ let COMMON_CACHE = null; // ログイン画面用の共通データキャッシ�
   // ログイン画面を表示
   showDriverLogin();
 })();
+
+// '__admin1__' → 1 / '__admin2__' → 2 / それ以外 → 0
+function adminCarOf(v) {
+  const m = /^__admin([12])__$/.exec(v || '');
+  return m ? parseInt(m[1]) : 0;
+}
 
 function showDriverLogin() {
   const login = document.getElementById('driver-login');
@@ -2697,11 +2743,15 @@ function showDriverLogin() {
   prepOpt.value = '__prep__';
   prepOpt.textContent = '🔧 準備担当（号車なし・設定のみ）';
   sel.appendChild(prepOpt);
-  // 管理者（全権限）の選択肢
-  const adminOpt = document.createElement('option');
-  adminOpt.value = '__admin__';
-  adminOpt.textContent = '🔑 管理者（全画面・号車切替可）';
-  sel.appendChild(adminOpt);
+  // 管理者（全権限）。★どの号車として操作するかを必ず選ばせる。
+  //   以前は「管理者」一択で無言の1号車扱いになっており、2号車の作業をしていても
+  //   割当が __car1__ に書かれ、作業者の画面には永久に届かなかった。
+  [1, 2].forEach(c => {
+    const adminOpt = document.createElement('option');
+    adminOpt.value = '__admin' + c + '__';
+    adminOpt.textContent = `🔑 管理者（${c}号車として操作）`;
+    sel.appendChild(adminOpt);
+  });
 
   sel.onchange = () => {
     const name = sel.value;
@@ -2714,10 +2764,11 @@ function showDriverLogin() {
       btn.textContent = '準備設定を開く →';
       return;
     }
-    if (name === '__admin__') {
-      preview.innerHTML = `<span style="color:#9c1a8a;font-weight:900;">🔑 管理者モード</span><br><span style="font-size:11px;color:var(--muted);">全機能・両号車の表示と操作ができます</span>`;
+    const adminCar = adminCarOf(name);
+    if (adminCar) {
+      preview.innerHTML = `<span style="color:#9c1a8a;font-weight:900;">🔑 管理者モード（${adminCar}号車）</span><br><span style="font-size:11px;color:var(--muted);">割当は ${adminCar}号車の作業者にだけ行えます。<br>号車は画面上のバッジでいつでも切り替えられます。</span>`;
       btn.disabled = false;
-      btn.textContent = '管理者として開く →';
+      btn.textContent = `管理者（${adminCar}号車）として開く →`;
       return;
     }
     const car = getCarOfWorker(COMMON_CACHE, name);
@@ -2747,13 +2798,15 @@ function doDriverLogin() {
     startPrepUI();
     return;
   }
-  // 管理者モード（全機能・号車切替可）
-  if (name === '__admin__') {
+  // 管理者モード（全機能・号車はログイン時に選択、バッジで切替可）
+  const adminCar = adminCarOf(name);
+  if (adminCar) {
     IS_ADMIN_MODE = true;
     IS_PREP_MODE = false;
-    MY_CAR = 1; // 初期は1号車（後で切り替え可能）
+    MY_CAR = adminCar;
     MY_DRIVER_NAME = '管理者';
-    localStorage.setItem('fp_driver_name', '__admin__');
+    localStorage.setItem('fp_driver_name', name);
+    localStorage.setItem('fp_car_filter', String(adminCar));
     document.getElementById('driver-login').style.display = 'none';
     startDriverUI();
     return;
@@ -2821,6 +2874,10 @@ function startDriverUI() {
 // 管理者モード: 号車を切り替える（1号車⇔2号車）
 function adminSwitchCar() {
   MY_CAR = (MY_CAR === 1) ? 2 : 1;
+  // ★必ず保存する。以前は保存しておらず、スマホで画面が再読み込みされると
+  //   黙って1号車に戻っていた（切り替えたつもりのまま割当先を間違える原因）
+  localStorage.setItem('fp_driver_name', '__admin' + MY_CAR + '__');
+  localStorage.setItem('fp_car_filter', String(MY_CAR));
   const badge = document.getElementById('driver-car-badge');
   if (badge) badge.textContent = `🔑 管理者（${MY_CAR}号車を表示中・タップで切替）`;
   // 表示する車フィルターも合わせる
