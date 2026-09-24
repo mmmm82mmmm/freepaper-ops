@@ -1048,8 +1048,8 @@ function renderHaifu() {
   const allBtn = `
     <div style="background:var(--card);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
       <div>
-        <div style="font-size:13px;font-weight:900;">📋 ${haifuData.length > 1 ? haifuData.length + '種まとめて出力' : '住所・コメント付きで出力'}</div>
-        <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.6;">店ごとに1行。住所・ビル名・コメント付き。<br>${haifuData.map(h => escH(h.name)).join(' / ')} の状態が横に並びます。</div>
+        <div style="font-size:13px;font-weight:900;">📋 ${haifuData.length > 1 ? haifuData.length + '種まとめて出力' : '住所・メモ付きで出力'}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.6;">店ごとに1行。住所・ビル名・メモ付き。<br>${haifuData.map(h => escH(h.name)).join(' / ')} の状態が横に並びます。</div>
       </div>
       <button class="export-btn" onclick="exportHaifuAllCSV()" style="flex-shrink:0;">⬇️ まとめてCSV</button>
     </div>`;
@@ -1142,7 +1142,7 @@ function exportHaifuAllCSV() {
   };
 
   const headers = ['ルート', 'ルート順', 'グループ', '店名', 'ビル名', '階数', '住所',
-    ...data.map(h => h.name), 'コメント'];
+    ...data.map(h => h.name), 'メモ'];
 
   // どれか1つでも配布物の名称が入っているレコード＝今月の配布対象
   const rows = allRecords.filter(r =>
@@ -1171,7 +1171,7 @@ function exportHaifuAllCSV() {
         if (!nm) return '';                                   // 対象外の店（記録欄そのものが無い）
         return getVal(r, `haifu${h.slot}_status`) || '未記録';  // 記録されずに終わった店
       }),
-      getVal(r, '文字列__1行__9'),
+      getVal(r, '文字列__複数行_'),
     ];
     csv += cells.map(esc).join(',') + '\n';
   });
