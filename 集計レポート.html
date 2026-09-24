@@ -1044,7 +1044,17 @@ function renderHaifu() {
     return;
   }
 
-  el.innerHTML = haifuData.map(h => `
+  // 3種まとめCSV（請負報告用）。1枠ずつのCSVを手で結合しなくて済むようにする
+  const allBtn = `
+    <div style="background:var(--card);border-radius:12px;padding:14px 16px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);display:flex;align-items:center;justify-content:space-between;gap:12px;flex-wrap:wrap;">
+      <div>
+        <div style="font-size:13px;font-weight:900;">📋 ${haifuData.length > 1 ? haifuData.length + '種まとめて出力' : '住所・コメント付きで出力'}</div>
+        <div style="font-size:11px;color:var(--muted);margin-top:3px;line-height:1.6;">店ごとに1行。住所・ビル名・コメント付き。<br>${haifuData.map(h => escH(h.name)).join(' / ')} の状態が横に並びます。</div>
+      </div>
+      <button class="export-btn" onclick="exportHaifuAllCSV()" style="flex-shrink:0;">⬇️ まとめてCSV</button>
+    </div>`;
+
+  el.innerHTML = allBtn + haifuData.map(h => `
     <div style="background:var(--card);border-radius:12px;padding:16px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:12px;">
         <div style="font-size:16px;font-weight:900;">📦 ${escH(h.name)}</div>
@@ -1104,6 +1114,75 @@ function switchHaifuSub(slot, status, el) {
   const h = (window._haifuData || []).find(x => x.slot === slot);
   if (!h) return;
   document.getElementById(`haifu-stores-${slot}`).innerHTML = renderHaifuStoreList(h.stores[status]);
+}
+
+// 住所 "7-4" → 南7条西4丁目 / "北2-東2" → 北2条東2丁目 / "100-100" → エリア外
+// （条は数字だけなら南、丁目は数字だけなら西。設置協力店リストと同じルール）
+function haifuAddrText(raw) {
+  const t = (raw || '').trim();
+  if (!t || t === '-') return '';
+  const parts = t.split('-');
+  const jo = (parts[0] || '').trim();
+  const chome = (parts[1] || '').trim();
+  if (jo === '100' && chome === '100') return 'エリア外';
+  const isNum = v => /^\d+$/.test(v);
+  const joPart = jo ? `${isNum(jo) ? '南' + jo : jo}条` : '';
+  const chPart = chome ? `${isNum(chome) ? '西' + chome : chome}丁目` : '';
+  return joPart + chPart;
+}
+
+// 3種まとめCSV。店ごとに1行、配布物の状態を横に並べる。
+// 名称が空の枠は「その店はその配布物の対象ではない」なので空欄にする。
+function exportHaifuAllCSV() {
+  const data = window._haifuData || [];
+  if (!data.length) return;
+  const esc = v => {
+    const t = String(v ?? '');
+    return /[",\n]/.test(t) ? `"${t.replace(/"/g, '""')}"` : t;
+  };
+
+  const headers = ['ルート', 'ルート順', 'グループ', '店名', 'ビル名', '階数', '住所',
+    ...data.map(h => h.name), 'コメント'];
+
+  // どれか1つでも配布物の名称が入っているレコード＝今月の配布対象
+  const rows = allRecords.filter(r =>
+    data.some(h => (getVal(r, `haifu${h.slot}_name`) || '').trim() !== ''));
+
+  // 回る順（ルート → ルート順）に並べる
+  rows.sort((a, b) => {
+    const ra = getVal(a, '文字列__1行__4'), rb = getVal(b, '文字列__1行__4');
+    if (ra !== rb) return ra.localeCompare(rb);
+    return getNum(a, '数値_1') - getNum(b, '数値_1');
+  });
+
+  let csv = '\uFEFF';
+  csv += headers.map(esc).join(',') + '\n';
+  rows.forEach(r => {
+    const cells = [
+      getVal(r, '文字列__1行__4'),
+      getVal(r, '数値_1'),
+      getVal(r, '文字列__1行__0'),
+      getVal(r, '文字列__1行__1'),
+      getVal(r, '文字列__1行__2'),
+      getVal(r, '文字列__1行__3'),
+      haifuAddrText(getVal(r, '文字列__1行__8')),
+      ...data.map(h => {
+        const nm = (getVal(r, `haifu${h.slot}_name`) || '').trim();
+        if (!nm) return '';                                   // 対象外の店（記録欄そのものが無い）
+        return getVal(r, `haifu${h.slot}_status`) || '未記録';  // 記録されずに終わった店
+      }),
+      getVal(r, '文字列__1行__9'),
+    ];
+    csv += cells.map(esc).join(',') + '\n';
+  });
+
+  const blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = `配布物まとめ_${currentMonth}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
 }
 
 function exportHaifuCSV(slot) {
