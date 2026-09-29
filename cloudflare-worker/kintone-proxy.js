@@ -308,12 +308,23 @@ async function handleProxy(request, env, user) {
     if (!token) return deny(`アプリID ${app || '(未指定)'} は許可されていません。`, 403);
   }
 
-  const query = url.searchParams.get('query') || '';
-  const id    = url.searchParams.get('id') || '';
+  const query  = url.searchParams.get('query') || '';
+  const id     = url.searchParams.get('id') || '';
+  const fields = url.searchParams.get('fields') || '';
   let qs = '';
   if (app)   qs += `app=${app}`;
   if (query) qs += `${qs ? '&' : ''}query=${encodeURIComponent(query)}`;
   if (id)    qs += `${qs ? '&' : ''}id=${id}`;
+  // 取得する列を絞る。"a,b,c" を kintone の fields[0]=a&fields[1]=b... に展開する。
+  // 列を減らすだけなので権限は広がらない。指定が無ければ従来どおり全項目返す。
+  if (fields) {
+    const list = fields.split(',').map(f => f.trim()).filter(Boolean);
+    // $id はどの画面も使うので、指定し忘れても必ず入れる
+    if (list.length && !list.includes('$id')) list.push('$id');
+    list.forEach((f, i) => {
+      qs += `&fields%5B${i}%5D=${encodeURIComponent(f)}`;
+    });
+  }
 
   const kintoneUrl = `https://${SUBDOMAIN}.cybozu.com${path}?${qs}`;
   const headers = { 'X-Cybozu-API-Token': token, 'X-Requested-With': 'XMLHttpRequest' };

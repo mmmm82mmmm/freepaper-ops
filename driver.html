@@ -545,7 +545,9 @@ function carKey(month, car) { return `__car${car}__${monthSuffix(month)}`; }
 // 特殊レコードを取得（JSONパースして返す。無ければnull）
 async function loadSpecialRecord(monthKey) {
   const q = `文字列__1行_ = "${monthKey}" limit 1`;
-  const paramStr = `subdomain=${DOMAIN}&app=${APP}&query=${encodeURIComponent(q)}`;
+  // 中身は JSON 1本なので、それと $id 以外は運ぶ必要がない（10秒ごとに読む）
+  const paramStr = `subdomain=${DOMAIN}&app=${APP}&query=${encodeURIComponent(q)}`
+    + `&fields=${encodeURIComponent('$id,文字列__複数行__0')}`;
   const res = await fetch(`${BASE}/records.json?${paramStr}`, {
     headers: { 'X-Cybozu-API-Token': TOKEN }
   });
@@ -837,11 +839,43 @@ for (let i = -1; i <= 2; i++) {
 // デフォルトは来月（通常は翌月号を配布）
 currentMonth = months[2];
 
-async function kintoneGet(query) {
+// 運転手画面が実際に読む列だけ。これ以外は取得しても捨てるだけなので要求しない。
+// （プロキシが fields= を通すようになるまでは無視され、従来どおり全項目返る）
+const RECORD_FIELDS = [
+  '$id',
+  '文字列__1行__0',  // グループ
+  '文字列__1行__1',  // 店名
+  '文字列__1行__2',  // ビル名
+  '文字列__1行__3',  // 階数
+  '文字列__1行__4',  // ルート
+  '文字列__1行__6',  // ジャンル
+  '文字列__1行__7',  // 設置場所説明
+  '文字列__1行__8',  // 住所
+  '文字列__1行__9',  // コメント
+  '文字列__1行__10', // 担当者
+  '文字列__1行__11', // 不在時間1
+  '文字列__1行__12', // 不在時間2
+  '文字列__1行__13', // 不在時間3
+  '文字列__1行__17', // 時間指定
+  '文字列__複数行_',  // 作業者メモ
+  '数値',            // 納本数
+  '数値_1',          // ルート順
+  '数値_2',          // 通常納本数
+  '数値_3',          // MAP冊数
+  'ドロップダウン',   // ステータス
+  'チェックボックス_0', // 遅
+  'チェックボックス_1', // ラック交換
+  'チェックボックス_2', // 定休日
+  'チェックボックス_3', // POP交換
+  'チェックボックス_4', // 束渡し
+].join(',');
+
+async function kintoneGet(query, fields = RECORD_FIELDS) {
   // limit/offsetが既に含まれている場合はそのまま単発実行
+  const fieldsParam = fields ? `&fields=${encodeURIComponent(fields)}` : '';
   if (/limit\s+\d+/i.test(query)) {
     const q = encodeURIComponent(query);
-    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}${fieldsParam}&subdomain=${DOMAIN}`, {
       headers: { 'X-Cybozu-API-Token': TOKEN }
     });
     if (!res.ok) {
@@ -856,7 +890,7 @@ async function kintoneGet(query) {
   while (true) {
     const pagedQuery = `${query} limit 500 offset ${offset}`;
     const q = encodeURIComponent(pagedQuery);
-    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}&subdomain=${DOMAIN}`, {
+    const res = await fetch(`${BASE}/records.json?app=${APP}&query=${q}${fieldsParam}&subdomain=${DOMAIN}`, {
       headers: { 'X-Cybozu-API-Token': TOKEN }
     });
     if (!res.ok) {

@@ -747,7 +747,9 @@ function carKey(month, car) { return `__car${car}__${monthSuffix(month)}`; }
 
 async function loadSpecialRecord(monthKey) {
   const q = `文字列__1行_ = "${monthKey}" limit 1`;
-  const paramStr = `subdomain=${KINTONE_DOMAIN}&app=${APP_NABON}&query=${encodeURIComponent(q)}`;
+  // 中身は JSON 1本なので、それと $id 以外は運ぶ必要がない（待機中は5秒ごとに読む）
+  const paramStr = `subdomain=${KINTONE_DOMAIN}&app=${APP_NABON}&query=${encodeURIComponent(q)}`
+    + `&fields=${encodeURIComponent('$id,文字列__複数行__0')}`;
   const res = await fetch(`${BASE}/records.json?${paramStr}`, {
     headers: { 'X-Cybozu-API-Token': TOKEN_NABON }
   });
