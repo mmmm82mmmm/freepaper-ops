@@ -950,6 +950,11 @@ async function refreshRecords(force = false) {
 
   // 更新日時は秒単位なので、同じ秒の取りこぼしを避けて「以上」で取り、$idで上書きする
   const changed = await kintoneGet(`${base} and 更新日時 >= "${recordsCursor}" order by 更新日時 asc`);
+  // 「以上」で取る都合上、一番新しいレコードは変化が無くても毎回返ってくる。
+  // 表示は「本当に変わった件数」にする（画面で効きめを確かめられるように）
+  const before = new Map(allRecords.map(r => [String(r['$id'].value), r['更新日時']?.value || '']));
+  const realChanged = changed.filter(r =>
+    before.get(String(r['$id'].value)) !== (r['更新日時']?.value || '')).length;
   if (changed.length) {
     const byId = new Map(allRecords.map(r => [String(r['$id'].value), r]));
     changed.forEach(r => byId.set(String(r['$id'].value), r));
@@ -957,7 +962,7 @@ async function refreshRecords(force = false) {
     const newCursor = maxUpdatedAt(changed);
     if (newCursor > recordsCursor) recordsCursor = newCursor;
   }
-  lastFetchInfo = `差分 ${changed.length}件`;
+  lastFetchInfo = realChanged > 0 ? `差分 ${realChanged}件` : '変化なし';
 }
 
 async function loadData(force = false) {
