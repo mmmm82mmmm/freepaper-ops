@@ -489,7 +489,7 @@ body.text-xlarge .error-box{font-size:19px;}
 </div>
 
 <!-- 更新ボタン -->
-<button class="refresh-btn" id="refresh-btn" onclick="loadData()">🔄</button>
+<button class="refresh-btn" id="refresh-btn" onclick="loadData(true)">🔄</button>
 
 <!-- 個別訪問の位置選択モーダル -->
 <div id="solo-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px;">
@@ -843,6 +843,7 @@ currentMonth = months[2];
 // （プロキシが fields= を通すようになるまでは無視され、従来どおり全項目返る）
 const RECORD_FIELDS = [
   '$id',
+  '更新日時',        // 差分取得の目印。kintone側の時計なので端末の時刻ズレに影響されない
   '文字列__1行__0',  // グループ
   '文字列__1行__1',  // 店名
   '文字列__1行__2',  // ビル名
@@ -905,14 +906,66 @@ async function kintoneGet(query, fields = RECORD_FIELDS) {
   return all;
 }
 
-async function loadData() {
+// ===== レコードの取得（全件／差分） =====
+// 全件取得は約800件あり、戻り作業者がいる間は10秒ごとに走る。
+// 2回目からは「前回以降に更新されたものだけ」を取り、手元のallRecordsに重ねる。
+const FULL_REFRESH_MS = 5 * 60 * 1000;  // これを過ぎたら全件取り直す
+let recordsCursor = '';    // 取り込んだ中で一番新しい 更新日時（kintoneの時計）
+let lastFullFetchAt = 0;   // 最後に全件取り直した時刻
+let lastFetchInfo = '';    // 画面に出す「全件/差分」の表示
+
+function resetRecordsCache() { recordsCursor = ''; lastFullFetchAt = 0; }
+
+function maxUpdatedAt(recs) {
+  let max = '';
+  recs.forEach(r => {
+    const v = r['更新日時']?.value || '';
+    if (v > max) max = v;
+  });
+  return max;
+}
+
+// kintoneの order by 文字列__1行__4 asc, 数値_1 asc と同じ並びに戻す
+function sortRecords(recs) {
+  return recs.sort((a, b) => {
+    const ra = a['文字列__1行__4']?.value || '', rb = b['文字列__1行__4']?.value || '';
+    if (ra !== rb) return ra.localeCompare(rb);
+    return (parseFloat(a['数値_1']?.value) || 0) - (parseFloat(b['数値_1']?.value) || 0);
+  });
+}
+
+async function refreshRecords(force = false) {
+  const base = `文字列__1行_ = "${currentMonth}"`;
+  // 差分が使えない条件：初回／目印が無い／手動更新／全件取り直しの時間が来た
+  const needFull = force || !recordsCursor || allRecords.length === 0
+    || (Date.now() - lastFullFetchAt) > FULL_REFRESH_MS;
+
+  if (needFull) {
+    allRecords = await kintoneGet(`${base} order by 文字列__1行__4 asc, 数値_1 asc`);
+    lastFullFetchAt = Date.now();
+    recordsCursor = maxUpdatedAt(allRecords);
+    lastFetchInfo = `全件 ${allRecords.length}件`;
+    return;
+  }
+
+  // 更新日時は秒単位なので、同じ秒の取りこぼしを避けて「以上」で取り、$idで上書きする
+  const changed = await kintoneGet(`${base} and 更新日時 >= "${recordsCursor}" order by 更新日時 asc`);
+  if (changed.length) {
+    const byId = new Map(allRecords.map(r => [String(r['$id'].value), r]));
+    changed.forEach(r => byId.set(String(r['$id'].value), r));
+    allRecords = sortRecords([...byId.values()]);
+    const newCursor = maxUpdatedAt(changed);
+    if (newCursor > recordsCursor) recordsCursor = newCursor;
+  }
+  lastFetchInfo = `差分 ${changed.length}件`;
+}
+
+async function loadData(force = false) {
   const btn = document.getElementById('refresh-btn');
   btn.classList.add('spinning');
 
   try {
-    // 今月のデータを全件取得（自動ページング）
-    const query = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
-    allRecords = await kintoneGet(query);
+    await refreshRecords(force);
 
     // 月号セレクトの選択値を更新（textContentは設定しない！optionsが消える）
     const monthSel = document.getElementById('month-badge');
@@ -922,7 +975,7 @@ async function loadData() {
     await loadAssignData();
 
     document.getElementById('last-update').textContent =
-      `最終更新: ${new Date().toLocaleTimeString('ja-JP')}`;
+      `最終更新: ${new Date().toLocaleTimeString('ja-JP')}${lastFetchInfo ? `（${lastFetchInfo}）` : ''}`;
 
   } catch(e) {
     document.getElementById('progress-error').style.display = 'block';
@@ -1173,8 +1226,9 @@ function initMonthSelect() {
 function changeMonth(month) {
   // 静的表示なので呼ばれることはないが念のため
   currentMonth = month;
+  resetRecordsCache();   // 別の月の目印を引き継がない
   initMonthSelect();
-  loadData();
+  loadData(true);
 }
 
 // ===== グループ割当 =====
@@ -1284,9 +1338,9 @@ async function processReturnedWorkers() {
   const returned = fresh.returned || [];
   if (returned.length === 0) return; // 戻り作業者がいなければ何もしない（保存もしない）
 
-  // 最新の完了状況を取得
+  // 最新の完了状況を取得（10秒ごとに走るので差分で。5分に1回は全件に戻る）
   try {
-    allRecords = await kintoneGet(`文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`);
+    await refreshRecords();
   } catch(e) { console.error('レコード再取得エラー:', e); }
 
   // 新鮮データを作業用stateに反映（メモリではなくkintoneの値を正とする）
@@ -1663,10 +1717,9 @@ async function autoAssignAll() {
 
   if (!confirm(`${targets.length}名の作業者を自動割当します。\n\n対象:\n${targets.join('、')}\n\n${skipReasons.length > 0 ? '\n除外:\n' + skipReasons.join('、') : ''}\n\n実行しますか？`)) return;
 
-  // 最新の全レコード再取得（進捗を最新にするため）
+  // 最新の全レコード再取得（手動の一括操作なので差分ではなく全件で確実に）
   try {
-    const latestQuery = `文字列__1行_ = "${currentMonth}" order by 文字列__1行__4 asc, 数値_1 asc`;
-    allRecords = await kintoneGet(latestQuery);
+    await refreshRecords(true);
   } catch(e) { console.error('レコード再取得エラー:', e); }
 
   // 自動割当実行
