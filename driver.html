@@ -914,12 +914,77 @@ async function kintoneGet(query, fields = RECORD_FIELDS) {
 // ===== レコードの取得（全件／差分） =====
 // 全件取得は約800件あり、戻り作業者がいる間は10秒ごとに走る。
 // 2回目からは「前回以降に更新されたものだけ」を取り、手元のallRecordsに重ねる。
-const FULL_REFRESH_MS = 5 * 60 * 1000;  // これを過ぎたら全件取り直す
+const AUDIT_INTERVAL_MS = 5 * 60 * 1000;  // これを過ぎたら「消えたレコード」の点検をする
 let recordsCursor = '';    // 取り込んだ中で一番新しい 更新日時（kintoneの時計）
-let lastFullFetchAt = 0;   // 最後に全件取り直した時刻
+let lastAuditAt = 0;       // 最後に点検した時刻
 let lastFetchInfo = '';    // 画面に出す「全件/差分」の表示
 
-function resetRecordsCache() { recordsCursor = ''; lastFullFetchAt = 0; }
+// ===== 端末の控え =====
+// 店名・住所・グループなど当日変わらない情報まで、画面を開くたびに1000件以上
+// 取り直すのは無駄。取得済みを端末に置いておき、開き直した時は差分だけで追いつく。
+const CACHE_PREFIX = 'fp_records_';
+const CACHE_MAX_AGE_MS = 12 * 60 * 60 * 1000;   // これより古い控えは使わない
+const CACHE_SAVE_INTERVAL_MS = 60 * 1000;       // 保存は同期処理なので最短1分おき
+let cacheDisabled = false;   // 容量オーバー等で保存できなければ以後あきらめる
+let lastCacheSaveAt = 0;
+
+function cacheKey() { return CACHE_PREFIX + currentMonth; }
+
+// kintone の {type, value} のうち type はこの画面で使っていないので落として持つ
+function packRecords(recs) {
+  return recs.map(r => {
+    const o = {};
+    for (const k in r) o[k] = r[k]?.value ?? '';
+    return o;
+  });
+}
+function unpackRecords(rows) {
+  return rows.map(o => {
+    const r = {};
+    for (const k in o) r[k] = { value: o[k] };
+    return r;
+  });
+}
+
+function saveRecordsCache(force = false) {
+  if (cacheDisabled || !currentMonth || !allRecords.length || !recordsCursor) return;
+  if (!force && Date.now() - lastCacheSaveAt < CACHE_SAVE_INTERVAL_MS) return;
+  try {
+    // 他の月の控えは消しておく（端末の容量は限られているため）
+    for (let i = localStorage.length - 1; i >= 0; i--) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith(CACHE_PREFIX) && k !== cacheKey()) localStorage.removeItem(k);
+    }
+    localStorage.setItem(cacheKey(), JSON.stringify({
+      month: currentMonth, cursor: recordsCursor, savedAt: Date.now(), rows: packRecords(allRecords)
+    }));
+    lastCacheSaveAt = Date.now();
+  } catch (e) {
+    // 控えが無くても動く。保存できないならあきらめて通常どおり取りに行く
+    console.warn('レコードの控えを保存できませんでした:', e);
+    cacheDisabled = true;
+    try { localStorage.removeItem(cacheKey()); } catch (e2) {}
+  }
+}
+
+function loadRecordsCache() {
+  try {
+    const raw = localStorage.getItem(cacheKey());
+    if (!raw) return 0;
+    const c = JSON.parse(raw);
+    if (!c || c.month !== currentMonth) return 0;
+    if (!c.cursor || !Array.isArray(c.rows) || !c.rows.length) return 0;  // 目印が無いと追いつけない
+    if (Date.now() - (c.savedAt || 0) > CACHE_MAX_AGE_MS) return 0;       // 古すぎる
+    allRecords = unpackRecords(c.rows);
+    recordsCursor = c.cursor;
+    return allRecords.length;
+  } catch (e) { return 0; }
+}
+
+function resetRecordsCache() {
+  recordsCursor = ''; lastAuditAt = 0; lastCacheSaveAt = 0;
+  try { localStorage.removeItem(cacheKey()); } catch (e) {}
+}
 
 function maxUpdatedAt(recs) {
   let max = '';
@@ -939,17 +1004,42 @@ function sortRecords(recs) {
   });
 }
 
+async function fetchAllRecords() {
+  const base = `文字列__1行_ = "${currentMonth}"`;
+  allRecords = await kintoneGet(`${base} order by 文字列__1行__4 asc, 数値_1 asc`);
+  recordsCursor = maxUpdatedAt(allRecords);
+  lastAuditAt = Date.now();
+}
+
+// 消えたレコードの点検。差分取得では削除に気づけないため、$id だけを取って突き合わせる。
+// $id 1項目だけなので、全件取り直すのに比べて桁違いに軽い。
+async function auditRecords() {
+  const base = `文字列__1行_ = "${currentMonth}"`;
+  const ids = await kintoneGet(`${base} order by 数値_1 asc`, '$id');
+  const serverIds = new Set(ids.map(r => String(r['$id'].value)));
+  const localIds = new Set(allRecords.map(r => String(r['$id'].value)));
+  const missing = [...serverIds].filter(id => !localIds.has(id)).length;
+  const before = allRecords.length;
+  allRecords = allRecords.filter(r => serverIds.has(String(r['$id'].value)));
+  return { removed: before - allRecords.length, missing };
+}
+
 async function refreshRecords(force = false) {
   const base = `文字列__1行_ = "${currentMonth}"`;
-  // 差分が使えない条件：初回／目印が無い／手動更新／全件取り直しの時間が来た
-  const needFull = force || !recordsCursor || allRecords.length === 0
-    || (Date.now() - lastFullFetchAt) > FULL_REFRESH_MS;
+  let note = '';
 
-  if (needFull) {
-    allRecords = await kintoneGet(`${base} order by 文字列__1行__4 asc, 数値_1 asc`);
-    lastFullFetchAt = Date.now();
-    recordsCursor = maxUpdatedAt(allRecords);
+  // 手元が空なら、まず端末の控えから戻す（通信なしで即表示）。
+  // 控えは削除を知らないので、戻した直後に必ず点検させる。
+  if (!force && !allRecords.length && !recordsCursor) {
+    const n = loadRecordsCache();
+    if (n) { note = `控え${n}件＋`; lastAuditAt = 0; }
+  }
+
+  // 全件取得が要るのは、初回・目印なし・手動更新のときだけ
+  if (force || !recordsCursor || !allRecords.length) {
+    await fetchAllRecords();
     lastFetchInfo = `全件 ${allRecords.length}件`;
+    saveRecordsCache(true);
     return;
   }
 
@@ -967,7 +1057,25 @@ async function refreshRecords(force = false) {
     const newCursor = maxUpdatedAt(changed);
     if (newCursor > recordsCursor) recordsCursor = newCursor;
   }
-  lastFetchInfo = realChanged > 0 ? `差分 ${realChanged}件` : '変化なし';
+  lastFetchInfo = note + (realChanged > 0 ? `差分 ${realChanged}件` : '変化なし');
+
+  // 5分ごとに点検
+  if (Date.now() - lastAuditAt > AUDIT_INTERVAL_MS) {
+    lastAuditAt = Date.now();
+    try {
+      const { removed, missing } = await auditRecords();
+      if (missing > 0) {
+        // 差分で拾えていないものがある＝どこかでずれている。全件取り直して直す
+        await fetchAllRecords();
+        lastFetchInfo = `全件 ${allRecords.length}件（ずれを修正）`;
+        saveRecordsCache(true);
+        return;
+      }
+      if (removed > 0) lastFetchInfo += `／削除 ${removed}件`;
+    } catch (e) { console.warn('点検に失敗:', e); }
+  }
+
+  saveRecordsCache();
 }
 
 async function loadData(force = false) {
