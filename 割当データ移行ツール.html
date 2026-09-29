@@ -206,7 +206,8 @@ async function migrate() {
     // revisitMap はグループのルート→車で振り分け
     Object.entries(oldState.revisitMap || {}).forEach(([grp, ids]) => {
       const letter = grp.replace(/[0-9.]/g,'').toLowerCase();
-      const c = parseInt((oldState.routeCars||{})[letter]) || parseInt((oldState.routeCars||{})[letter+'遅']) || 0;
+      // routeCars は準備中を負の値で持つので、号車の判定には絶対値を使う
+      const c = Math.abs(parseInt((oldState.routeCars||{})[letter]) || parseInt((oldState.routeCars||{})[letter+'遅']) || 0);
       if (c === 1) car1.revisitMap[grp] = ids;
       else if (c === 2) car2.revisitMap[grp] = ids;
     });

@@ -884,12 +884,19 @@ async function reflectToPrep() {
     }
 
     const before = Object.keys(common.cars || {}).length;
+    // routeCars を丸ごと差し替えるので、準備中（負の値）の指定は消える
+    const prepLost = Object.entries(common.routeCars || {})
+      .filter(function (e) { return (parseInt(e[1]) || 0) < 0; })
+      .map(function (e) { return String(e[0]).toUpperCase(); });
     const scopeLabel = prepScope === 'all' ? 'この日すべて' : TIMES[Number(prepScope)];
     const ok = confirm(
       `${activeDay + 1}日目 ${scopeLabel} の配置を準備設定へ反映します。` + String.fromCharCode(10, 10) +
       `車の編成　　： ${before}人分 → ${Object.keys(p.cars).length}人分` + String.fromCharCode(10) +
       `ルート割当　： ${Object.keys(common.routeCars || {}).length}件 → ${Object.keys(p.routeCars).length}件` +
       String.fromCharCode(10, 10) +
+      (prepLost.length
+        ? String.fromCharCode(10) + `※「準備中」の指定は解除されます： ${prepLost.join('・')}` + String.fromCharCode(10)
+        : '') +
       `メンバー一覧（${common.members.length}名）・運転手・配布物設定は変更しません。` +
       String.fromCharCode(10) + 'よろしいですか？');
     if (!ok) { msg.textContent = '取り消しました'; return; }

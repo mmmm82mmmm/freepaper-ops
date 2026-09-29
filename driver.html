@@ -350,7 +350,12 @@ body.text-xlarge .error-box{font-size:19px;}
   <!-- ルート↔車の紐付け設定 -->
   <div style="margin-bottom:16px">
     <div class="section-title">🗺️ ルート設定</div>
-    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;">どの車がどのルートを担当するか設定します</div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:8px;line-height:1.7;">
+      どの車がどのルートを担当するか設定します。<br>
+      <strong>📋 準備中</strong> にすると、束の計算や下見のために表示はされますが、
+      <strong>自動割当では配られません</strong>。<br>
+      次のルートを先に組んでおきたい時に使ってください（例：H を回っている最中に G を準備中で置いておく）。
+    </div>
     <div id="route-car-list" style="display:flex;flex-wrap:wrap;gap:6px;padding:10px;background:var(--card);border-radius:10px;"></div>
   </div>
 
@@ -1479,17 +1484,46 @@ function renderRouteCars() {
   if (!el) return;
 
   el.innerHTML = routes.map(route => {
-    const carNum = assignState.routeCars?.[route] || 0;
+    const raw = parseInt(assignState.routeCars?.[route] || 0) || 0;
+    const opt = (v, label) => `<option value="${v}" ${raw === v ? 'selected' : ''}>${label}</option>`;
+    const prepTag = raw < 0
+      ? '<span style="font-size:9px;color:#fff;background:#7a3dc4;padding:1px 5px;border-radius:3px;font-weight:900;margin-left:4px;">準備中</span>'
+      : '';
     return `
-      <div class="route-car-chip">
-        <span class="route-car-label">ルート${route.toUpperCase()}</span>
+      <div class="route-car-chip" style="${raw < 0 ? 'border-color:#7a3dc4;' : ''}">
+        <span class="route-car-label">ルート${route.toUpperCase()}${prepTag}</span>
         <select class="route-car-select" onchange="changeRouteCar('${route}', this.value)">
-          <option value="0" ${carNum == 0 ? 'selected' : ''}>未割当</option>
-          <option value="1" ${carNum == 1 ? 'selected' : ''}>🚐 1号車</option>
-          <option value="2" ${carNum == 2 ? 'selected' : ''}>🚐 2号車</option>
+          ${opt(0, '未割当')}
+          ${opt(1, '🚐 1号車')}
+          ${opt(2, '🚐 2号車')}
+          ${opt(-1, '📋 1号車（準備中）')}
+          ${opt(-2, '📋 2号車（準備中）')}
         </select>
       </div>`;
   }).join('');
+}
+
+// routeCars の値の意味：
+//   正の数 = その号車が稼働中（自動割当の対象）
+//   負の数 = その号車で「準備中（見るだけ）」。表示はするが自動割当はしない
+//   0      = 未割当
+// ★新しいキーを足さずに既存の値へ符号で持たせている。routeCars を読み書きする
+//   画面が7つあり、どれも共通データを丸ごと組み立て直して保存するため、新しい
+//   キーは1か所でも通し忘れると他の画面の保存で消える（メンバー消失と同じ事故）。
+//   符号なら既存の保存処理がそのまま運んでくれる。さらに、号車を比べている
+//   既存の判定（=== carNum / > 0）は負の数を自然に弾くので、割当からも外れる。
+function routeCarNumOf(route) {
+  return Math.abs(parseInt(assignState.routeCars?.[route] || 0)) || 0;
+}
+function isRoutePrep(route) {
+  return (parseInt(assignState.routeCars?.[route] || 0) || 0) < 0;
+}
+// 今「準備中」になっているルートの一覧（表示用）
+function prepRoutes() {
+  return Object.entries(assignState.routeCars || {})
+    .filter(([r, c]) => (parseInt(c) || 0) < 0)
+    .map(([r]) => r.toUpperCase())
+    .sort();
 }
 
 async function changeRouteCar(route, carNum) {
@@ -1583,6 +1617,7 @@ function autoAssign(workerName, justAssigned = new Set()) {
   }
 
   // 車に紐付いたルートを取得（大文字小文字を吸収）
+  // 準備中のルートは負の値なので、この比較で自然に外れる（＝配られない）
   const carRoutes = Object.entries(assignState.routeCars || {})
     .filter(([r, c]) => parseInt(c) === parseInt(carNum))
     .map(([r]) => r.toLowerCase());
@@ -1690,6 +1725,12 @@ async function autoAssignAll() {
     return;
   }
   const routeCount = Object.entries(assignState.routeCars || {}).filter(([r, c]) => parseInt(c) > 0).length;
+  if (routeCount === 0 && prepRoutes().length > 0) {
+    alert(`ルートが全て「📋 準備中」です。\n\n準備中のルート: ${prepRoutes().join('・')}\n\n`
+      + '準備中は自動割当の対象外です。回し始めるルートを「準備設定 → ルート設定」で\n'
+      + '「🚐 1号車」「🚐 2号車」に切り替えてください。');
+    return;
+  }
   if (routeCount === 0) {
     alert('先に「🗺️ ルート設定」でルートと車を紐付けてください。');
     return;
@@ -2506,8 +2547,9 @@ function renderAssign() {
   let filtered = [...allGroups];
   if (carFilter) {
     filtered = filtered.filter(g => {
+      // 準備中も「見るだけ」なので、その号車の一覧には出す
       const route = getGroupRoute(g);
-      return String(assignState.routeCars?.[route] || 0) === carFilter;
+      return String(routeCarNumOf(route)) === carFilter;
     });
   }
   // 全店が本日定休で除外され、合流不在店も無いグループは割当欄に出さない（0件0冊を消す）
@@ -2590,8 +2632,11 @@ function renderAssign() {
     const assignedCar = assignedWorker ? (assignState.cars?.[assignedWorker] || 0) : 0;
     const carLabel = assignedCar ? `🚐${assignedCar} ` : '';
     const route = getGroupRoute(g);
-    const routeCarNum = assignState.routeCars?.[route] || 0;
-    const routeCarLabel = routeCarNum ? `<span style="font-size:9px;color:var(--muted)">ルート${route.toUpperCase()} 🚐${routeCarNum}</span>` : `<span style="font-size:9px;color:var(--muted)">ルート${route.toUpperCase()}</span>`;
+    const routeCarNum = routeCarNumOf(route);
+    const routePrepTag = isRoutePrep(route)
+      ? '<span style="font-size:9px;color:#fff;background:#7a3dc4;padding:0 4px;border-radius:3px;font-weight:900;margin-left:3px;">📋準備中</span>'
+      : '';
+    const routeCarLabel = `<span style="font-size:9px;color:var(--muted)">ルート${route.toUpperCase()}${routeCarNum ? ` 🚐${routeCarNum}` : ''}</span>${routePrepTag}`;
 
     const workerBtns = isDone ? '' : filteredWorkers.map(w => {
       const isAssigned = assignedWorker === w;
@@ -2697,6 +2742,14 @@ function renderAssign() {
     html += `<div style="font-size:11px;color:var(--muted);margin:12px 0 6px;font-weight:700;">✅ 完了済みグループ</div>`;
     html += doneGroups.map(g => renderGroup(g, true)).join('');
   }
+  // 準備中のルートがあれば知らせる（なぜ配られないのか分かるように）
+  const preps = prepRoutes();
+  const prepHtml = preps.length
+    ? `<div style="background:#f3edff;border:1px solid #d5c2f5;border-radius:8px;padding:9px 12px;margin-bottom:10px;font-size:12px;color:#4a2a80;line-height:1.7;">`
+      + `📋 <strong>準備中のルート: ${preps.join('・')}</strong><br>`
+      + `<span style="font-size:11px;">表示だけで、自動割当では配られません。回し始める時は「準備設定 → ルート設定」で号車を選び直してください。</span></div>`
+    : '';
+
   // 別号車の人が自車の割当に混ざっていたら警告（号車取り違えの後始末用）
   const misplaced = Object.keys(assignState.assignments || {}).filter(w => {
     if (!MY_CAR) return false;
@@ -2719,7 +2772,7 @@ function renderAssign() {
       + `<span style="font-size:11px;opacity:.9">この割当は本人の画面には届きません。解除してから、正しい号車に切り替えて割り当て直してください。納本の記録は消えません。</span></div>`;
   }
 
-  assignEl.innerHTML = warnHtml + (html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>');
+  assignEl.innerHTML = prepHtml + warnHtml + (html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>');
 }
 
 // ===== 作業日変更 =====
