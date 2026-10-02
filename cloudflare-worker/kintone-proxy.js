@@ -310,17 +310,25 @@ async function handleProxy(request, env, user) {
 
   const query  = url.searchParams.get('query') || '';
   const id     = url.searchParams.get('id') || '';
-  const fields = url.searchParams.get('fields') || '';
+  // fields は2通りの書き方で来る。どちらも受け付ける。
+  //   (1) fields=a,b,c        （運転手・作業者画面）
+  //   (2) fields=a&fields=b   （補充作業・集計レポート）
+  // get() は最初の1つしか返さないため、(2) を取りこぼして1項目しか返さず、
+  // 店名や設置場所IDが空になって画面が壊れた。必ず getAll() で全部拾う。
+  const fieldList = url.searchParams.getAll('fields')
+    .flatMap(v => String(v).split(','))
+    .map(f => f.trim())
+    .filter(Boolean);
   let qs = '';
   if (app)   qs += `app=${app}`;
   if (query) qs += `${qs ? '&' : ''}query=${encodeURIComponent(query)}`;
   if (id)    qs += `${qs ? '&' : ''}id=${id}`;
   // 取得する列を絞る。"a,b,c" を kintone の fields[0]=a&fields[1]=b... に展開する。
   // 列を減らすだけなので権限は広がらない。指定が無ければ従来どおり全項目返す。
-  if (fields) {
-    const list = fields.split(',').map(f => f.trim()).filter(Boolean);
+  if (fieldList.length) {
+    const list = fieldList.slice();
     // $id はどの画面も使うので、指定し忘れても必ず入れる
-    if (list.length && !list.includes('$id')) list.push('$id');
+    if (!list.includes('$id')) list.push('$id');
     list.forEach((f, i) => {
       qs += `&fields%5B${i}%5D=${encodeURIComponent(f)}`;
     });
