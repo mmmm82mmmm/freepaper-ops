@@ -1,0 +1,32 @@
+# --- 依存パッケージ ---
+node_modules/
+
+# --- 秘密情報（APIキー等）は絶対にコミットしない ---
+.env
+.env.*
+*.key
+.dev.vars
+.dev.vars.*
+
+# --- clasp（GASとの連携）の認証情報は絶対にコミットしない ---
+.clasprc.json
+**/.clasprc.json
+
+# --- wrangler（Cloudflare）の作業用フォルダ ---
+.wrangler/
+
+# --- 社内資料・マスタデータは GitHub に上げない（OneDrive で管理） ---
+*.docx
+*.doc
+*.xlsx
+*.xls
+*.xlsm
+*.pptx
+*.ppt
+*.pdf
+*.csv
+
+# --- Windows / OneDrive が作る不要ファイル ---
+desktop.ini
+Thumbs.db
+~$*
