@@ -634,7 +634,7 @@ function mergeState(common, carData) {
     routeCars: common.routeCars || {},
     drivers: common.drivers || {},
     haifuItems: common.haifuItems || [{name:''},{name:''},{name:''}],
-    workDay: common.workDay || '',
+    workDay: common.workDay ?? '',  // 0=日曜なので || だと消える
     dynamicItems: common.dynamicItems || [],
     unfinishedModeOpen: common.unfinishedModeOpen || false,
     // 今日のデータのみ採用。昨日以前なら空（＝昨日のゴミを読み込まない）
@@ -655,7 +655,7 @@ function extractCommon(state) {
     routeCars: state.routeCars || {},
     drivers: state.drivers || {},
     haifuItems: state.haifuItems || [{name:''},{name:''},{name:''}],
-    workDay: state.workDay || '',
+    workDay: state.workDay ?? '',
     dynamicItems: state.dynamicItems || [],
     unfinishedModeOpen: state.unfinishedModeOpen || false,
     updatedAt: new Date().toISOString()
@@ -1373,6 +1373,10 @@ async function loadAssignData() {
       } catch(e) { console.error('共通データ読込エラー:', e); }
     }
     if (!assignState.cars) assignState.cars = {};
+
+    // 作業日プルダウンを保存済みの値に合わせる（定休日の除外はこの値を見ている）
+    const daySel = document.getElementById('work-day-select');
+    if (daySel) daySel.value = String(assignState.workDay ?? '');
 
     // グループ・作業者一覧を収集
     const groupSet = new Set();

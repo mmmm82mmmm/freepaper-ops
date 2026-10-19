@@ -837,7 +837,7 @@ async function getAssignState() {
     routeCars: commonData.routeCars || {},
     drivers: commonData.drivers || {},
     haifuItems: commonData.haifuItems || [{name:''},{name:''},{name:''}],
-    workDay: commonData.workDay || '',
+    workDay: commonData.workDay ?? '',  // 0=日曜なので || だと消える
     dynamicItems: commonData.dynamicItems || [],
     unfinishedModeOpen: commonData.unfinishedModeOpen || false,
     assignments: fresh ? (carData.assignments || {}) : {},
