@@ -905,6 +905,7 @@ async function startWorkDirect() {
         if (!existingIds.has(r['$id'].value)) records.push(r);
       });
     }
+    records = dropClosedToday(records, state);  // 運転手画面の割当と同じく、作業日が定休の店は出さない
     if (records.length === 0) {
       // 割当はあるがレコードが見つからない（グループ削除等の異常状態）→ 待機画面へ
       document.getElementById('loading-screen').style.display = 'none';
@@ -1004,6 +1005,7 @@ async function startWork() {
         if (!existingIds.has(r['$id'].value)) records.push(r);
       });
     }
+    records = dropClosedToday(records, state);  // 運転手画面の割当と同じく、作業日が定休の店は出さない
 
     if (records.length === 0) {
       // 割当はあるがレコードが見つからない（グループ削除等の異常状態）→ 待機画面へ
@@ -1033,6 +1035,16 @@ async function startWork() {
     document.getElementById('login-error').style.display = 'block';
     document.getElementById('login-error').textContent = `⚠️ ${e.message}`;
   }
+}
+
+// ===== 定休日 =====
+// 運転手画面で設定した作業日（0=日〜6=土）が定休日の店を外す。作業日が未設定なら何もしない
+function dropClosedToday(recs, state) {
+  const workDay = state?.workDay;
+  if (workDay === null || workDay === undefined || workDay === '') return recs;
+  const dayName = ['日','月','火','水','木','金','土'][parseInt(workDay)];
+  if (!dayName) return recs;
+  return recs.filter(r => !(r['チェックボックス_2']?.value || []).includes(dayName));
 }
 
 // ===== カード描画 =====
@@ -1631,13 +1643,7 @@ async function loadAbsentStores() {
     const claims = state.absentClaims || {}; // { recordId: workerName }
 
     // 作業日が定休日の店は除外
-    const workDay = state.workDay;
-    const dayName = (workDay === null || workDay === undefined || workDay === '') ? '' : ['日','月','火','水','木','金','土'][parseInt(workDay)];
-    const visible = mine.filter(r => {
-      if (!dayName) return true;
-      const teikyu = r['チェックボックス_2']?.value || [];
-      return !teikyu.includes(dayName);
-    });
+    const visible = dropClosedToday(mine, state);
 
     if (visible.length === 0) {
       listEl.innerHTML = '<div style="background:var(--card);border-radius:10px;padding:24px;text-align:center;color:var(--muted);font-size:13px;">✅ あなたの号車ルートに、回れる不在店はありません。</div>';
@@ -2127,7 +2133,7 @@ async function loadGroup(groupCodes) {
       });
     }
 
-    records = groupRecords;
+    records = dropClosedToday(groupRecords, state);  // 作業日が定休の店は出さない
     doneCount = 0; absentCount = 0; todoCount = 0;
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';

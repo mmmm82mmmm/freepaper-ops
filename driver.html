@@ -2033,6 +2033,7 @@ function renderRevisit() {
             <span style="font-size:10px;color:var(--amber);font-weight:700;background:#fff8e8;padding:2px 6px;border-radius:4px;">${groupCode}${isOsoiGroup(groupCode) ? '（遅）' : ''} 不在</span>
             ${osoiBadge}
             ${teikyuBadge}
+            ${timeBadge(r, '2px 6px')}
             <span style="font-size:10px;color:#1a5cd4;font-weight:700;background:#e8f0ff;padding:2px 6px;border-radius:4px;">📦${parseInt(r['数値_2']?.value) || 0}冊</span>
             <span style="font-size:14px;font-weight:900;">${shop}</span>
           </div>
