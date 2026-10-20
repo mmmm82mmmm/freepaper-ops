@@ -1111,33 +1111,70 @@ async function refreshRawRecords(force = false) {
   saveRecordsCache();
 }
 
-// ===== 要確認の店を隠す =====
+// ===== 設置店マスタの写し（要確認の店を隠す・kintoneとの相違を出す） =====
 // 設置店マスタで「要確認」になった店（営業していない等）は、今月分のレコードが残っていても
 // 割当・進捗・不在再訪のどこにも出さない。マスタを「稼働中」に戻せばまた出てくる。
 // ★rawRecords（kintoneの写し）からは消さない。消すと点検が「手元に無い」と判断して全件を取り直し続ける。
+// あわせて、運転手画面で今月分だけ直した値（通常納本数・早/遅）とマスタの違いを出すのにも使う。
 const NEEDS_CHECK_STATUS = '要確認';
-let needsCheckIds = new Set();   // 要確認の 設置場所ID
-let needsCheckAt = 0;
+const OSOI_VALUE = '遅';           // 遅のチェックボックスの選択肢（今月分・マスタとも同じ名前）
+const MASTER_FIELDS = ['文字列__1行__0', '数値_4', 'チェックボックス', 'ドロップダウン'];
+let masterById = new Map();        // 設置場所ID → { nabon, osoi, status }
+let needsCheckIds = new Set();     // 要確認の 設置場所ID
+let masterAt = 0;
 
 function storeIdOf(r) { return String(r['文字列__1行__5']?.value || '').trim(); }
 
-async function refreshNeedsCheck(force = false) {
-  if (!force && needsCheckAt && Date.now() - needsCheckAt < AUDIT_INTERVAL_MS) return;
+async function refreshMaster(force = false) {
+  if (!force && masterAt && Date.now() - masterAt < AUDIT_INTERVAL_MS) return;
   try {
-    const q = encodeURIComponent(`ドロップダウン in ("${NEEDS_CHECK_STATUS}") limit 500`);
-    const res = await fetch(`${BASE}/records.json?app=${APP_MASTER}&query=${q}&fields=${encodeURIComponent('文字列__1行__0')}&subdomain=${DOMAIN}`, {
-      headers: { 'X-Cybozu-API-Token': TOKEN }
-    });
-    if (!res.ok) throw new Error(`APIエラー: ${res.status}`);
-    const data = await res.json();
-    needsCheckIds = new Set((data.records || []).map(r => String(r['文字列__1行__0']?.value || '').trim()).filter(Boolean));
-    needsCheckAt = Date.now();
-  } catch (e) { console.warn('要確認の店の取得に失敗（前回の一覧のまま）:', e); }
+    const fields = encodeURIComponent(MASTER_FIELDS.join(','));
+    const map = new Map();
+    for (let offset = 0; ; offset += 500) {
+      const q = encodeURIComponent(`order by $id asc limit 500 offset ${offset}`);
+      const res = await fetch(`${BASE}/records.json?app=${APP_MASTER}&query=${q}&fields=${fields}&subdomain=${DOMAIN}`, {
+        headers: { 'X-Cybozu-API-Token': TOKEN }
+      });
+      if (!res.ok) throw new Error(`APIエラー: ${res.status}`);
+      const recs = (await res.json()).records || [];
+      recs.forEach(m => {
+        const sid = String(m['文字列__1行__0']?.value || '').trim();
+        if (!sid) return;
+        map.set(sid, {
+          nabon: String(m['数値_4']?.value ?? '').trim(),
+          osoi: (m['チェックボックス']?.value || []).length > 0,
+          status: m['ドロップダウン']?.value || '',
+        });
+      });
+      if (recs.length < 500) break;
+    }
+    masterById = map;
+    needsCheckIds = new Set([...map].filter(([, m]) => m.status === NEEDS_CHECK_STATUS).map(([sid]) => sid));
+    masterAt = Date.now();
+  } catch (e) { console.warn('設置店マスタの取得に失敗（前回の内容のまま）:', e); }
+}
+
+// 今月分とマスタの違い。今月分だけ直した値が、kintoneでまだ直されていない店
+function masterDiffs() {
+  const nabonDiffs = [], osoiByGroup = {};
+  if (!masterById.size) return { nabonDiffs, osoiDiffs: [] };
+  allRecords.forEach(r => {
+    const m = masterById.get(storeIdOf(r));
+    if (!m) return;
+    const month = String(r['数値_2']?.value ?? '').trim();
+    if ((parseFloat(month) || 0) !== (parseFloat(m.nabon) || 0)) nabonDiffs.push({ r, month, master: m.nabon });
+    const osoi = (r['チェックボックス_0']?.value || []).length > 0;
+    if (osoi !== m.osoi) {
+      const g = r['文字列__1行__0']?.value || '（グループなし）';
+      (osoiByGroup[g] = osoiByGroup[g] || { g, month: osoi, recs: [] }).recs.push(r);
+    }
+  });
+  return { nabonDiffs, osoiDiffs: Object.values(osoiByGroup) };
 }
 
 async function refreshRecords(force = false) {
   await refreshRawRecords(force);
-  await refreshNeedsCheck(force);
+  await refreshMaster(force);
   allRecords = rawRecords.filter(r => !needsCheckIds.has(storeIdOf(r)));
 }
 
@@ -2360,6 +2397,7 @@ async function saveShopNabon() {
     if (withMaster && sid) {
       const masterId = await findMasterId(sid);
       await putRecord(APP_MASTER, masterId, { '数値_4': { value: String(n) } });
+      if (masterById.has(sid)) masterById.get(sid).nabon = String(n);
     }
     closeShopEdit();
     await loadData();
@@ -2390,6 +2428,7 @@ async function markShopNeedsCheck() {
     const masterId = await findMasterId(sid);
     await putRecord(APP_MASTER, masterId, { 'ドロップダウン': { value: NEEDS_CHECK_STATUS } });
     needsCheckIds.add(sid);   // 次の取得を待たずに画面から外す
+    if (masterById.has(sid)) masterById.get(sid).status = NEEDS_CHECK_STATUS;
     closeShopEdit();
     await loadData();
     alert(`「${shop}」を${NEEDS_CHECK_STATUS}にしました。\n\n作業者の画面で開いたままなら「🔄 今すぐ更新」で消えます。`);
@@ -2398,6 +2437,72 @@ async function markShopNeedsCheck() {
   } finally {
     btn.disabled = false;
   }
+}
+
+// ===== グループの早／遅を今月分だけ切り替える =====
+// 遅かどうかはグループの店の「遅」チェックで決まる（isOsoiGroup）。グループの全店をそろえて切り替える。
+// 設置店マスタは触らない（kintoneで後から直す。直すまで割当タブに相違として出る）
+async function toggleGroupOsoi(g) {
+  const recs = rawRecords.filter(r => r['文字列__1行__0']?.value === g);
+  if (!recs.length) return;
+  const toOsoi = !isOsoiGroup(g);
+  const label = toOsoi ? '🌙 遅' : '☀️ 早（通常）';
+  const ok = confirm(
+    `グループ「${g}」（${recs.length}店）を ${label} にします。\n\n`
+    + `・今月分だけ変わります。設置店マスタ（kintone）は変わりません\n`
+    + `・kintoneを直すまで、割当タブに「kintoneと違う」と表示されます\n\nよろしいですか？`
+  );
+  if (!ok) return;
+  const value = toOsoi ? [OSOI_VALUE] : [];
+  const changes = recs
+    .filter(r => ((r['チェックボックス_0']?.value || []).length > 0) !== toOsoi)
+    .map(r => ({ id: r['$id'].value, record: { 'チェックボックス_0': { value } } }));
+  try {
+    for (let i = 0; i < changes.length; i += 100) {
+      const res = await fetch(`${PROXY}/k/v1/records.json?subdomain=${DOMAIN}`, {
+        method: 'PUT',
+        headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+        body: JSON.stringify({ app: APP, records: changes.slice(i, i + 100) })
+      });
+      if (!res.ok) {
+        let msg = `APIエラー: ${res.status}`;
+        try { const e = await res.json(); msg = e.message || msg; } catch (e2) {}
+        throw new Error(msg);
+      }
+    }
+    await loadData();
+  } catch (e) {
+    alert('切り替えられませんでした: ' + e.message);
+  }
+}
+
+// ===== kintone（設置店マスタ）との相違 =====
+let diffPanelOpen = false;
+function toggleDiffPanel() { diffPanelOpen = !diffPanelOpen; renderAssign(); }
+
+function diffBannerHtml() {
+  const { nabonDiffs, osoiDiffs } = masterDiffs();
+  const total = nabonDiffs.length + osoiDiffs.length;
+  if (!total) return '';
+  const row = html => `<div style="padding:5px 0;border-top:1px solid #f3c9c9;font-size:12px;line-height:1.5;">${html}</div>`;
+  const nab = v => (v === '' ? '空' : `${escDrv(v)}冊`);
+  const detail = !diffPanelOpen ? '' : `<div style="margin-top:8px;background:#fff;border-radius:6px;padding:4px 10px;color:var(--ink);">`
+    + osoiDiffs.map(d => row(
+        `<strong>${escDrv(d.g)}</strong>（${d.recs.length}店）：今月 ${d.month ? '🌙遅' : '☀️早'} ／ マスタ ${d.month ? '☀️早' : '🌙遅'}`
+        + `<div style="font-size:10px;color:var(--muted);">${d.recs.slice(0, 4).map(r => escDrv(r['文字列__1行__1']?.value || '')).join('、')}${d.recs.length > 4 ? ' 他' : ''}</div>`
+      )).join('')
+    + nabonDiffs.map(d => row(
+        `<strong>${escDrv(d.r['文字列__1行__1']?.value || '')}</strong> <span style="color:var(--muted);font-size:10px;">${escDrv(d.r['文字列__1行__0']?.value || '')} / ID ${escDrv(storeIdOf(d.r))}</span><br>`
+        + `通常納本数：今月 ${nab(d.month)} ／ マスタ ${nab(d.master)}`
+        + ` <button onclick="openShopEdit('${d.r['$id'].value}')" style="margin-left:4px;padding:2px 7px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button>`
+      )).join('')
+    + `<div style="padding:6px 0 4px;border-top:1px solid #f3c9c9;font-size:10px;color:var(--muted);">kintoneの設置店マスタを今月分と同じに直すと、ここから消えます（最大5分で反映）。</div></div>`;
+  return `<div style="background:#fdecec;border:2px solid #d42020;border-radius:10px;padding:10px 12px;margin-bottom:12px;color:#b01818;">`
+    + `<div onclick="toggleDiffPanel()" style="display:flex;align-items:center;gap:8px;cursor:pointer;">`
+    + `<span style="font-size:18px;">‼️</span><div style="flex:1;font-size:13px;font-weight:900;">kintoneとの相違あり：${total}件</div>`
+    + `<span style="font-size:11px;font-weight:700;">${diffPanelOpen ? '閉じる ▲' : '見る ▼'}</span></div>`
+    + `<div style="font-size:10px;margin-top:2px;">運転手画面で今月分だけ直した内容です。後でkintoneの設置店マスタを直してください。</div>`
+    + detail + `</div>`;
 }
 
 // ===== 個別訪問機能 =====
@@ -3023,6 +3128,7 @@ function renderAssign() {
           <div style="font-size:11px;color:var(--muted);margin-left:4px;">▼</div>
         </div>
         <div id="detail-${g}" style="display:none;border-top:1px solid var(--border);">
+          ${!isVirtual ? `<div style="padding:8px 12px;border-bottom:1px solid var(--border);"><button onclick="toggleGroupOsoi('${g}')" style="width:100%;padding:8px;background:#fff;color:${isOsoiGroup(g) ? '#555' : '#d42020'};border:1px solid ${isOsoiGroup(g) ? 'var(--border)' : '#d42020'};border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">${isOsoiGroup(g) ? '☀️ このグループを早（通常）にする' : '🌙 このグループを遅にする'}（今月分のみ）</button></div>` : ''}
           ${shopList}
         </div>
         ${!isDone ? `<div class="assign-btn-row">
@@ -3070,7 +3176,7 @@ function renderAssign() {
       + `<span style="font-size:11px;opacity:.9">この割当は本人の画面には届きません。解除してから、正しい号車に切り替えて割り当て直してください。納本の記録は消えません。</span></div>`;
   }
 
-  assignEl.innerHTML = prepHtml + warnHtml + (html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>');
+  assignEl.innerHTML = diffBannerHtml() + prepHtml + warnHtml + (html || '<div style="color:var(--muted);font-size:12px;padding:16px;text-align:center">該当グループなし</div>');
 }
 
 // ===== 作業日変更 =====
