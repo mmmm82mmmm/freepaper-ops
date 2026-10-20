@@ -911,7 +911,7 @@ async function startWorkDirect() {
         if (!existingIds.has(r['$id'].value)) records.push(r);
       });
     }
-    records = dropClosedToday(records, state);  // 運転手画面の割当と同じく、作業日が定休の店は出さない
+    records = await dropHiddenStores(records, state);  // 運転手画面の割当と同じく、定休・要確認の店は出さない
     if (records.length === 0) {
       // 割当はあるがレコードが見つからない（グループ削除等の異常状態）→ 待機画面へ
       document.getElementById('loading-screen').style.display = 'none';
@@ -1011,7 +1011,7 @@ async function startWork() {
         if (!existingIds.has(r['$id'].value)) records.push(r);
       });
     }
-    records = dropClosedToday(records, state);  // 運転手画面の割当と同じく、作業日が定休の店は出さない
+    records = await dropHiddenStores(records, state);  // 運転手画面の割当と同じく、定休・要確認の店は出さない
 
     if (records.length === 0) {
       // 割当はあるがレコードが見つからない（グループ削除等の異常状態）→ 待機画面へ
@@ -1051,6 +1051,25 @@ function dropClosedToday(recs, state) {
   const dayName = ['日','月','火','水','木','金','土'][parseInt(workDay)];
   if (!dayName) return recs;
   return recs.filter(r => !(r['チェックボックス_2']?.value || []).includes(dayName));
+}
+
+// 設置店マスタで「要確認」（営業していない等）になった店。運転手画面の「要確認にする」と同じ値
+const NEEDS_CHECK_STATUS = '要確認';
+async function loadNeedsCheckIds() {
+  try {
+    const recs = await kintoneGet(APP_MASTER, TOKEN_MASTER, `ドロップダウン in ("${NEEDS_CHECK_STATUS}") limit 500`, ['文字列__1行__0']);
+    return new Set(recs.map(r => String(r['文字列__1行__0']?.value || '').trim()).filter(Boolean));
+  } catch (e) {
+    console.warn('要確認の店の取得に失敗（除外せずに表示）:', e);
+    return new Set();
+  }
+}
+
+// 定休日と要確認の店をまとめて外す
+async function dropHiddenStores(recs, state) {
+  const needsCheck = await loadNeedsCheckIds();
+  return dropClosedToday(recs, state)
+    .filter(r => !needsCheck.has(String(r['文字列__1行__5']?.value || '').trim()));
 }
 
 // ===== カード描画 =====
@@ -1648,8 +1667,8 @@ async function loadAbsentStores() {
     // 既に誰かが取った不在店（absentClaims）
     const claims = state.absentClaims || {}; // { recordId: workerName }
 
-    // 作業日が定休日の店は除外
-    const visible = dropClosedToday(mine, state);
+    // 作業日が定休日の店・要確認の店は除外
+    const visible = await dropHiddenStores(mine, state);
 
     if (visible.length === 0) {
       listEl.innerHTML = '<div style="background:var(--card);border-radius:10px;padding:24px;text-align:center;color:var(--muted);font-size:13px;">✅ あなたの号車ルートに、回れる不在店はありません。</div>';
@@ -2139,7 +2158,7 @@ async function loadGroup(groupCodes) {
       });
     }
 
-    records = dropClosedToday(groupRecords, state);  // 作業日が定休の店は出さない
+    records = await dropHiddenStores(groupRecords, state);  // 定休・要確認の店は出さない
     doneCount = 0; absentCount = 0; todoCount = 0;
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('work-screen').style.display = 'block';

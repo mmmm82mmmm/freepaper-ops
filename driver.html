@@ -497,6 +497,30 @@ body.text-xlarge .error-box{font-size:19px;}
 <button class="refresh-btn" id="refresh-btn" onclick="loadData(true)">🔄</button>
 
 <!-- 個別訪問の位置選択モーダル -->
+<div id="shop-edit-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px;">
+  <div style="background:#fff;border-radius:12px;padding:20px;max-width:400px;width:100%;max-height:90vh;overflow-y:auto;">
+    <div style="font-size:16px;font-weight:900;margin-bottom:2px;">✏️ 店舗の修正</div>
+    <div id="shop-edit-name" style="font-size:13px;font-weight:700;margin-bottom:2px;"></div>
+    <div id="shop-edit-sub" style="font-size:11px;color:var(--muted);margin-bottom:14px;"></div>
+
+    <div style="font-size:11px;font-weight:700;color:var(--muted);margin-bottom:6px;">通常納本数</div>
+    <div style="display:flex;gap:8px;align-items:center;margin-bottom:8px;">
+      <input id="shop-edit-nabon" type="number" min="0" inputmode="numeric" style="flex:1;padding:10px;border:2px solid var(--border);border-radius:8px;font-size:16px;font-weight:700;font-family:inherit;">
+      <span style="font-size:13px;font-weight:700;">冊</span>
+    </div>
+    <label id="shop-edit-master-label" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:12px;">
+      <input id="shop-edit-master" type="checkbox" checked> 設置店マスタの通常納本数も直す（来月以降にも効く）
+    </label>
+    <button id="shop-edit-save" onclick="saveShopNabon()" style="width:100%;padding:12px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;font-family:inherit;">納本数を保存</button>
+
+    <div style="border-top:1px solid var(--border);margin:18px 0 12px;"></div>
+    <div style="font-size:11px;color:var(--muted);margin-bottom:6px;line-height:1.6;">閉店・季節営業（ビアガーデン等）で今は営業していない店は、設置店マスタを「要確認」にします。今月の割当・不在再訪からも外れ、来月分も作られません。</div>
+    <button id="shop-edit-needs-check" onclick="markShopNeedsCheck()" style="width:100%;padding:12px;background:#fff;color:#d42020;border:2px solid #d42020;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;font-family:inherit;">🛑 営業していない → 要確認にする</button>
+
+    <button onclick="closeShopEdit()" style="width:100%;margin-top:12px;padding:11px;background:#fff;color:#888;border:1px solid var(--border);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;">閉じる</button>
+  </div>
+</div>
+
 <div id="solo-modal" style="display:none;position:fixed;top:0;left:0;right:0;bottom:0;background:rgba(0,0,0,0.5);z-index:1000;align-items:center;justify-content:center;padding:16px;">
   <div style="background:#fff;border-radius:12px;padding:20px;max-width:400px;width:100%;max-height:90vh;overflow-y:auto;">
     <div style="font-size:16px;font-weight:900;margin-bottom:8px;">📍 個別訪問として追加</div>
@@ -530,6 +554,7 @@ const PROXY = 'https://kintone-proxy.mmmm82mmmm.workers.dev';
 const BASE = `${PROXY}/kintone/v1`;
 const TOKEN = KINTONE_CONFIG.TOKEN_NOHON;
 const APP = 269;
+const APP_MASTER = 268;  // 設置店マスタ
 const DOMAIN = 'white';
 
 const WORKER_COLORS = ['#e8401c','#1a5cd4','#1a8a4a','#9c1a8a','#c47a0a','#0a8ab4','#d42020','#5c4a1a'];
@@ -833,7 +858,8 @@ function setWorkerGroups(worker, groups) {
   }
 }
 
-let allRecords = [];
+let allRecords = [];   // 画面に出すレコード（要確認の店を除いたもの）
+let rawRecords = [];   // kintoneから取った今月分そのまま（控え・差分・点検用）
 let currentMonth = '';
 let assignState = { cars: {}, routeCars: {}, assignments: {}, returned: [], revisitMap: {}, updatedAt: '' };
 let allGroups = []; // 全グループコード一覧
@@ -859,6 +885,7 @@ const RECORD_FIELDS = [
   '文字列__1行__2',  // ビル名
   '文字列__1行__3',  // 階数
   '文字列__1行__4',  // ルート
+  '文字列__1行__5',  // 設置場所ID（設置店マスタとの突き合わせ）
   '文字列__1行__6',  // ジャンル
   '文字列__1行__7',  // 設置場所説明
   '文字列__1行__8',  // 住所
@@ -918,7 +945,7 @@ async function kintoneGet(query, fields = RECORD_FIELDS) {
 
 // ===== レコードの取得（全件／差分） =====
 // 全件取得は約800件あり、戻り作業者がいる間は10秒ごとに走る。
-// 2回目からは「前回以降に更新されたものだけ」を取り、手元のallRecordsに重ねる。
+// 2回目からは「前回以降に更新されたものだけ」を取り、手元のrawRecordsに重ねる。
 const AUDIT_INTERVAL_MS = 5 * 60 * 1000;  // これを過ぎたら「消えたレコード」の点検をする
 let recordsCursor = '';    // 取り込んだ中で一番新しい 更新日時（kintoneの時計）
 let lastAuditAt = 0;       // 最後に点検した時刻
@@ -952,7 +979,7 @@ function unpackRecords(rows) {
 }
 
 function saveRecordsCache(force = false) {
-  if (cacheDisabled || !currentMonth || !allRecords.length || !recordsCursor) return;
+  if (cacheDisabled || !currentMonth || !rawRecords.length || !recordsCursor) return;
   if (!force && Date.now() - lastCacheSaveAt < CACHE_SAVE_INTERVAL_MS) return;
   try {
     // 他の月の控えは消しておく（端末の容量は限られているため）
@@ -961,7 +988,7 @@ function saveRecordsCache(force = false) {
       if (k && k.startsWith(CACHE_PREFIX) && k !== cacheKey()) localStorage.removeItem(k);
     }
     localStorage.setItem(cacheKey(), JSON.stringify({
-      month: currentMonth, cursor: recordsCursor, savedAt: Date.now(), rows: packRecords(allRecords)
+      month: currentMonth, cursor: recordsCursor, savedAt: Date.now(), rows: packRecords(rawRecords)
     }));
     lastCacheSaveAt = Date.now();
   } catch (e) {
@@ -979,10 +1006,11 @@ function loadRecordsCache() {
     const c = JSON.parse(raw);
     if (!c || c.month !== currentMonth) return 0;
     if (!c.cursor || !Array.isArray(c.rows) || !c.rows.length) return 0;  // 目印が無いと追いつけない
+    if (!('文字列__1行__5' in c.rows[0])) return 0;  // 設置場所IDを持っていない古い控え
     if (Date.now() - (c.savedAt || 0) > CACHE_MAX_AGE_MS) return 0;       // 古すぎる
-    allRecords = unpackRecords(c.rows);
+    rawRecords = unpackRecords(c.rows);
     recordsCursor = c.cursor;
-    return allRecords.length;
+    return rawRecords.length;
   } catch (e) { return 0; }
 }
 
@@ -1011,8 +1039,8 @@ function sortRecords(recs) {
 
 async function fetchAllRecords() {
   const base = `文字列__1行_ = "${currentMonth}"`;
-  allRecords = await kintoneGet(`${base} order by 文字列__1行__4 asc, 数値_1 asc`);
-  recordsCursor = maxUpdatedAt(allRecords);
+  rawRecords = await kintoneGet(`${base} order by 文字列__1行__4 asc, 数値_1 asc`);
+  recordsCursor = maxUpdatedAt(rawRecords);
   lastAuditAt = Date.now();
 }
 
@@ -1022,28 +1050,28 @@ async function auditRecords() {
   const base = `文字列__1行_ = "${currentMonth}"`;
   const ids = await kintoneGet(`${base} order by 数値_1 asc`, '$id');
   const serverIds = new Set(ids.map(r => String(r['$id'].value)));
-  const localIds = new Set(allRecords.map(r => String(r['$id'].value)));
+  const localIds = new Set(rawRecords.map(r => String(r['$id'].value)));
   const missing = [...serverIds].filter(id => !localIds.has(id)).length;
-  const before = allRecords.length;
-  allRecords = allRecords.filter(r => serverIds.has(String(r['$id'].value)));
-  return { removed: before - allRecords.length, missing };
+  const before = rawRecords.length;
+  rawRecords = rawRecords.filter(r => serverIds.has(String(r['$id'].value)));
+  return { removed: before - rawRecords.length, missing };
 }
 
-async function refreshRecords(force = false) {
+async function refreshRawRecords(force = false) {
   const base = `文字列__1行_ = "${currentMonth}"`;
   let note = '';
 
   // 手元が空なら、まず端末の控えから戻す（通信なしで即表示）。
   // 控えは削除を知らないので、戻した直後に必ず点検させる。
-  if (!force && !allRecords.length && !recordsCursor) {
+  if (!force && !rawRecords.length && !recordsCursor) {
     const n = loadRecordsCache();
     if (n) { note = `控え${n}件＋`; lastAuditAt = 0; }
   }
 
   // 全件取得が要るのは、初回・目印なし・手動更新のときだけ
-  if (force || !recordsCursor || !allRecords.length) {
+  if (force || !recordsCursor || !rawRecords.length) {
     await fetchAllRecords();
-    lastFetchInfo = `全件 ${allRecords.length}件`;
+    lastFetchInfo = `全件 ${rawRecords.length}件`;
     saveRecordsCache(true);
     return;
   }
@@ -1052,13 +1080,13 @@ async function refreshRecords(force = false) {
   const changed = await kintoneGet(`${base} and 更新日時 >= "${recordsCursor}" order by 更新日時 asc`);
   // 「以上」で取る都合上、一番新しいレコードは変化が無くても毎回返ってくる。
   // 表示は「本当に変わった件数」にする（画面で効きめを確かめられるように）
-  const before = new Map(allRecords.map(r => [String(r['$id'].value), r['更新日時']?.value || '']));
+  const before = new Map(rawRecords.map(r => [String(r['$id'].value), r['更新日時']?.value || '']));
   const realChanged = changed.filter(r =>
     before.get(String(r['$id'].value)) !== (r['更新日時']?.value || '')).length;
   if (changed.length) {
-    const byId = new Map(allRecords.map(r => [String(r['$id'].value), r]));
+    const byId = new Map(rawRecords.map(r => [String(r['$id'].value), r]));
     changed.forEach(r => byId.set(String(r['$id'].value), r));
-    allRecords = sortRecords([...byId.values()]);
+    rawRecords = sortRecords([...byId.values()]);
     const newCursor = maxUpdatedAt(changed);
     if (newCursor > recordsCursor) recordsCursor = newCursor;
   }
@@ -1072,7 +1100,7 @@ async function refreshRecords(force = false) {
       if (missing > 0) {
         // 差分で拾えていないものがある＝どこかでずれている。全件取り直して直す
         await fetchAllRecords();
-        lastFetchInfo = `全件 ${allRecords.length}件（ずれを修正）`;
+        lastFetchInfo = `全件 ${rawRecords.length}件（ずれを修正）`;
         saveRecordsCache(true);
         return;
       }
@@ -1081,6 +1109,36 @@ async function refreshRecords(force = false) {
   }
 
   saveRecordsCache();
+}
+
+// ===== 要確認の店を隠す =====
+// 設置店マスタで「要確認」になった店（営業していない等）は、今月分のレコードが残っていても
+// 割当・進捗・不在再訪のどこにも出さない。マスタを「稼働中」に戻せばまた出てくる。
+// ★rawRecords（kintoneの写し）からは消さない。消すと点検が「手元に無い」と判断して全件を取り直し続ける。
+const NEEDS_CHECK_STATUS = '要確認';
+let needsCheckIds = new Set();   // 要確認の 設置場所ID
+let needsCheckAt = 0;
+
+function storeIdOf(r) { return String(r['文字列__1行__5']?.value || '').trim(); }
+
+async function refreshNeedsCheck(force = false) {
+  if (!force && needsCheckAt && Date.now() - needsCheckAt < AUDIT_INTERVAL_MS) return;
+  try {
+    const q = encodeURIComponent(`ドロップダウン in ("${NEEDS_CHECK_STATUS}") limit 500`);
+    const res = await fetch(`${BASE}/records.json?app=${APP_MASTER}&query=${q}&fields=${encodeURIComponent('文字列__1行__0')}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': TOKEN }
+    });
+    if (!res.ok) throw new Error(`APIエラー: ${res.status}`);
+    const data = await res.json();
+    needsCheckIds = new Set((data.records || []).map(r => String(r['文字列__1行__0']?.value || '').trim()).filter(Boolean));
+    needsCheckAt = Date.now();
+  } catch (e) { console.warn('要確認の店の取得に失敗（前回の一覧のまま）:', e); }
+}
+
+async function refreshRecords(force = false) {
+  await refreshRawRecords(force);
+  await refreshNeedsCheck(force);
+  allRecords = rawRecords.filter(r => !needsCheckIds.has(storeIdOf(r)));
 }
 
 async function loadData(force = false) {
@@ -1222,7 +1280,7 @@ function renderRoute() {
         <div class="route-item">
           <div class="item-status ${statusClass}"></div>
           <div class="item-info">
-            <div class="item-name">${shop}</div>
+            <div style="display:flex;align-items:center;gap:6px;"><div class="item-name" style="flex:1;min-width:0;">${shop}</div><button onclick="event.stopPropagation();openShopEdit('${r['$id'].value}')" style="flex-shrink:0;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button></div>
             <div class="item-meta" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
               ${floor ? `<span>${floor}階</span>` : ''}
               ${worker ? `<span class="item-worker">${worker}</span>` : ''}
@@ -2041,6 +2099,7 @@ function renderRevisit() {
             ${timeBadge(r, '2px 6px')}
             <span style="font-size:10px;color:#1a5cd4;font-weight:700;background:#e8f0ff;padding:2px 6px;border-radius:4px;">📦${parseInt(r['数値_2']?.value) || 0}冊</span>
             <span style="font-size:14px;font-weight:900;">${shop}</span>
+            <button onclick="openShopEdit('${recId}')" style="margin-left:auto;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button>
           </div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
           ${fuzaiInfo}
@@ -2224,6 +2283,121 @@ async function removeFromRevisit(groupCode, recordId) {
   await saveAssign();
   renderRevisit();
   renderAssign();
+}
+
+// ===== 店舗の修正（通常納本数／要確認） =====
+let shopEditRecId = null;
+
+function shopEditRecord() {
+  return rawRecords.find(r => String(r['$id'].value) === String(shopEditRecId)) || null;
+}
+
+function openShopEdit(recId) {
+  shopEditRecId = String(recId);
+  const r = shopEditRecord();
+  if (!r) { alert('この店舗のレコードが見つかりません。🔄で更新してからやり直してください。'); return; }
+  const sid = storeIdOf(r);
+  document.getElementById('shop-edit-name').textContent = r['文字列__1行__1']?.value || '';
+  const building = r['文字列__1行__2']?.value || '', floor = r['文字列__1行__3']?.value || '';
+  document.getElementById('shop-edit-sub').textContent =
+    `${r['文字列__1行__0']?.value || ''} / ${building}${floor ? ` ${floor}階` : ''}${sid ? ` / 設置場所ID ${sid}` : ''}`;
+  document.getElementById('shop-edit-nabon').value = r['数値_2']?.value || '';
+  // 設置場所IDが無い店はマスタと突き合わせられない
+  const master = document.getElementById('shop-edit-master');
+  master.checked = !!sid;
+  master.disabled = !sid;
+  document.getElementById('shop-edit-master-label').style.opacity = sid ? '1' : '.4';
+  document.getElementById('shop-edit-needs-check').disabled = !sid;
+  document.getElementById('shop-edit-modal').style.display = 'flex';
+}
+
+function closeShopEdit() {
+  document.getElementById('shop-edit-modal').style.display = 'none';
+  shopEditRecId = null;
+}
+
+async function putRecord(app, id, record) {
+  const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+    method: 'PUT',
+    headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
+    body: JSON.stringify({ app, id, record })
+  });
+  if (!res.ok) {
+    let msg = `APIエラー: ${res.status}`;
+    try { const e = await res.json(); msg = e.message || msg; } catch (e2) {}
+    throw new Error(msg);
+  }
+}
+
+// 設置場所IDから設置店マスタのレコード番号を引く。1件に決まらなければ止める
+async function findMasterId(storeId) {
+  const q = encodeURIComponent(`文字列__1行__0 = "${storeId}"`);
+  const res = await fetch(`${BASE}/records.json?app=${APP_MASTER}&query=${q}&fields=${encodeURIComponent('$id')}&subdomain=${DOMAIN}`, {
+    headers: { 'X-Cybozu-API-Token': TOKEN }
+  });
+  if (!res.ok) throw new Error(`設置店マスタの取得に失敗: ${res.status}`);
+  const recs = (await res.json()).records || [];
+  if (recs.length !== 1) throw new Error(`設置店マスタに設置場所ID ${storeId} の店が${recs.length}件あります（1件のはず）。kintoneで確認してください。`);
+  return recs[0]['$id'].value;
+}
+
+async function saveShopNabon() {
+  const r = shopEditRecord();
+  if (!r) return;
+  const raw = document.getElementById('shop-edit-nabon').value.trim();
+  const n = parseInt(raw, 10);
+  if (raw === '' || isNaN(n) || n < 0) { alert('通常納本数を0以上の数字で入れてください。'); return; }
+  const withMaster = document.getElementById('shop-edit-master').checked;
+  const sid = storeIdOf(r);
+  const btn = document.getElementById('shop-edit-save');
+  btn.disabled = true; btn.textContent = '保存中...';
+  try {
+    // 今月分: 通常納本数と、まだ完了していなければ納本数（作業者の入力欄の初期値）も合わせる。
+    // 完了済みの納本数は作業者が入れた実績なので触らない
+    const rec = { '数値_2': { value: String(n) } };
+    if (getStatus(r) !== '完了') rec['数値'] = { value: String(n) };
+    await putRecord(APP, r['$id'].value, rec);
+    if (withMaster && sid) {
+      const masterId = await findMasterId(sid);
+      await putRecord(APP_MASTER, masterId, { '数値_4': { value: String(n) } });
+    }
+    closeShopEdit();
+    await loadData();
+    alert(`通常納本数を ${n}冊 にしました。${withMaster && sid ? '\n（設置店マスタも更新済み）' : ''}\n\n作業者が画面を開いたままなら「🔄 今すぐ更新」で反映されます。`);
+  } catch (e) {
+    alert('保存できませんでした: ' + e.message);
+  } finally {
+    btn.disabled = false; btn.textContent = '納本数を保存';
+  }
+}
+
+async function markShopNeedsCheck() {
+  const r = shopEditRecord();
+  if (!r) return;
+  const sid = storeIdOf(r);
+  if (!sid) return;
+  const shop = r['文字列__1行__1']?.value || '';
+  const ok = confirm(
+    `「${shop}」を設置店マスタで「${NEEDS_CHECK_STATUS}」にします。\n\n`
+    + `・今月の割当・進捗・不在再訪から外れます\n`
+    + `・来月分の納本データは作られません\n`
+    + `・納本の記録は消えません。マスタを「稼働中」に戻せばまた出てきます\n\nよろしいですか？`
+  );
+  if (!ok) return;
+  const btn = document.getElementById('shop-edit-needs-check');
+  btn.disabled = true;
+  try {
+    const masterId = await findMasterId(sid);
+    await putRecord(APP_MASTER, masterId, { 'ドロップダウン': { value: NEEDS_CHECK_STATUS } });
+    needsCheckIds.add(sid);   // 次の取得を待たずに画面から外す
+    closeShopEdit();
+    await loadData();
+    alert(`「${shop}」を${NEEDS_CHECK_STATUS}にしました。\n\n作業者の画面で開いたままなら「🔄 今すぐ更新」で消えます。`);
+  } catch (e) {
+    alert('変更できませんでした: ' + e.message);
+  } finally {
+    btn.disabled = false;
+  }
 }
 
 // ===== 個別訪問機能 =====
@@ -2803,7 +2977,7 @@ function renderAssign() {
         <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
           <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;margin-top:4px;"></div>
           <div style="flex:1;min-width:0;">
-            <div style="font-size:12px;font-weight:700;">${shop}</div>
+            <div style="display:flex;align-items:center;gap:6px;"><div style="font-size:12px;font-weight:700;flex:1;min-width:0;">${shop}</div><button onclick="event.stopPropagation();openShopEdit('${r['$id'].value}')" style="flex-shrink:0;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button></div>
             <div style="font-size:10px;color:var(--muted);">${building}${floor ? ` ${floor}階` : ''}${genre ? ` / ${genre}` : ''}${address ? ` / 📍${address}` : ''}</div>
             <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
               ${nabonNum ? `<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">📦${nabonNum}冊</span>` : ''}
