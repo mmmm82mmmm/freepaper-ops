@@ -2431,15 +2431,20 @@ function updateSoloPositions() {
     num: parseFloat(g.replace(/[^0-9.]/g, '')) || 0
   })).sort((a, b) => a.num - b.num);
 
-  // 各グループの「含む店舗（ビル）」を取得するヘルパー
-  function groupBuildings(code) {
+  // グループの店を1行ずつ（ビル・階・店名・冊数・状態）。どこに差し込むか判断できるように
+  function groupShopLines(code) {
     const recs = allRecords.filter(r => r['文字列__1行__0']?.value === code);
-    const names = recs.map(r => {
-      const b = r['文字列__1行__2']?.value || r['文字列__1行__1']?.value || '';
-      return b;
-    }).filter(Boolean);
-    const uniq = [...new Set(names)];
-    return uniq.slice(0, 4).join('、') + (uniq.length > 4 ? ' 他' : '');
+    return recs.map(r => {
+      const st = r['ドロップダウン']?.value || '未着手';
+      const mark = st === '完了' ? '✅' : st === '不在' ? '🚫' : '・';
+      const b = r['文字列__1行__2']?.value || '';
+      const f = r['文字列__1行__3']?.value || '';
+      const n = parseInt(r['数値_2']?.value) || 0;
+      return `<div style="font-size:11px;line-height:1.5;color:${st === '完了' ? '#999' : 'var(--ink)'};display:flex;gap:4px;">`
+        + `<span>${mark}</span><span style="flex:1;min-width:0;">${b ? `<span style="color:var(--muted)">${escDrv(b)}</span> ` : ''}`
+        + `${f ? `<strong>${escDrv(f)}階</strong> ` : ''}${escDrv(r['文字列__1行__1']?.value || '')}</span>`
+        + `<span style="color:#1a5cd4;font-weight:700;white-space:nowrap;">📦${n}</span></div>`;
+    }).join('');
   }
   // グループが完了済みか
   function groupDone(code) {
@@ -2517,7 +2522,6 @@ function updateSoloPositions() {
         }
         return;
       }
-      const buildings = groupBuildings(g.code);
       const books = groupBooks(g.code);
       // 冊数バッジ（残り／合計。完了があれば残りを強調）
       const booksBadge = books.doneBooks > 0
@@ -2531,7 +2535,7 @@ function updateSoloPositions() {
             ${done ? '<span style="font-size:9px;color:#fff;background:#3a9a5a;padding:1px 5px;border-radius:3px;">完了</span>' : ''}
             ${booksBadge}
           </div>
-          <div style="font-size:10px;color:var(--muted);margin-top:2px;margin-bottom:6px;">含む店舗: ${buildings || '（なし）'}</div>
+          <div style="margin-top:4px;margin-bottom:6px;">${groupShopLines(g.code) || '<div style="font-size:10px;color:var(--muted);">（店舗なし）</div>'}</div>
           <button onclick="pickSoloPosition('__merge__${g.code}')" style="width:100%;padding:8px;background:#1a5cd4;color:#fff;border:none;border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;">🔵 ${g.code} に合流（同じビル・一緒に回る）</button>
         </div>`;
       // このグループの後に「間に差し込み」（紫）
@@ -2874,7 +2878,8 @@ function renderAssign() {
     //   （完了済みA30に不在店を合流させたら、A30を再アクティブ化する）
     if (complete && revisitMapForSplit[g]) {
       const mergedIds = (revisitMapForSplit[g] || []).map(String);
-      const mergedRecs = allRecords.filter(r => mergedIds.includes(String(r['$id'].value)));
+      // 今日が定休の店は回れないので数えない（数えると永久に未完了になる）
+      const mergedRecs = allRecords.filter(r => mergedIds.includes(String(r['$id'].value)) && !isClosedToday(r, workDay));
       const allMergedDone = mergedRecs.every(r => r['ドロップダウン']?.value === '完了');
       if (!allMergedDone) complete = false; // 合流した不在店が未完了なら再アクティブ
     }
@@ -2989,6 +2994,7 @@ function renderAssign() {
             </div>
             ${location ? `<div style="font-size:10px;color:#555;margin-top:2px;">設置: ${location}</div>` : ''}
             ${comment ? `<div style="font-size:10px;color:#7a5a00;background:#fff8e8;padding:3px 6px;border-radius:4px;margin-top:3px;border-left:2px solid var(--amber);">💬 ${comment}</div>` : ''}
+            ${(r['文字列__複数行_']?.value || '').trim() ? `<div style="font-size:10px;color:#b01818;background:#fdecec;padding:3px 6px;border-radius:4px;margin-top:3px;font-weight:700;">📝 作業者メモ: ${escDrv(r['文字列__複数行_'].value)}</div>` : ''}
           </div>
         </div>`;
     }).join('');

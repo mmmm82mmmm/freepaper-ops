@@ -1120,14 +1120,20 @@ function renderCards() {
   // 各レコードの「表示グループ」を決める:
   //   個別訪問で差し込まれた店 → 差し込み先の仮想グループ（例 A43.5）に表示
   //   通常の店 → 自分のグループコード
-  const recIdToVirtual = {}; // recordId → 差し込み先仮想グループ
+  const recIdToVirtual = {}; // recordId → 差し込み先（個別訪問の仮想グループ、または合流先の実グループ）
   Object.entries(CURRENT_REVISIT_MAP || {}).forEach(([vg, ids]) => {
-    // 実レコードを持たないグループ（＝個別訪問の仮想グループ）だけ対象
-    const isVirtual = !records.some(r => r['文字列__1行__0']?.value === vg);
-    if (!isVirtual) return;
-    (ids || []).forEach(id => { recIdToVirtual[String(id)] = vg; });
+    // 合流先の実グループは、自分がそのグループを回っている時だけ（その店を合流先の中に出す）
+    (ids || []).forEach(id => {
+      const own = records.find(r => String(r['$id'].value) === String(id));
+      if (own && own['文字列__1行__0']?.value === vg) return;  // 自分のグループへの差し戻しはそのまま
+      const isVirtual = !records.some(r => r['文字列__1行__0']?.value === vg);
+      const isMineReal = !isVirtual && records.some(r => r['文字列__1行__0']?.value === vg && !(CURRENT_REVISIT_MAP[vg] || []).map(String).includes(String(r['$id'].value)));
+      if (!isVirtual && !isMineReal) return;
+      recIdToVirtual[String(id)] = vg;
+    });
   });
 
+  recIdToVirtualCache = recIdToVirtual;
   const groups = {};
   records.forEach(r => {
     const recId = String(r['$id'].value);
@@ -1158,8 +1164,7 @@ function renderCards() {
   });
 
   orderedGroups.forEach(([groupName, recs]) => {
-    // グループ内も道順（ルート順・数値_1）で並べる
-    recs.sort((a, b) => (parseFloat(a['数値_1']?.value) || 0) - (parseFloat(b['数値_1']?.value) || 0));
+    sortGroupRecs(recs);
     // グループごとの総冊数
     let grpNabon = 0;
     recs.forEach(r => { grpNabon += parseFloat(r['数値_2']?.value) || 0; });
@@ -1178,6 +1183,41 @@ function renderCards() {
     recs.forEach(r => renderCard(r, container));
   });
 }
+
+// 階数を数にする（B1・地下1 → -1、3F・3階 → 3、読めなければ 0）
+function floorNum(v) {
+  const t = String(v || '').trim();
+  const m = t.match(/\d+(\.\d+)?/);
+  if (!m) return 0;
+  const n = parseFloat(m[0]);
+  return /^(B|Ｂ|b|地下)/.test(t) ? -n : n;
+}
+
+// グループ内の並び。グループの店は道順（数値_1）のまま。差し込んだ不在店は道順が別ルートの
+// ものなので、そのまま並べると先頭に来てしまう。同じビルの店があれば、その中の階数の位置に入れる
+// （その階より上の階の店の手前）。同じビルが無ければ最後に回す
+function sortGroupRecs(recs) {
+  const byRoute = (a, b) => (parseFloat(a['数値_1']?.value) || 0) - (parseFloat(b['数値_1']?.value) || 0);
+  const isIns = r => !!recIdToVirtualCache[String(r['$id'].value)];
+  const out = recs.filter(r => !isIns(r)).sort(byRoute);
+  const ins = recs.filter(isIns)
+    .sort((a, b) => floorNum(a['文字列__1行__3']?.value) - floorNum(b['文字列__1行__3']?.value) || byRoute(a, b));
+  const bName = r => (r['文字列__1行__2']?.value || r['文字列__1行__1']?.value || '').trim();
+  ins.forEach(r => {
+    const b = bName(r), f = floorNum(r['文字列__1行__3']?.value);
+    let last = -1, at = -1;
+    out.forEach((o, i) => {
+      if (bName(o) !== b) return;
+      last = i;
+      if (at < 0 && floorNum(o['文字列__1行__3']?.value) > f) at = i;
+    });
+    if (at >= 0) out.splice(at, 0, r);
+    else if (last >= 0) out.splice(last + 1, 0, r);
+    else out.push(r);
+  });
+  recs.splice(0, recs.length, ...out);
+}
+let recIdToVirtualCache = {};
 
 function renderCard(r, container) {
   const recId = r['$id'].value;
@@ -1275,6 +1315,7 @@ function renderCard(r, container) {
     bodyHtml = `
       ${location ? `<div class="shop-location">${location}</div>` : ''}
       ${comment ? `<div class="shop-comment">${comment}</div>` : ''}
+      ${(r['文字列__複数行_']?.value || '').trim() ? `<div style="margin:8px 14px 0;font-size:12px;color:#7a5a00;background:#fff8e8;padding:6px 8px;border-radius:6px;">📝 ${String(r['文字列__複数行_'].value).replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c]))}</div>` : ''}
       <div style="padding:10px 14px 0;display:flex;flex-wrap:wrap;gap:5px;">${badges}</div>
       <div class="input-area" id="input-area-${recId}" style="display:none">
         <div class="input-row">
@@ -1292,6 +1333,7 @@ function renderCard(r, container) {
       <div class="memo-area" id="memo-area-${recId}" style="display:none">
         <label>メモ（次回訪問時間など）</label>
         <textarea id="memo-${recId}" placeholder="例：17時以降に再訪">${r['文字列__複数行_']?.value || ''}</textarea>
+        <button onclick="saveMemoOnly('${recId}')" style="width:100%;margin-top:6px;padding:9px;border:2px solid #7a5a00;border-radius:8px;background:#fff8e8;color:#7a5a00;font-weight:700;font-size:12px;cursor:pointer;font-family:'Noto Sans JP',sans-serif">📝 コメントだけ保存（今回は行かない・不在にしない）</button>
       </div>
       <div id="tap-hint-${recId}" style="padding:10px 14px 14px">
         <button onclick="openCard('${recId}')" style="width:100%;padding:11px;border:2px dashed var(--border);border-radius:8px;background:transparent;color:var(--muted);font-size:13px;font-weight:700;cursor:pointer;font-family:'Noto Sans JP',sans-serif">タップして入力開始</button>
@@ -1544,6 +1586,21 @@ function reopenCard(recId) {
     showAbsentWorkCards();
   } else {
     renderCards();
+  }
+}
+
+// コメントだけ保存。状態（未着手）・納本数・不在時間は変えない。
+// あえて行かない店に理由を残したいが、不在にはしたくない時に使う
+async function saveMemoOnly(recId) {
+  const memo = document.getElementById('memo-' + recId)?.value ?? '';
+  if (!memo.trim() && !confirm('コメントが空です。空のまま保存しますか？（前のコメントは消えます）')) return;
+  try {
+    await kintoneUpdate(APP_NABON, TOKEN_NABON, recId, { '文字列__複数行_': { value: memo } });
+    const rec = records.find(r => r['$id'].value == recId);
+    if (rec) rec['文字列__複数行_'] = { value: memo };
+    renderCards();
+  } catch (e) {
+    alert('コメントを保存できませんでした: ' + e.message);
   }
 }
 
@@ -1981,6 +2038,24 @@ async function updateCarDataWithRetry(mutateFn, maxRetries = 6) {
   throw new Error('保存が混み合っています。もう一度お試しください。');
 }
 
+// 戻り報告の時、回り終えたグループに差し込まれていた不在店のうち、まだ「不在」のものを
+// 差し込みから外す（運転手の「不在再訪」の待機に戻る）。
+// ★外さないと、差し込み店が「完了」になるまでグループが未完了のままになり、
+//   回り終えたグループが割当欄の上に居座って、次の作業者にまた割り当てられていた。
+//   グループの店がまだ残っている（途中で戻った）なら、次の人が回るので触らない。
+function releaseRevisitedAbsent(state, assignedRaw) {
+  const groups = Array.isArray(assignedRaw) ? assignedRaw : (assignedRaw ? [assignedRaw] : []);
+  const map = state.revisitMap || {};
+  const statusOf = id => records.find(r => String(r['$id'].value) === String(id))?.['ドロップダウン']?.value || '';
+  groups.forEach(g => {
+    if (!map[g]) return;
+    const own = records.filter(r => r['文字列__1行__0']?.value === g);
+    if (!own.every(r => ['完了', '不在'].includes(r['ドロップダウン']?.value))) return;
+    const keep = map[g].filter(id => statusOf(id) !== '不在');
+    if (keep.length) map[g] = keep; else delete map[g];
+  });
+}
+
 async function reportReturn(withPause) {
   if (!MY_CAR) {
     // 号車未確定なら共通から判定
@@ -1994,6 +2069,7 @@ async function reportReturn(withPause) {
     if (!state.returned) state.returned = [];
     if (!state.assignments) state.assignments = {};
     if (!state.returned.includes(currentWorker)) state.returned.push(currentWorker);
+    releaseRevisitedAbsent(state, state.assignments[currentWorker]);
     delete state.assignments[currentWorker];
     if (!state.paused) state.paused = {};
     if (withPause) state.paused[currentWorker] = true;
