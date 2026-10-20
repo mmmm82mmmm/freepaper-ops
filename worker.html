@@ -793,13 +793,19 @@ async function saveSpecialRecord(monthKey, jsonObj) {
   }
 }
 
+// 名前から号車を判定（車の編成→運転手）
+// ★車の編成（cars）を先に見る。運転手（drivers）はメンバー管理で決めた固定の割り振りで、
+//   当日「🚐 車の編成」で別の号車へ移しても drivers は変わらない。運転手を優先していた頃は、
+//   1号車の運転手に登録された人を2号車へ移しても1号車のまま抜けられなかった。
+//   編成で未割当（0）や未登録の人だけ、運転手の登録から号車を決める。
 function getCarOfWorker(common, name) {
+  const car = parseInt((common.cars || {})[name]) || 0;
+  if (car) return car;
   const drivers = common.drivers || {};
-  for (const [car, drvName] of Object.entries(drivers)) {
-    if (drvName === name) return parseInt(car);
+  for (const [c, drvName] of Object.entries(drivers)) {
+    if (drvName === name) return parseInt(c);
   }
-  const car = (common.cars || {})[name];
-  return car ? parseInt(car) : 0;
+  return 0;
 }
 
 // 今日の日付（YYYY-MM-DD、ローカル）
