@@ -299,6 +299,9 @@ if (localStorage.getItem('fp_admin_open') === '1') {
   if (roles.indexOf('管理者') < 0) return;
   if (!window.KINTONE_CONFIG) return;
 
+  var badge0 = document.getElementById('md-badge');
+  if (badge0) badge0.innerHTML = '<span class="alert-badge" style="background:#bbb">確認中…</span>';
+
   var PROXY = KINTONE_CONFIG.PROXY, DOMAIN = KINTONE_CONFIG.DOMAIN;
   var APP_NOHON = 269, APP_MASTER = 268;
   var INVALID = { '':1, 'なし':1, 'ナシ':1, '無し':1, '-':1, '―':1, '－':1 };
@@ -380,15 +383,19 @@ if (localStorage.getItem('fp_admin_open') === '1') {
     });
 
     var waiting = nabonCount + Object.keys(osoiGroups).length + checkCount;
+    var item = document.getElementById('mi-master-diff');
+    var badge = document.getElementById('md-badge');
     if (waiting > 0) {
-      var item = document.getElementById('mi-master-diff');
-      var badge = document.getElementById('md-badge');
       if (item) item.classList.add('alert');
       if (badge) badge.innerHTML = '<span class="alert-badge">判断待ち ' + waiting + '</span>';
+    } else {
+      if (badge) badge.innerHTML = '<span class="alert-badge" style="background:var(--green)">判断待ちなし</span>';
     }
   } catch (e) {
-    // 取得できなくてもTOPは普通に使える。黙って何もしない
+    // 取得できなくてもTOPは普通に使える。調べられなかったことだけ伝える
     console.warn('判断待ちの件数を調べられませんでした:', e);
+    var bd = document.getElementById('md-badge');
+    if (bd) bd.innerHTML = '<span class="alert-badge" style="background:#bbb">件数を確認できません</span>';
   }
 })();
 
