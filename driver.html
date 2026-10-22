@@ -168,6 +168,41 @@ body.text-xlarge .error-box{font-size:19px;}
 .item-worker{font-size:10px;color:var(--blue);font-weight:700;}
 .item-nabon{font-family:'DM Mono',monospace;font-size:11px;color:var(--muted);}
 
+/* ===== 店舗の修正ダイアログ（今月分をまとめて直す） ===== */
+.se2{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:1100;
+  align-items:center;justify-content:center;padding:12px;}
+.se2.open{display:flex;}
+.se2-box{background:#fff;border-radius:14px;width:100%;max-width:560px;max-height:93vh;
+  display:flex;flex-direction:column;overflow:hidden;}
+.se2-head{padding:13px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.se2-head .t{font-size:15px;font-weight:900;flex:1;line-height:1.4;}
+.se2-head .x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);}
+.se2-body{flex:1;overflow:auto;padding:14px 16px;}
+.se2-foot{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:9px;
+  align-items:center;flex-wrap:wrap;}
+.se2-foot label{font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px;cursor:pointer;}
+.se2-sec{font-size:11px;font-weight:900;letter-spacing:.06em;color:var(--muted);
+  margin:15px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border);}
+.se2-sec:first-child{margin-top:0;}
+.se2-sec.warn{color:var(--red);border-bottom-color:#f5bcbc;}
+.se2-f{display:flex;align-items:center;gap:9px;margin-bottom:9px;flex-wrap:wrap;}
+.se2-f > label{font-size:12px;font-weight:700;width:104px;flex:0 0 auto;color:#444;}
+.se2-f input[type=text],.se2-f input[type=number],.se2-f select{
+  flex:1 1 170px;padding:8px 9px;font-size:14px;font-family:inherit;
+  border:1px solid var(--border);border-radius:7px;background:#fff;}
+.se2-f input[readonly]{background:#f3f1ec;color:#888;}
+.se2-f .chks{flex:1 1 170px;display:flex;gap:9px;flex-wrap:wrap;}
+.se2-f .chks label{font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;}
+.se2-f .hint{font-size:10px;color:var(--muted);flex:1 1 100%;padding-left:113px;line-height:1.6;}
+.se2-warn{background:#fde8e8;border:1px solid #f5bcbc;border-radius:8px;padding:9px 11px;
+  font-size:11px;color:#b01818;line-height:1.8;margin-bottom:10px;}
+.se2-b{border:none;border-radius:7px;padding:9px 14px;font-size:13px;font-weight:900;
+  cursor:pointer;font-family:inherit;}
+.se2-b.save{background:var(--blue);color:#fff;}
+.se2-b.cancel{background:#fff;color:#888;border:1px solid var(--border);}
+.se2-b.danger{background:#fff;color:var(--red);border:2px solid var(--red);width:100%;margin-top:6px;}
+.se2-b:disabled{opacity:.5;cursor:default;}
+
 /* REFRESH BTN */
 .refresh-btn{position:fixed;bottom:20px;right:20px;width:52px;height:52px;border-radius:50%;background:var(--ink);color:white;border:none;font-size:20px;cursor:pointer;box-shadow:0 4px 16px rgba(0,0,0,.2);display:flex;align-items:center;justify-content:center;transition:all .2s;z-index:200;}
 .refresh-btn:active{transform:scale(.95);}
@@ -518,6 +553,22 @@ body.text-xlarge .error-box{font-size:19px;}
     <button id="shop-edit-needs-check" onclick="markShopNeedsCheck()" style="width:100%;padding:12px;background:#fff;color:#d42020;border:2px solid #d42020;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;font-family:inherit;">🛑 営業していない → 要確認にする</button>
 
     <button onclick="closeShopEdit()" style="width:100%;margin-top:12px;padding:11px;background:#fff;color:#888;border:1px solid var(--border);border-radius:8px;font-weight:700;font-size:13px;cursor:pointer;font-family:inherit;">閉じる</button>
+  </div>
+</div>
+
+<!-- 店舗の修正（今月分をまとめて直す）。上の shop-edit-modal の後継 -->
+<div class="se2" id="shop-edit2-modal">
+  <div class="se2-box">
+    <div class="se2-head">
+      <div class="t" id="se2-title">✏️ 店舗の修正</div>
+      <button class="x" onclick="closeShopEdit()">✕</button>
+    </div>
+    <div class="se2-body" id="se2-body"></div>
+    <div class="se2-foot">
+      <label><input type="checkbox" id="se2-master"> 設置店マスタにも反映する</label>
+      <button class="se2-b cancel" style="margin-left:auto" onclick="closeShopEdit()">やめる</button>
+      <button class="se2-b save" id="se2-save" onclick="saveShopEdit2()">保存する</button>
+    </div>
   </div>
 </div>
 
@@ -1321,7 +1372,7 @@ function renderRoute() {
         <div class="route-item">
           <div class="item-status ${statusClass}"></div>
           <div class="item-info">
-            <div style="display:flex;align-items:center;gap:6px;"><div class="item-name" style="flex:1;min-width:0;">${shop}</div><button onclick="event.stopPropagation();openShopEdit('${r['$id'].value}')" style="flex-shrink:0;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button></div>
+            <div style="display:flex;align-items:center;gap:6px;"><div class="item-name" style="flex:1;min-width:0;">${shop}</div><button onclick="event.stopPropagation();openShopEdit2('${r['$id'].value}')" style="flex-shrink:0;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button></div>
             <div class="item-meta" style="display:flex;flex-wrap:wrap;gap:4px;align-items:center;">
               ${floor ? `<span>${floor}階</span>` : ''}
               ${worker ? `<span class="item-worker">${worker}</span>` : ''}
@@ -2142,7 +2193,7 @@ function renderRevisit() {
             ${timeBadge(r, '2px 6px')}
             <span style="font-size:10px;color:#1a5cd4;font-weight:700;background:#e8f0ff;padding:2px 6px;border-radius:4px;">📦${parseInt(r['数値_2']?.value) || 0}冊</span>
             <span style="font-size:14px;font-weight:900;">${shop}</span>
-            <button onclick="openShopEdit('${recId}')" style="margin-left:auto;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button>
+            <button onclick="openShopEdit2('${recId}')" style="margin-left:auto;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button>
           </div>
           <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${building}${floor ? ` ${floor}階` : ''}${address ? ` / 📍${address}` : ''}</div>
           ${fuzaiInfo}
@@ -2359,6 +2410,11 @@ function openShopEdit(recId) {
 
 function closeShopEdit() {
   document.getElementById('shop-edit-modal').style.display = 'none';
+  // 新しい修正ダイアログも閉じる（要確認にした後などに呼ばれる）
+  const m2 = document.getElementById('shop-edit2-modal');
+  if (m2) { m2.classList.remove('open'); }
+  const sv = document.getElementById('se2-save');
+  if (sv) sv.disabled = false;
   shopEditRecId = null;
 }
 
@@ -2448,6 +2504,193 @@ async function markShopNeedsCheck() {
   }
 }
 
+// ===== 店舗の修正（今月分をまとめて直す） =====
+// 直す先は基本的に「今月分（納本データ管理）」だけ。設置店マスタにも入れたい時だけ
+// チェックを付ける。マスタとの食い違いは「マスタ反映の確認」画面に判断待ちとして出る。
+//   n … 今月分のフィールドコード / m … 設置店マスタの同じ意味のフィールドコード
+const SE2 = [
+  { sec:'店の情報' },
+  { k:'name',    label:'店名',       n:'文字列__1行__1',  m:'文字列__1行__2',  type:'text' },
+  { k:'bldg',    label:'ビル名',     n:'文字列__1行__2',  m:'文字列__1行__3',  type:'text' },
+  { k:'floor',   label:'階数',       n:'文字列__1行__3',  m:'文字列__1行__4',  type:'text' },
+  { k:'genre',   label:'ジャンル',   n:'文字列__1行__6',  m:'文字列__1行__1',  type:'select' },
+  { k:'addr',    label:'住所',       n:'文字列__1行__8',  m:'__addr__',        type:'text',
+    hint:'「7-4」のように 条-丁目 で入れます。マスタにも反映する時は条と丁目に分けて入ります' },
+  { k:'place',   label:'設置場所説明', n:'文字列__1行__7', m:'文字列__1行__9',  type:'text' },
+  { k:'comment', label:'コメント',   n:'文字列__1行__9',  m:'文字列__複数行__0', type:'text',
+    hint:'店ごとの注意書き（作業者が現場で書くメモとは別です）' },
+
+  { sec:'作業の設定' },
+  { k:'nabon',   label:'通常納本数', n:'数値_2',          m:'数値_4',          type:'number' },
+  { k:'deliver', label:'納本数',     n:'数値',            m:null,              type:'number',
+    hint:'作業者の入力欄に出る初期値。今月分にしかありません' },
+  { k:'map',     label:'MAP冊数',    n:'数値_3',          m:'数値_3',          type:'number' },
+  { k:'time',    label:'時間指定',   n:'文字列__1行__17', m:'文字列__1行__5',  type:'text' },
+  { k:'osoi',    label:'遅',         n:'チェックボックス_0', m:'チェックボックス',   type:'check' },
+  { k:'rack',    label:'ラック交換', n:'チェックボックス_1', m:'チェックボックス_0', type:'check' },
+  { k:'teikyu',  label:'定休日',     n:'チェックボックス_2', m:'チェックボックス_1', type:'check' },
+  { k:'pop',     label:'POP交換',    n:'チェックボックス_3', m:'チェックボックス_3', type:'check' },
+  { k:'bundle',  label:'束渡し',     n:'チェックボックス_4', m:'チェックボックス_4', type:'check' },
+
+  { sec:'割当（変えると回る順番が変わります）', warn:true },
+  { k:'route',   label:'ルート',     n:'文字列__1行__4',  m:'ドロップダウン_0', type:'select' },
+  { k:'order',   label:'ルート順',   n:'数値_1',          m:'数値_2',          type:'number' },
+  { k:'group',   label:'グループ',   n:'文字列__1行__0',  m:'文字列__1行__11', type:'text' },
+];
+
+// 選択肢は今あるデータから集める。kintoneに無い値を書き込むとエラーになるため
+function se2Choices(f) {
+  const out = new Set();
+  rawRecords.forEach(r => {
+    const v = r[f.n]?.value;
+    if (Array.isArray(v)) v.forEach(x => { if (String(x).trim()) out.add(String(x)); });
+    else if (String(v ?? '').trim()) out.add(String(v).trim());
+  });
+  return [...out].sort();
+}
+
+function openShopEdit2(recId) {
+  shopEditRecId = String(recId);
+  const r = shopEditRecord();
+  if (!r) return;
+  const sid = storeIdOf(r);
+  const done = getStatus(r) === '完了';
+  document.getElementById('se2-title').innerHTML =
+    `✏️ ${escDrv(r['文字列__1行__1']?.value || '')}`
+    + `<div style="font-size:11px;font-weight:400;color:var(--muted);margin-top:2px;">`
+    + `${escDrv(r['文字列__1行__0']?.value || '')}`
+    + `${sid ? ` / 設置場所ID ${escDrv(sid)}` : ' / 設置場所IDなし'}</div>`;
+
+  let html = '';
+  SE2.forEach(f => {
+    if (f.sec) {
+      html += `<div class="se2-sec${f.warn ? ' warn' : ''}">${escDrv(f.sec)}</div>`;
+      if (f.warn) html += `<div class="se2-warn">ここを変えると、その店が回る順番や担当する車が変わります。よく確かめてから保存してください。</div>`;
+      return;
+    }
+    const cur = r[f.n]?.value;
+    let input = '';
+    if (f.type === 'select') {
+      const list = se2Choices(f);
+      const now = String(cur ?? '');
+      if (now && !list.includes(now)) list.unshift(now);
+      input = `<select id="se2-${f.k}">${['', ...list].map(v =>
+        `<option value="${escDrv(v)}"${v === now ? ' selected' : ''}>${v === '' ? '（空）' : escDrv(v)}</option>`).join('')}</select>`;
+    } else if (f.type === 'check') {
+      const opts = se2Choices(f);
+      const on = cur || [];
+      input = opts.length
+        ? `<div class="chks" id="se2-${f.k}">${opts.map(o =>
+            `<label><input type="checkbox" value="${escDrv(o)}"${on.includes(o) ? ' checked' : ''}> ${escDrv(o)}</label>`).join('')}</div>`
+        : `<div class="chks"><span style="font-size:11px;color:var(--muted)">今月のデータにこの項目の値が無いため、ここからは変えられません</span></div>`;
+    } else {
+      // 完了した店の納本数は作業者が入れた実績なので触らせない
+      const ro = (f.k === 'deliver' && done) ? ' readonly' : '';
+      input = `<input type="${f.type === 'number' ? 'number' : 'text'}" id="se2-${f.k}" value="${escDrv(cur ?? '')}"${ro}>`;
+    }
+    const hint = (f.k === 'deliver' && done)
+      ? 'この店は完了済みです。作業者が入れた実績なので変えられません'
+      : f.hint;
+    html += `<div class="se2-f"><label>${escDrv(f.label)}</label>${input}`
+      + (hint ? `<div class="hint">${escDrv(hint)}</div>` : '') + `</div>`;
+  });
+
+  html += `<div class="se2-sec warn">営業していない店</div>`
+    + `<div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:6px;">`
+    + `閉店・季節営業（ビアガーデン等）で今は営業していない店は、設置店マスタを「要確認」にします。`
+    + `今月の割当・不在再訪から外れ、来月分も作られません。納本の記録は消えません。</div>`
+    + `<button class="se2-b danger" id="se2-needs-check"${sid ? '' : ' disabled'} onclick="markShopNeedsCheck()">`
+    + `🛑 営業していない → 要確認にする</button>`
+    + (sid ? '' : `<div style="font-size:10px;color:var(--muted);margin-top:4px;">設置場所IDが無いため、この店はマスタと突き合わせできません</div>`);
+
+  document.getElementById('se2-body').innerHTML = html;
+  const mchk = document.getElementById('se2-master');
+  mchk.checked = false;          // 既定は今月分だけ
+  mchk.disabled = !sid;
+  document.getElementById('se2-save').disabled = false;
+  document.getElementById('shop-edit2-modal').classList.add('open');
+}
+
+function se2Read(f) {
+  const el = document.getElementById('se2-' + f.k);
+  if (!el) return null;
+  if (f.type === 'check') {
+    return [...el.querySelectorAll('input[type=checkbox]')].filter(c => c.checked).map(c => c.value);
+  }
+  if (el.readOnly) return null;
+  return el.value;
+}
+
+function se2Same(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const x = (a || []).slice().sort(), y = (b || []).slice().sort();
+    return x.length === y.length && x.every((v, i) => v === y[i]);
+  }
+  return String(a ?? '').trim() === String(b ?? '').trim();
+}
+
+function se2Fmt(v) {
+  if (Array.isArray(v)) return v.length ? v.join('・') : '（なし）';
+  const t = String(v ?? '').trim();
+  return t === '' ? '（空）' : t;
+}
+
+async function saveShopEdit2() {
+  const r = shopEditRecord();
+  if (!r) return;
+  const sid = storeIdOf(r);
+  const withMaster = document.getElementById('se2-master').checked && !!sid;
+
+  const nPatch = {}, mPatch = {}, changed = [];
+  let newAddr = null;
+  SE2.forEach(f => {
+    if (f.sec) return;
+    const v = se2Read(f);
+    if (v === null) return;
+    if (se2Same(v, r[f.n]?.value)) return;
+    nPatch[f.n] = { value: f.type === 'check' ? v : String(v) };
+    changed.push(`${f.label}：${se2Fmt(r[f.n]?.value)} → ${se2Fmt(v)}`);
+    if (!withMaster || !f.m) return;
+    if (f.m === '__addr__') { newAddr = String(v); return; }   // 住所は下で条・丁目に分ける
+    mPatch[f.m] = { value: f.type === 'check' ? v : String(v) };
+  });
+
+  if (!changed.length) { alert('変更がありません。'); return; }
+
+  // 通常納本数を変えた時は、未完了なら納本数（作業者の入力欄の初期値）も合わせる
+  if ('数値_2' in nPatch && !('数値' in nPatch) && getStatus(r) !== '完了') {
+    nPatch['数値'] = { value: nPatch['数値_2'].value };
+    changed.push(`納本数：${se2Fmt(r['数値']?.value)} → ${nPatch['数値_2'].value}（通常納本数に合わせました）`);
+  }
+  // 住所は マスタ側では 条 と 丁目 に分かれている
+  if (newAddr !== null) {
+    const parts = newAddr.split('-');
+    mPatch['文字列__1行__7'] = { value: (parts[0] || '').trim() };
+    mPatch['文字列__1行__8'] = { value: (parts[1] || '').trim() };
+  }
+
+  if (!confirm(`今月分（${currentMonth}）を更新します。\n\n${changed.join('\n')}\n\n`
+    + (withMaster && Object.keys(mPatch).length
+        ? `設置店マスタにも同じ内容を入れます（来月以降にも効きます）。\n\n` : '')
+    + 'よろしいですか？')) return;
+
+  const btn = document.getElementById('se2-save');
+  btn.disabled = true;
+  try {
+    await putRecord(APP, r['$id'].value, nPatch);
+    if (withMaster && Object.keys(mPatch).length) {
+      const masterId = await findMasterId(sid);
+      await putRecord(APP_MASTER, masterId, mPatch);
+    }
+    closeShopEdit();
+    await loadData(true);
+    alert('保存しました。\n\n作業者が画面を開いたままなら「🔄 今すぐ更新」で反映されます。');
+  } catch (e) {
+    alert('保存できませんでした: ' + e.message);
+    btn.disabled = false;
+  }
+}
+
 // ===== グループの早／遅を今月分だけ切り替える =====
 // 遅かどうかはグループの店の「遅」チェックで決まる（isOsoiGroup）。グループの全店をそろえて切り替える。
 // 設置店マスタは触らない（kintoneで後から直す。直すまで割当タブに相違として出る）
@@ -2503,7 +2746,7 @@ function diffBannerHtml() {
     + nabonDiffs.map(d => row(
         `<strong>${escDrv(d.r['文字列__1行__1']?.value || '')}</strong> <span style="color:var(--muted);font-size:10px;">${escDrv(d.r['文字列__1行__0']?.value || '')} / ID ${escDrv(storeIdOf(d.r))}</span><br>`
         + `通常納本数：今月 ${nab(d.month)} ／ マスタ ${nab(d.master)}`
-        + ` <button onclick="openShopEdit('${d.r['$id'].value}')" style="margin-left:4px;padding:2px 7px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button>`
+        + ` <button onclick="openShopEdit2('${d.r['$id'].value}')" style="margin-left:4px;padding:2px 7px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button>`
       )).join('')
     + `<div style="padding:6px 0 4px;border-top:1px solid #f3c9c9;font-size:10px;color:var(--muted);">kintoneの設置店マスタを今月分と同じに直すと、ここから消えます（最大5分で反映）。</div></div>`;
   return `<div style="background:#fdecec;border:2px solid #d42020;border-radius:10px;padding:10px 12px;margin-bottom:12px;color:#b01818;">`
@@ -3096,7 +3339,7 @@ function renderAssign() {
         <div style="display:flex;align-items:flex-start;gap:8px;padding:8px 12px;border-bottom:1px solid var(--border);">
           <div style="width:8px;height:8px;border-radius:50%;background:${statusColor};flex-shrink:0;margin-top:4px;"></div>
           <div style="flex:1;min-width:0;">
-            <div style="display:flex;align-items:center;gap:6px;"><div style="font-size:12px;font-weight:700;flex:1;min-width:0;">${shop}</div><button onclick="event.stopPropagation();openShopEdit('${r['$id'].value}')" style="flex-shrink:0;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button></div>
+            <div style="display:flex;align-items:center;gap:6px;"><div style="font-size:12px;font-weight:700;flex:1;min-width:0;">${shop}</div><button onclick="event.stopPropagation();openShopEdit2('${r['$id'].value}')" style="flex-shrink:0;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button></div>
             <div style="font-size:10px;color:var(--muted);">${building}${floor ? ` ${floor}階` : ''}${genre ? ` / ${genre}` : ''}${address ? ` / 📍${address}` : ''}</div>
             <div style="display:flex;flex-wrap:wrap;gap:3px;margin-top:3px;">
               ${nabonNum ? `<span style="background:#e8f0ff;color:var(--blue);padding:1px 5px;border-radius:3px;font-weight:700;font-size:10px;">📦${nabonNum}冊</span>` : ''}
