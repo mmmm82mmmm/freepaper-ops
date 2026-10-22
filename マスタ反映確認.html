@@ -72,6 +72,36 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
 .err{background:#fde8e8;border:1px solid #f5bcbc;border-radius:9px;padding:12px 14px;
   font-size:12px;color:#b01818;line-height:1.8;}
 .msg{font-size:12px;font-weight:700;margin-left:auto;}
+
+/* ===== マスタ修正のモーダル ===== */
+.modal{display:none;position:fixed;inset:0;background:rgba(0,0,0,.5);z-index:100;
+  align-items:center;justify-content:center;padding:14px;}
+.modal.open{display:flex;}
+.mbox{background:var(--card);border-radius:14px;width:100%;max-width:620px;max-height:92vh;
+  display:flex;flex-direction:column;overflow:hidden;}
+.mhead{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;gap:10px;}
+.mhead .t{font-size:15px;font-weight:900;flex:1;}
+.mhead .x{background:none;border:none;font-size:20px;cursor:pointer;color:var(--muted);}
+.mbody{flex:1;overflow:auto;padding:14px 16px;}
+.mfoot{padding:12px 16px;border-top:1px solid var(--border);display:flex;gap:9px;
+  align-items:center;flex-wrap:wrap;}
+.mfoot label{font-size:12px;font-weight:700;display:flex;align-items:center;gap:5px;cursor:pointer;}
+.fsec{font-size:11px;font-weight:900;letter-spacing:.06em;color:var(--muted);
+  margin:16px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border);}
+.fsec:first-child{margin-top:0;}
+.fsec.warn{color:var(--red);border-bottom-color:#f5bcbc;}
+.f{display:flex;align-items:center;gap:10px;margin-bottom:9px;flex-wrap:wrap;}
+.f > label{font-size:12px;font-weight:700;width:110px;flex:0 0 auto;color:#444;}
+.f input[type=text],.f input[type=number],.f select,.f textarea{
+  flex:1 1 180px;padding:7px 9px;font-size:13px;font-family:inherit;
+  border:1px solid var(--border);border-radius:7px;background:#fff;}
+.f textarea{min-height:60px;resize:vertical;}
+.f .chks{flex:1 1 180px;display:flex;gap:10px;flex-wrap:wrap;}
+.f .chks label{font-size:12px;display:flex;align-items:center;gap:4px;cursor:pointer;}
+.f .hint{font-size:10px;color:var(--muted);flex:1 1 100%;padding-left:120px;line-height:1.6;}
+.changed{background:#fffbe6 !important;border-color:var(--amber) !important;}
+.warnbox{background:#fde8e8;border:1px solid #f5bcbc;border-radius:8px;padding:9px 11px;
+  font-size:11px;color:#b01818;line-height:1.8;margin-bottom:10px;}
 </style>
 <script src="config.js"></script>
 <script src="auth.js"></script>
@@ -94,6 +124,21 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   <div id="content"><div class="loading"><div class="spinner"></div>読み込み中…</div></div>
 </div>
 
+<div class="modal" id="edit-modal">
+  <div class="mbox">
+    <div class="mhead">
+      <div class="t" id="edit-title">設置店マスタを修正</div>
+      <button class="x" onclick="closeMasterEdit()">✕</button>
+    </div>
+    <div class="mbody" id="edit-body"></div>
+    <div class="mfoot">
+      <label><input type="checkbox" id="edit-sync" checked> 今月分にも反映する</label>
+      <button class="b revert" style="margin-left:auto" onclick="closeMasterEdit()">やめる</button>
+      <button class="b apply" id="edit-save" onclick="saveMasterEdit()">保存する</button>
+    </div>
+  </div>
+</div>
+
 <script>
 const PROXY  = KINTONE_CONFIG.PROXY;
 const DOMAIN = KINTONE_CONFIG.DOMAIN;
@@ -102,7 +147,35 @@ const APP_NOHON  = 269;
 
 /* マスタ(268) と 月号(269) で同じ意味でもフィールドコードが違う */
 const M = { id:'文字列__1行__0', name:'文字列__1行__2', nabon:'数値_4',
-            osoi:'チェックボックス', status:'ドロップダウン' };
+            osoi:'チェックボックス', status:'ドロップダウン',
+            genre:'文字列__1行__1', bldg:'文字列__1行__3', floor:'文字列__1行__4',
+            time:'文字列__1行__5', jo:'文字列__1行__7', chome:'文字列__1行__8',
+            place:'文字列__1行__9', group:'文字列__1行__11', comment:'文字列__複数行__0',
+            order:'数値_2', map:'数値_3',
+            rack:'チェックボックス_0', teikyu:'チェックボックス_1',
+            refill:'チェックボックス_2', pop:'チェックボックス_3', bundle:'チェックボックス_4',
+            route:'ドロップダウン_0', freq:'ドロップダウン_1' };
+
+/* 設置店マスタ → 今月分 の対応。マスタを直した時に今月分へも書き写すために使う */
+const MAP_TO_MONTH = [
+  { m:'name',  n:'文字列__1行__1', label:'店名' },
+  { m:'bldg',  n:'文字列__1行__2', label:'ビル名' },
+  { m:'floor', n:'文字列__1行__3', label:'階数' },
+  { m:'route', n:'文字列__1行__4', label:'ルート' },
+  { m:'genre', n:'文字列__1行__6', label:'ジャンル' },
+  { m:'place', n:'文字列__1行__7', label:'設置場所説明' },
+  { m:'comment', n:'文字列__1行__9', label:'コメント' },
+  { m:'group', n:'文字列__1行__0', label:'グループ' },
+  { m:'time',  n:'文字列__1行__17', label:'時間指定' },
+  { m:'order', n:'数値_1', label:'ルート順', num:true },
+  { m:'nabon', n:'数値_2', label:'通常納本数', num:true },
+  { m:'osoi',  n:'チェックボックス_0', label:'遅', chk:true },
+  { m:'rack',  n:'チェックボックス_1', label:'ラック交換', chk:true },
+  { m:'teikyu',n:'チェックボックス_2', label:'定休日', chk:true },
+  { m:'pop',   n:'チェックボックス_3', label:'POP交換', chk:true },
+  { m:'bundle',n:'チェックボックス_4', label:'束渡し', chk:true },
+];
+const FREQ_MAP_ISSUE_ONLY = '毎月（MAPは発行月のみ）';
 const N = { month:'文字列__1行_', sid:'文字列__1行__5', name:'文字列__1行__1',
             bldg:'文字列__1行__2', floor:'文字列__1行__3', route:'文字列__1行__4',
             group:'文字列__1行__0', nabon:'数値_2', osoi:'チェックボックス_0',
@@ -113,7 +186,14 @@ const STATUS_CHECK = '要確認';
 const STATUS_ACTIVE = '稼働中';
 const INVALID = new Set(['', 'なし', 'ナシ', '無し', '-', '―', '－']);
 
-let data = null;   // { nabon:[], osoi:[], check:[], memo:[] }
+let data = null;         // { nabon:[], osoi:[], check:[], memo:[] }
+let choices = {};        // ドロップダウンの選択肢（実データから集める）
+let masterBySid = new Map();   // 設置場所ID → マスタレコード（一覧取得ぶん・列は一部）
+let editing = null;      // 編集中の { sid, mrec, nrec }
+
+function uniq(arr) {
+  return [...new Set(arr.map(v => String(v ?? '').trim()).filter(Boolean))].sort();
+}
 
 function esc(x){ return String(x ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
 function sidOf(r, f){ return String(r[f]?.value || '').trim(); }
@@ -228,8 +308,23 @@ async function load() {
     const [nohon, master] = await Promise.all([
       kget(APP_NOHON, `${N.month} = "${month}" order by ${N.route} asc, 数値_1 asc`,
         ['$id', N.sid, N.name, N.bldg, N.floor, N.route, N.group, N.nabon, N.osoi, N.memo, N.status]),
-      kget(APP_MASTER, 'order by $id asc', ['$id', M.id, M.name, M.nabon, M.osoi, M.status]),
+      kget(APP_MASTER, 'order by $id asc',
+        ['$id', M.id, M.name, M.nabon, M.osoi, M.status, M.genre, M.route, M.freq]),
     ]);
+
+    // ドロップダウンの選択肢は、実際に使われている値から作る。
+    // kintoneに無い値を書き込むとエラーになるため、勝手な候補は出さない。
+    choices = {
+      genre:  uniq(master.map(m => m[M.genre]?.value)),
+      route:  uniq(master.map(m => m[M.route]?.value)),
+      status: uniq(master.map(m => m[M.status]?.value)),
+      freq:   uniq(master.map(m => m[M.freq]?.value)),
+    };
+    masterBySid = new Map();
+    master.forEach(m => {
+      const sid = sidOf(m, M.id);
+      if (validSid(sid)) masterBySid.set(sid, m);
+    });
 
     data = Object.assign({ month }, computeDiffs(nohon, master));
     render();
@@ -262,6 +357,15 @@ function render() {
     ${secMemo()}`;
 }
 
+// 設置店マスタを直すボタン。突き合わせできない店（設置場所IDが無い等）には出さない
+function editBtn(r) {
+  const sid = sidOf(r, N.sid);
+  if (!validSid(sid) || !masterBySid.has(sid)) {
+    return `<span style="font-size:10px;color:var(--muted);">設置場所IDが無いためマスタと突き合わせできません</span>`;
+  }
+  return `<button class="b revert" onclick="openMasterEdit('${esc(sid)}')">✏️ 設置店マスタを修正</button>`;
+}
+
 function shopLine(r) {
   const bldg = r[N.bldg]?.value || '';
   const fl = r[N.floor]?.value || '';
@@ -282,6 +386,7 @@ function secNabon() {
       <div class="acts">
         <button class="b apply" onclick="applyNabon(${i})">マスタを ${x.month}冊 にする</button>
         <button class="b revert" onclick="revertNabon(${i})">今月分を ${x.master}冊 に戻す</button>
+        ${editBtn(x.r)}
       </div>
     </div>`).join('');
   return `
@@ -338,6 +443,7 @@ function secCheck() {
       <div class="sec-note" style="padding:6px 0 0;">今月分のレコードは残っていますが、運転手・作業者の画面には出ていません。</div>
       <div class="acts">
         <button class="b back" onclick="backToActive(${i})">稼働中に戻す</button>
+        ${editBtn(x.r)}
       </div>
     </div>`).join('');
   return `
@@ -356,6 +462,7 @@ function secMemo() {
     <div class="row">
       ${shopLine(x.r)}
       <div class="memo">📝 ${esc(x.r[N.memo].value)}</div>
+      <div class="acts">${editBtn(x.r)}</div>
     </div>`).join('');
   return `
     <div class="sec">
@@ -363,7 +470,10 @@ function secMemo() {
         <div class="sec-title">📝 コメントが付いた店</div>
         <span class="cnt ${data.memo.length ? '' : 'zero'}">${data.memo.length}</span>
       </div>
-      <div class="sec-note">作業者が現場で残したコメントです。ここは見るだけで、判断は要りません。</div>
+      <div class="sec-note">
+        作業者が現場で残したコメントです。内容を見て設置店マスタを直す必要があれば、
+        <strong>その場で修正できます</strong>（kintoneを開かなくて構いません）。
+      </div>
       <div class="sec-body">${rows || '<div class="empty">ありません</div>'}</div>
     </div>`;
 }
@@ -421,6 +531,204 @@ function backToActive(i) {
   const x = data.check[i];
   if (!confirm(`設置店マスタを「稼働中」に戻します。\n\n${x.r[N.name]?.value}\n\n運転手・作業者の画面にまた出るようになります。よろしいですか？`)) return;
   run('変更', () => kput(APP_MASTER, [{ id: x.m.$id.value, record: { [M.status]: { value: STATUS_ACTIVE } } }]));
+}
+
+/* ===== 設置店マスタの修正 ===== */
+/* 直せる項目。kintoneを直接開かなくても済むように、マスタの主な項目を並べる。
+   設置場所ID（突き合わせの鍵）だけは、ここからは直せないようにしてある。 */
+const EDIT_FIELDS = [
+  { sec:'店の情報' },
+  { k:'name',  label:'店名',      type:'text' },
+  { k:'bldg',  label:'ビル名',    type:'text' },
+  { k:'floor', label:'階数',      type:'text' },
+  { k:'genre', label:'ジャンル',  type:'select' },
+  { k:'jo',    label:'条',        type:'text', hint:'数字だけなら頭に「南」が付きます。「北2」のような書き方はそのまま使われます' },
+  { k:'chome', label:'丁目',      type:'text', hint:'数字だけなら頭に「西」が付きます。「東2」のような書き方はそのまま使われます' },
+  { k:'place', label:'設置場所説明', type:'text' },
+  { k:'comment', label:'コメント', type:'textarea', hint:'ここは設置店マスタ側のコメントです（作業者が現場で書いたものとは別）' },
+
+  { sec:'作業の設定' },
+  { k:'nabon', label:'通常納本数', type:'number' },
+  { k:'map',   label:'MAP冊数',   type:'number' },
+  { k:'freq',  label:'納本頻度',  type:'select' },
+  { k:'time',  label:'時間指定',  type:'text' },
+  { k:'osoi',  label:'遅',        type:'check' },
+  { k:'rack',  label:'ラック交換', type:'check' },
+  { k:'pop',   label:'POP交換',   type:'check' },
+  { k:'bundle',label:'束渡し',    type:'check' },
+  { k:'refill',label:'要補充',    type:'check' },
+  { k:'teikyu',label:'定休日',    type:'check' },
+  { k:'status',label:'稼働状況',  type:'select', hint:'「要確認」にすると、運転手・作業者の画面から消えます' },
+
+  { sec:'割当（変えると回る順番が変わります）', warn:true },
+  { k:'route', label:'ルート',    type:'select' },
+  { k:'order', label:'ルート順',  type:'number' },
+  { k:'group', label:'グループ',  type:'text' },
+];
+
+function isMapMonth(month) {
+  const x = String(month || '').match(/(\d{4})年(\d{1,2})月号/);
+  return !!x && [2, 5, 8, 11].includes(parseInt(x[2]));
+}
+
+/* チェックボックスの選択肢も実データから集める（kintoneに無い値は書き込めないため） */
+function chkChoices(key) {
+  const out = new Set();
+  masterBySid.forEach(m => (m[M[key]]?.value || []).forEach(v => out.add(v)));
+  return [...out].sort();
+}
+
+async function openMasterEdit(sid) {
+  const brief = masterBySid.get(sid);
+  if (!brief) { alert('この店は設置店マスタに見つかりませんでした。'); return; }
+  const body = document.getElementById('edit-body');
+  document.getElementById('edit-modal').classList.add('open');
+  body.innerHTML = '<div class="loading"><div class="spinner"></div>読み込み中…</div>';
+  try {
+    // 編集には全項目が要るので、その1件だけ取り直す
+    const recs = await kget(APP_MASTER, `$id = ${brief.$id.value}`);
+    if (!recs.length) throw new Error('設置店マスタのレコードが見つかりませんでした。');
+    const mrec = recs[0];
+    const nrec = data.memo.map(x => x.r).find(r => sidOf(r, N.sid) === sid)
+      || data.nabon.map(x => x.r).find(r => sidOf(r, N.sid) === sid) || null;
+    editing = { sid, mrec, nrec };
+    document.getElementById('edit-title').textContent =
+      `設置店マスタを修正：${mrec[M.name]?.value || ''}`;
+    body.innerHTML = buildEditForm(mrec);
+  } catch (e) {
+    body.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+function buildEditForm(m) {
+  let html = '';
+  EDIT_FIELDS.forEach(f => {
+    if (f.sec) {
+      html += `<div class="fsec${f.warn ? ' warn' : ''}">${esc(f.sec)}</div>`;
+      if (f.warn) html += `<div class="warnbox">ここを変えると、その店が回る順番や担当する車が変わります。内容をよく確かめてから保存してください。</div>`;
+      return;
+    }
+    const code = M[f.k];
+    const cur = m[code]?.value;
+    let input = '';
+    if (f.type === 'select') {
+      const list = (choices[f.k] || []).slice();
+      const now = String(cur ?? '');
+      if (now && !list.includes(now)) list.unshift(now);
+      input = `<select id="ef-${f.k}">${['', ...list].map(v =>
+        `<option value="${esc(v)}"${v === now ? ' selected' : ''}>${v === '' ? '（空）' : esc(v)}</option>`).join('')}</select>`;
+    } else if (f.type === 'check') {
+      const opts = chkChoices(f.k);
+      const on = cur || [];
+      if (!opts.length) {
+        input = `<div class="chks"><span style="font-size:11px;color:var(--muted)">この項目は現在どの店でも使われていないため、ここからは変えられません</span></div>`;
+      } else {
+        input = `<div class="chks" id="ef-${f.k}">${opts.map(o =>
+          `<label><input type="checkbox" value="${esc(o)}"${on.includes(o) ? ' checked' : ''}> ${esc(o)}</label>`).join('')}</div>`;
+      }
+    } else if (f.type === 'textarea') {
+      input = `<textarea id="ef-${f.k}">${esc(cur || '')}</textarea>`;
+    } else {
+      input = `<input type="${f.type === 'number' ? 'number' : 'text'}" id="ef-${f.k}" value="${esc(cur ?? '')}">`;
+    }
+    html += `<div class="f"><label>${esc(f.label)}</label>${input}`
+      + (f.hint ? `<div class="hint">${esc(f.hint)}</div>` : '') + `</div>`;
+  });
+  return html;
+}
+
+/* 入力欄から値を読む。チェックボックスは配列、それ以外は文字列 */
+function readEdit(f) {
+  const el = document.getElementById('ef-' + f.k);
+  if (!el) return null;   // 変えられない項目
+  if (f.type === 'check') {
+    return [...el.querySelectorAll('input[type=checkbox]')].filter(c => c.checked).map(c => c.value);
+  }
+  return el.value;
+}
+
+function sameVal(a, b) {
+  if (Array.isArray(a) || Array.isArray(b)) {
+    const x = (a || []).slice().sort(), y = (b || []).slice().sort();
+    return x.length === y.length && x.every((v, i) => v === y[i]);
+  }
+  return String(a ?? '').trim() === String(b ?? '').trim();
+}
+
+async function saveMasterEdit() {
+  if (!editing) return;
+  const { mrec, nrec } = editing;
+  const btn = document.getElementById('edit-save');
+
+  // 変わったところだけ送る
+  const mPatch = {}, changed = [];
+  EDIT_FIELDS.forEach(f => {
+    if (f.sec) return;
+    const v = readEdit(f);
+    if (v === null) return;
+    const code = M[f.k];
+    const before = mrec[code]?.value;
+    if (sameVal(v, before)) return;
+    mPatch[code] = { value: f.type === 'check' ? v : String(v) };
+    changed.push(`${f.label}：${fmt(before)} → ${fmt(v)}`);
+  });
+
+  if (!changed.length) { alert('変更がありません。'); return; }
+
+  const sync = document.getElementById('edit-sync').checked && !!nrec;
+  if (!confirm(`設置店マスタを更新します。\n\n${changed.join('\n')}\n\n`
+    + (sync ? `今月分（${data.month}）にも同じ内容を書き写します。\n\n` : '')
+    + 'よろしいですか？')) return;
+
+  btn.disabled = true;
+  try {
+    await kput(APP_MASTER, [{ id: mrec.$id.value, record: mPatch }]);
+
+    // 今月分にも書き写す（画面の表示は今月分を見ているため）
+    if (sync) {
+      const after = {};
+      EDIT_FIELDS.forEach(f => { if (!f.sec) { const v = readEdit(f); if (v !== null) after[f.k] = v; } });
+      const nPatch = {};
+      MAP_TO_MONTH.forEach(x => {
+        if (!(x.m in after)) return;
+        if (!(M[x.m] in mPatch)) return;             // 変えていない項目は触らない
+        const v = after[x.m];
+        nPatch[x.n] = { value: x.chk ? v : (x.num ? String(parseFloat(v) || 0) : String(v)) };
+      });
+      // MAP冊数は発行月のルールがあるので、頻度を見てから決める
+      if (M.map in mPatch || M.freq in mPatch) {
+        const freq = String(after.freq ?? mrec[M.freq]?.value ?? '').trim();
+        const mapv = String(after.map ?? mrec[M.map]?.value ?? '').trim();
+        nPatch['数値_3'] = { value: (freq === FREQ_MAP_ISSUE_ONLY && !isMapMonth(data.month))
+          ? '0' : String(parseFloat(mapv) || 0) };
+      }
+      // 住所は「条-丁目」に組み立て直す
+      if (M.jo in mPatch || M.chome in mPatch) {
+        const jo = String(after.jo ?? mrec[M.jo]?.value ?? '').trim();
+        const ch = String(after.chome ?? mrec[M.chome]?.value ?? '').trim();
+        nPatch['文字列__1行__8'] = { value: (jo && ch) ? `${jo}-${ch}` : (jo || ch || '') };
+      }
+      if (Object.keys(nPatch).length) await kput(APP_NOHON, [{ id: nrec.$id.value, record: nPatch }]);
+    }
+
+    closeMasterEdit();
+    await load();
+  } catch (e) {
+    alert(`保存に失敗しました。\n\n${e.message}`);
+    btn.disabled = false;
+  }
+}
+
+function fmt(v) {
+  if (Array.isArray(v)) return v.length ? v.join('・') : '（なし）';
+  const t = String(v ?? '').trim();
+  return t === '' ? '（空）' : t;
+}
+
+function closeMasterEdit() {
+  document.getElementById('edit-modal').classList.remove('open');
+  document.getElementById('edit-save').disabled = false;
+  editing = null;
 }
 
 /* ===== 起動 ===== */
