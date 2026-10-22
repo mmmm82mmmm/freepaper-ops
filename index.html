@@ -297,7 +297,8 @@ if (localStorage.getItem('fp_admin_open') === '1') {
   var u = window.FP_AUTH && FP_AUTH.user;
   var roles = (u && Array.isArray(u.roles)) ? u.roles : [];
   if (roles.indexOf('管理者') < 0) return;
-  if (!window.KINTONE_CONFIG) return;
+  // config.js は const で宣言しているので window には乗らない。typeof で見ること
+  if (typeof KINTONE_CONFIG === 'undefined') return;
 
   var badge0 = document.getElementById('md-badge');
   if (badge0) badge0.innerHTML = '<span class="alert-badge" style="background:#bbb">確認中…</span>';
