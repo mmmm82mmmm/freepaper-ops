@@ -186,6 +186,14 @@ const STATUS_CHECK = '要確認';
 const STATUS_ACTIVE = '稼働中';
 const INVALID = new Set(['', 'なし', 'ナシ', '無し', '-', '―', '－']);
 
+/* 「このまま要確認にしておく」と判断した店を覚えておく場所。
+   納本データ管理に専用のレコードを1つ持つ（この画面だけが読み書きする）。
+   月号ごとに分けてあるので、翌月になれば自動的に判断し直しになる。 */
+const CHECKED_KEY = '__mastercheck__';
+let checkedMap = {};     // { '2026年11月号': { '設置場所ID': '確認した日時' } }
+let checkedRecId = null; // 保存先レコードの$id（無ければ作る）
+let showChecked = false; // 確認済みも表示するか
+
 let data = null;         // { nabon:[], osoi:[], check:[], memo:[] }
 let choices = {};        // ドロップダウンの選択肢（実データから集める）
 let masterBySid = new Map();   // 設置場所ID → マスタレコード（一覧取得ぶん・列は一部）
@@ -225,6 +233,52 @@ async function initMonth() {
   if (forced && !opts.includes(forced)) opts.push(forced);
   const pick = forced || opts[2];
   sel.innerHTML = opts.map(m => `<option${m === pick ? ' selected' : ''}>${esc(m)}</option>`).join('');
+}
+
+/* 要確認の店を「まだ見ていない分」と「このままにすると決めた分」に分ける */
+function splitChecked(diffs, month) {
+  const done = checkedMap[month] || {};
+  diffs.checkDone = diffs.check.filter(x => done[sidOf(x.r, N.sid)]);
+  diffs.check     = diffs.check.filter(x => !done[sidOf(x.r, N.sid)]);
+  return diffs;
+}
+
+async function loadChecked() {
+  const q = encodeURIComponent(`文字列__1行_ = "${CHECKED_KEY}" limit 1`);
+  const res = await fetch(`${PROXY}/k/v1/records.json?app=${APP_NOHON}&query=${q}&subdomain=${DOMAIN}`, {
+    headers: { 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON }
+  });
+  if (!res.ok) throw new Error('確認済みの記録を読めませんでした');
+  const d = await res.json();
+  if (!d.records?.length) { checkedRecId = null; checkedMap = {}; return; }
+  checkedRecId = d.records[0].$id.value;
+  const raw = d.records[0]['文字列__複数行__0']?.value || '';
+  // ★中身があるのに読めない時は、空として扱わず必ず失敗させる。
+  //   空で上書きすると、これまでの判断が全部消えるため。
+  if (!raw.trim()) { checkedMap = {}; return; }
+  try { checkedMap = JSON.parse(raw) || {}; }
+  catch (e) { throw new Error('確認済みの記録が壊れています。保存せずに管理者へ連絡してください。'); }
+}
+
+async function saveChecked() {
+  const body = { '文字列__複数行__0': { value: JSON.stringify(checkedMap, null, 2) } };
+  if (checkedRecId) {
+    const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON },
+      body: JSON.stringify({ app: APP_NOHON, id: checkedRecId, record: body })
+    });
+    if (!res.ok) throw new Error(`保存に失敗しました（${res.status}）`);
+  } else {
+    const res = await fetch(`${PROXY}/k/v1/record.json?subdomain=${DOMAIN}`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON },
+      body: JSON.stringify({ app: APP_NOHON, record: Object.assign({ '文字列__1行_': { value: CHECKED_KEY } }, body) })
+    });
+    if (!res.ok) throw new Error(`保存に失敗しました（${res.status}）`);
+    const d = await res.json();
+    checkedRecId = d.id;
+  }
 }
 
 /* 今月分と設置店マスタを突き合わせる。画面とは切り離してあるので単体で試せる */
@@ -305,6 +359,7 @@ async function load() {
   el.innerHTML = '<div class="loading"><div class="spinner"></div>読み込み中…</div>';
   const month = document.getElementById('month-sel').value;
   try {
+    await loadChecked();
     const [nohon, master] = await Promise.all([
       kget(APP_NOHON, `${N.month} = "${month}" order by ${N.route} asc, 数値_1 asc`,
         ['$id', N.sid, N.name, N.bldg, N.floor, N.route, N.group, N.nabon, N.osoi, N.memo, N.status]),
@@ -326,7 +381,7 @@ async function load() {
       if (validSid(sid)) masterBySid.set(sid, m);
     });
 
-    data = Object.assign({ month }, computeDiffs(nohon, master));
+    data = Object.assign({ month }, splitChecked(computeDiffs(nohon, master), month));
     render();
   } catch (e) {
     el.innerHTML = `<div class="err">${esc(e.message)}</div>`;
@@ -336,7 +391,8 @@ async function load() {
 /* ===== 表示 ===== */
 function render() {
   const d = data;
-  const waiting = d.nabon.length + d.osoi.length;   // 判断待ち＝マスタと食い違っているもの
+  // 判断待ち＝マスタと食い違っているもの＋まだ見ていない要確認の店
+  const waiting = d.nabon.length + d.osoi.length + d.check.length;
   const el = document.getElementById('content');
 
   el.innerHTML = `
@@ -347,7 +403,10 @@ function render() {
       </div>
       <div class="sm"><div class="n">${d.nabon.length}</div><div class="l">通常納本数の違い</div></div>
       <div class="sm"><div class="n">${d.osoi.length}</div><div class="l">早/遅の違い（グループ）</div></div>
-      <div class="sm"><div class="n">${d.check.length}</div><div class="l">要確認の店</div></div>
+      <div class="sm ${d.check.length ? 'hot' : ''}">
+        <div class="n" style="color:${d.check.length ? 'var(--red)' : 'inherit'}">${d.check.length}</div>
+        <div class="l">要確認の店${d.checkDone.length ? `<br><span style="font-size:10px">（確認済み ${d.checkDone.length}）</span>` : ''}</div>
+      </div>
       <div class="sm"><div class="n">${d.memo.length}</div><div class="l">コメント付きの店</div></div>
     </div>
 
@@ -443,18 +502,66 @@ function secCheck() {
       <div class="sec-note" style="padding:6px 0 0;">今月分のレコードは残っていますが、運転手・作業者の画面には出ていません。</div>
       <div class="acts">
         <button class="b back" onclick="backToActive(${i})">稼働中に戻す</button>
+        <button class="b apply" onclick="keepNeedsCheck(${i})">このままにする（確認済み）</button>
         ${editBtn(x.r)}
       </div>
     </div>`).join('');
+
+  // 「このままにする」を押した店。普段は畳んでおき、戻せるようにしておく
+  const doneRows = data.checkDone.map((x, i) => `
+    <div class="row" style="opacity:.65">
+      ${shopLine(x.r)}
+      <div class="vals">
+        <span class="v master" style="background:#fde8e8;color:#b01818;">マスタ：要確認</span>
+        <span class="v" style="background:#e8f7ee;color:var(--green)">✓ 確認済み</span>
+      </div>
+      <div class="acts"><button class="b revert" onclick="unkeepNeedsCheck(${i})">確認済みを取り消す</button></div>
+    </div>`).join('');
+
   return `
     <div class="sec">
       <div class="sec-head">
         <div class="sec-title">⚠️ 要確認にした店</div>
         <span class="cnt ${data.check.length ? '' : 'zero'}">${data.check.length}</span>
+        ${data.checkDone.length ? `<button class="b revert" onclick="toggleCheckDone()">${
+          showChecked ? '確認済みを隠す' : `確認済み ${data.checkDone.length}件を見る`}</button>` : ''}
       </div>
-      <div class="sec-note">作業中に「営業していない」として要確認にした店です。確認がとれたら稼働中に戻してください。</div>
-      <div class="sec-body">${rows || '<div class="empty">ありません</div>'}</div>
+      <div class="sec-note">
+        作業中に「営業していない」として要確認にした店です。<br>
+        確認がとれて戻すなら<strong>「稼働中に戻す」</strong>、このまま要確認で置いておくなら
+        <strong>「このままにする」</strong>を押してください。どちらを押しても一覧から消えます。
+      </div>
+      <div class="sec-body">
+        ${rows || '<div class="empty">判断待ちはありません</div>'}
+        ${showChecked && doneRows ? `<div class="fsec" style="font-size:11px;font-weight:900;color:var(--muted);margin:14px 0 8px;padding-bottom:4px;border-bottom:1px solid var(--border);">確認済み</div>${doneRows}` : ''}
+      </div>
     </div>`;
+}
+
+function toggleCheckDone() { showChecked = !showChecked; render(); }
+
+/* このまま要確認で置いておく。記録しておき、一覧からは消す */
+function keepNeedsCheck(i) {
+  const x = data.check[i];
+  const sid = sidOf(x.r, N.sid);
+  if (!sid) { alert('設置場所IDが無いため、確認済みにできません。'); return; }
+  if (!confirm(`${x.r[N.name]?.value} を「このまま要確認にしておく」として記録します。\n\n`
+    + `${data.month} の一覧からは消えます。設置店マスタは変わりません。\n\n`
+    + `翌月号では、また判断待ちとして出ます。\n\nよろしいですか？`)) return;
+  run('記録', async () => {
+    if (!checkedMap[data.month]) checkedMap[data.month] = {};
+    checkedMap[data.month][sid] = new Date().toISOString();
+    await saveChecked();
+  });
+}
+
+function unkeepNeedsCheck(i) {
+  const x = data.checkDone[i];
+  const sid = sidOf(x.r, N.sid);
+  run('取り消し', async () => {
+    if (checkedMap[data.month]) delete checkedMap[data.month][sid];
+    await saveChecked();
+  });
 }
 
 function secMemo() {

@@ -341,9 +341,22 @@ if (localStorage.getItem('fp_admin_open') === '1') {
     var pair = await Promise.all([
       kget(APP_NOHON, '文字列__1行_ = "' + month + '"',
         ['$id', '文字列__1行__5', '文字列__1行__0', '数値_2', 'チェックボックス_0']),
-      kget(APP_MASTER, '', ['$id', '文字列__1行__0', '数値_4', 'チェックボックス'])
+      kget(APP_MASTER, '', ['$id', '文字列__1行__0', '数値_4', 'チェックボックス', 'ドロップダウン'])
     ]);
     var nohon = pair[0], master = pair[1];
+
+    // 「このまま要確認にしておく」と判断済みの店（マスタ反映の確認ページが記録する）
+    var checkedDone = {};
+    try {
+      var qc = encodeURIComponent('文字列__1行_ = "__mastercheck__" limit 1');
+      var rc = await fetch(PROXY + '/k/v1/records.json?app=' + APP_NOHON + '&query=' + qc + '&subdomain=' + DOMAIN,
+        { headers: { 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON } });
+      var dc = await rc.json();
+      if (rc.ok && dc.records && dc.records.length) {
+        var rawc = dc.records[0]['文字列__複数行__0'].value || '';
+        if (rawc.trim()) checkedDone = (JSON.parse(rawc) || {})[month] || {};
+      }
+    } catch (e) {}
 
     var mById = {};
     master.forEach(function (m) {
@@ -351,11 +364,13 @@ if (localStorage.getItem('fp_admin_open') === '1') {
       if (!INVALID[sid]) mById[sid] = m;
     });
 
-    var nabonCount = 0, osoiGroups = {};
+    var nabonCount = 0, osoiGroups = {}, checkCount = 0;
     nohon.forEach(function (r) {
       var sid = String((r['文字列__1行__5'] || {}).value || '').trim();
       var m = INVALID[sid] ? null : mById[sid];
       if (!m) return;
+      // まだ見ていない「要確認」の店
+      if (((m['ドロップダウン'] || {}).value || '') === '要確認' && !checkedDone[sid]) checkCount++;
       var a = parseFloat((r['数値_2'] || {}).value) || 0;
       var b = parseFloat((m['数値_4'] || {}).value) || 0;
       if (a !== b) nabonCount++;
@@ -364,7 +379,7 @@ if (localStorage.getItem('fp_admin_open') === '1') {
       if (ro !== mo) osoiGroups[(r['文字列__1行__0'] || {}).value || '-'] = 1;
     });
 
-    var waiting = nabonCount + Object.keys(osoiGroups).length;
+    var waiting = nabonCount + Object.keys(osoiGroups).length + checkCount;
     if (waiting > 0) {
       var item = document.getElementById('mi-master-diff');
       var badge = document.getElementById('md-badge');
