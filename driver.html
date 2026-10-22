@@ -1229,7 +1229,13 @@ async function refreshRecords(force = false) {
   allRecords = rawRecords.filter(r => !needsCheckIds.has(storeIdOf(r)));
 }
 
+// 電波の悪い場所では1回の読み込みが間隔より長くかかることがある。
+// そのまま次を始めると処理が積み上がって戻らなくなるので、前回が終わるまで待つ。
+let loadDataBusy = false;
+
 async function loadData(force = false) {
+  if (loadDataBusy) return;   // まだ前回が動いている
+  loadDataBusy = true;
   const btn = document.getElementById('refresh-btn');
   btn.classList.add('spinning');
 
@@ -1250,6 +1256,7 @@ async function loadData(force = false) {
     document.getElementById('progress-error').style.display = 'block';
     document.getElementById('progress-error').textContent = `⚠️ ${e.message}`;
   } finally {
+    loadDataBusy = false;
     btn.classList.remove('spinning');
     document.getElementById('loading-progress').style.display = 'none';
     document.getElementById('progress-content').style.display = 'block';
@@ -1602,8 +1609,14 @@ async function loadAssignData() {
 }
 
 // ===== 戻り作業者への自動割当（新鮮なデータのみ使用・書き戻し事故を防ぐ）=====
+// この処理は10秒ごとの確認と30秒ごとの読み込みの両方から呼ばれる。
+// 同時に走ると同じグループを二重に割り当てようとするので、片方だけ通す。
+let assignBusy = false;
+
 async function processReturnedWorkers() {
-  if (!MY_CAR) return;
+  if (!MY_CAR || assignBusy) return;
+  assignBusy = true;
+  try {
 
   // ★必ずkintoneから新鮮な自車データを取得（メモリの古いデータは一切使わない）
   let fresh;
@@ -1676,6 +1689,7 @@ async function processReturnedWorkers() {
     // 変更なし → 保存しない（書き戻し事故を防ぐ）。メモリは元に戻す
     assignState = savedAssignState;
   }
+  } finally { assignBusy = false; }
 }
 
 
@@ -3737,8 +3751,11 @@ function adminSwitchCar() {
 
 // ===== ポーリング =====
 // 軽量ポーリング: 自車の稼働データのみ取得（即応性重視・競合しない）
+let quickPollBusy = false;
+
 async function quickPollAssignState() {
-  if (!MY_CAR) return;
+  if (!MY_CAR || quickPollBusy) return;
+  quickPollBusy = true;
   try {
     const fresh = await loadSpecialRecord(carKey(currentMonth, MY_CAR));
     if (fresh && !fresh._notfound) {
@@ -3762,12 +3779,13 @@ async function quickPollAssignState() {
       }
     }
   } catch(e) { console.warn('軽量ポーリングエラー:', e); }
+  finally { quickPollBusy = false; }
 }
 
 // 重量ポーリング: 全レコード取得（進捗・ルート別タブ用）
 setInterval(loadData, 30000);
 // 軽量ポーリング: 10秒ごとにassignState更新（割当の即応性確保）
-setInterval(quickPollAssignState, 10000);
+setInterval(quickPollAssignState, 5000);
 </script>
 </body>
 </html>
