@@ -1273,6 +1273,10 @@ function renderProgress() {
     });
 }
 
+// 開いているルートを覚えておく。30秒ごとの自動更新で画面を作り直すため、
+// 覚えていないと見ている最中に勝手に閉じてしまう。
+const openRoutes = new Set();
+
 function renderRoute() {
   const routeMap = {};
   allRecords.forEach(r => {
@@ -1342,9 +1346,9 @@ function renderRoute() {
             <span class="route-stat-absent">不在${absent}</span>
             <span class="route-stat-todo">未${todo}${todoBooks > 0 ? `<span style="font-size:10px;color:var(--blue);font-weight:700;margin-left:3px">📦${todoBooks}冊</span>` : ''}${todoMapBooks > 0 ? `<span style="font-size:10px;color:#c47a0a;font-weight:700;margin-left:3px">🗺️マップ${todoMapBooks}冊</span>` : ''}${todoRack > 0 ? `<span style="font-size:10px;color:#d42020;font-weight:700;margin-left:3px">🔧${todoRack}</span>` : ''}${todoPop > 0 ? `<span style="font-size:10px;color:#7a3dc4;font-weight:700;margin-left:3px">🏷️${todoPop}</span>` : ''}</span>
           </div>
-          <div class="route-toggle" id="toggle-${route}">▼</div>
+          <div class="route-toggle" id="toggle-${route}">${openRoutes.has(route) ? '▲' : '▼'}</div>
         </div>
-        <div class="route-items" id="route-${route}">
+        <div class="route-items${openRoutes.has(route) ? ' open' : ''}" id="route-${route}">
           ${items}
         </div>
       </div>`;
@@ -1364,9 +1368,11 @@ function toggleRoute(id) {
   if (el.classList.contains('open')) {
     el.classList.remove('open');
     toggle.textContent = '▼';
+    openRoutes.delete(route);
   } else {
     el.classList.add('open');
     toggle.textContent = '▲';
+    openRoutes.add(route);
   }
 }
 
