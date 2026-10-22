@@ -1,0 +1,434 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+<meta charset="UTF-8">
+<meta http-equiv="Cache-Control" content="no-cache, no-store, must-revalidate">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>マスタ反映の確認 - 納本システム</title>
+<link href="https://fonts.googleapis.com/css2?family=Noto+Sans+JP:wght@400;500;700;900&family=DM+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+:root{--bg:#f4f0e8;--card:#fff;--ink:#1a1a1a;--muted:#888;--border:#e0dbd0;
+  --green:#1a8a4a;--amber:#c47a0a;--blue:#1a5cd4;--red:#d42020;--purple:#7a3dc4;}
+*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
+body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink);padding-bottom:40px;}
+
+.app-header{background:var(--ink);color:#fff;padding:12px 16px;display:flex;align-items:center;gap:10px;
+  position:sticky;top:0;z-index:50;flex-wrap:wrap;}
+.app-header a{color:#fff;text-decoration:none;font-size:18px;}
+.app-title{font-size:15px;font-weight:900;flex:1;}
+.month-sel{font-size:12px;background:#333;color:#fff;border:none;padding:5px 10px;border-radius:6px;
+  font-family:inherit;font-weight:700;}
+.hbtn{background:rgba(255,255,255,.15);color:#fff;border:none;padding:6px 10px;border-radius:6px;
+  font-size:13px;cursor:pointer;font-family:inherit;}
+
+.container{max-width:1000px;margin:0 auto;padding:16px;}
+.lead{background:#fff8e8;border:1px solid #f0d090;border-radius:10px;padding:12px 14px;
+  font-size:12px;color:#7a5a00;line-height:1.9;margin-bottom:16px;}
+
+.summary{display:flex;gap:10px;flex-wrap:wrap;margin-bottom:16px;}
+.sm{flex:1 1 150px;background:var(--card);border-radius:10px;padding:12px 14px;
+  box-shadow:0 1px 4px rgba(0,0,0,.06);border-left:5px solid var(--border);}
+.sm.hot{border-left-color:var(--red);background:#fff4f4;}
+.sm .n{font-size:26px;font-weight:900;font-family:'DM Mono',monospace;line-height:1.2;}
+.sm .l{font-size:11px;color:var(--muted);font-weight:700;margin-top:2px;}
+
+.sec{background:var(--card);border-radius:12px;margin-bottom:16px;box-shadow:0 1px 4px rgba(0,0,0,.06);
+  overflow:hidden;}
+.sec-head{display:flex;align-items:center;gap:8px;padding:13px 16px;border-bottom:1px solid var(--border);
+  flex-wrap:wrap;}
+.sec-title{font-size:14px;font-weight:900;flex:1;}
+.cnt{font-size:11px;font-weight:900;background:var(--ink);color:#fff;padding:2px 8px;border-radius:10px;}
+.cnt.zero{background:#cfc9bd;}
+.sec-note{font-size:11px;color:var(--muted);line-height:1.8;padding:0 16px 10px;}
+.sec-body{padding:0 16px 14px;}
+
+.row{border:1px solid var(--border);border-radius:9px;padding:11px 13px;margin-bottom:9px;background:#fdfcfa;}
+.row .nm{font-size:13px;font-weight:900;}
+.row .meta{font-size:11px;color:var(--muted);margin-top:2px;line-height:1.7;}
+.vals{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-top:7px;font-size:12px;}
+.v{padding:3px 9px;border-radius:6px;font-weight:900;font-family:'DM Mono',monospace;}
+.v.month{background:#e8f0ff;color:var(--blue);}
+.v.master{background:#f0ede8;color:#555;}
+.arrow{color:var(--muted);font-size:13px;}
+.acts{display:flex;gap:7px;flex-wrap:wrap;margin-top:9px;}
+.b{border:none;border-radius:7px;padding:7px 12px;font-size:12px;font-weight:900;cursor:pointer;
+  font-family:inherit;}
+.b.apply{background:var(--green);color:#fff;}
+.b.revert{background:#fff;color:#555;border:1px solid var(--border);}
+.b.back{background:var(--blue);color:#fff;}
+.b:disabled{opacity:.5;cursor:default;}
+.b.bulk{background:var(--ink);color:#fff;padding:8px 14px;}
+
+.stores{font-size:11px;color:#555;line-height:1.8;margin-top:6px;
+  background:#fff;border:1px dashed var(--border);border-radius:6px;padding:7px 9px;}
+.memo{font-size:12px;color:#b01818;background:#fdecec;border-radius:6px;padding:7px 10px;
+  margin-top:7px;white-space:pre-wrap;line-height:1.7;font-weight:700;}
+
+.empty{text-align:center;color:var(--muted);font-size:12px;padding:22px;}
+.loading{text-align:center;padding:40px;color:var(--muted);font-size:13px;}
+.spinner{width:30px;height:30px;border:3px solid var(--border);border-top-color:var(--ink);
+  border-radius:50%;animation:sp .8s linear infinite;margin:0 auto 12px;}
+@keyframes sp{to{transform:rotate(360deg)}}
+.err{background:#fde8e8;border:1px solid #f5bcbc;border-radius:9px;padding:12px 14px;
+  font-size:12px;color:#b01818;line-height:1.8;}
+.msg{font-size:12px;font-weight:700;margin-left:auto;}
+</style>
+<script src="config.js"></script>
+<script src="auth.js"></script>
+</head>
+<body>
+
+<div class="app-header">
+  <a href="index.html">←</a>
+  <div class="app-title">🔁 マスタ反映の確認</div>
+  <select class="month-sel" id="month-sel" onchange="load()"></select>
+  <button class="hbtn" onclick="load()">🔄</button>
+</div>
+
+<div class="container">
+  <div class="lead">
+    納本作業の最中に直した内容と、<strong>設置店マスタ</strong>の食い違いを一覧にします。<br>
+    作業中は今月分だけを直し、ここで管理者が<strong>マスタに反映するかどうか</strong>を判断してください。<br>
+    反映するか、今月分を元に戻すか、<strong>どちらかを押せば一覧から消えます</strong>。
+  </div>
+  <div id="content"><div class="loading"><div class="spinner"></div>読み込み中…</div></div>
+</div>
+
+<script>
+const PROXY  = KINTONE_CONFIG.PROXY;
+const DOMAIN = KINTONE_CONFIG.DOMAIN;
+const APP_MASTER = 268;
+const APP_NOHON  = 269;
+
+/* マスタ(268) と 月号(269) で同じ意味でもフィールドコードが違う */
+const M = { id:'文字列__1行__0', name:'文字列__1行__2', nabon:'数値_4',
+            osoi:'チェックボックス', status:'ドロップダウン' };
+const N = { month:'文字列__1行_', sid:'文字列__1行__5', name:'文字列__1行__1',
+            bldg:'文字列__1行__2', floor:'文字列__1行__3', route:'文字列__1行__4',
+            group:'文字列__1行__0', nabon:'数値_2', osoi:'チェックボックス_0',
+            memo:'文字列__複数行_', status:'ドロップダウン' };
+
+const OSOI = '遅';
+const STATUS_CHECK = '要確認';
+const STATUS_ACTIVE = '稼働中';
+const INVALID = new Set(['', 'なし', 'ナシ', '無し', '-', '―', '－']);
+
+let data = null;   // { nabon:[], osoi:[], check:[], memo:[] }
+
+function esc(x){ return String(x ?? '').replace(/[&<>"]/g, c => ({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;'}[c])); }
+function sidOf(r, f){ return String(r[f]?.value || '').trim(); }
+function validSid(v){ return !INVALID.has(String(v ?? '').trim()); }
+function isOsoi(r, f){ return (r[f]?.value || []).includes(OSOI); }
+function numOf(r, f){ return parseFloat(r[f]?.value) || 0; }
+
+/* ===== 月号の選択肢。管理者が作業号を固定していればそれを既定にする ===== */
+async function initMonth() {
+  const sel = document.getElementById('month-sel');
+  const now = new Date();
+  const opts = [];
+  for (let d = -2; d <= 2; d++) {
+    const t = new Date(now.getFullYear(), now.getMonth() + 1 + d, 1);
+    opts.push(`${t.getFullYear()}年${t.getMonth() + 1}月号`);
+  }
+  let forced = null;
+  try {
+    const q = encodeURIComponent('文字列__1行_ = "__settings__" limit 1');
+    const res = await fetch(`${PROXY}/k/v1/records.json?app=${APP_NOHON}&query=${q}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON }
+    });
+    const d = await res.json();
+    if (res.ok && d.records?.length) {
+      const o = JSON.parse(d.records[0]['文字列__複数行__0']?.value || '{}');
+      forced = o.forceWorkMonth || null;
+    }
+  } catch (e) { console.warn('作業号の設定を読めませんでした:', e); }
+  if (forced && !opts.includes(forced)) opts.push(forced);
+  const pick = forced || opts[2];
+  sel.innerHTML = opts.map(m => `<option${m === pick ? ' selected' : ''}>${esc(m)}</option>`).join('');
+}
+
+/* 今月分と設置店マスタを突き合わせる。画面とは切り離してあるので単体で試せる */
+function computeDiffs(nohon, master) {
+  const mById = new Map();
+  master.forEach(m => {
+    const sid = sidOf(m, M.id);
+    if (validSid(sid)) mById.set(sid, m);
+  });
+
+  const nabon = [], osoiByGroup = {}, check = [], memo = [];
+  nohon.forEach(r => {
+    const sid = sidOf(r, N.sid);
+    const m = validSid(sid) ? mById.get(sid) : null;
+
+    // 作業者コメント（見るだけ）。マスタに突き合わない店でも拾う
+    if ((r[N.memo]?.value || '').trim()) memo.push({ r });
+
+    if (!m) return;   // マスタに突き合わない店は、ここから先では扱わない
+
+    // マスタが「要確認」＝ 運転手・作業者の画面から消えている店
+    if ((m[M.status]?.value || '') === STATUS_CHECK) check.push({ r, m });
+
+    // 通常納本数
+    if (numOf(r, N.nabon) !== numOf(m, M.nabon)) {
+      nabon.push({ r, m, month: numOf(r, N.nabon), master: numOf(m, M.nabon) });
+    }
+    // 早/遅はグループ単位でまとめる（割当がグループ単位で効くため）
+    const ro = isOsoi(r, N.osoi), mo = isOsoi(m, M.osoi);
+    if (ro !== mo) {
+      const g = r[N.group]?.value || '（グループなし）';
+      (osoiByGroup[g] = osoiByGroup[g] || { g, monthOsoi: ro, items: [] })
+        .items.push({ r, m, monthOsoi: ro, masterOsoi: mo });
+    }
+  });
+
+  return { nabon, osoi: Object.values(osoiByGroup).sort((a, b) => a.g.localeCompare(b.g)), check, memo };
+}
+
+async function kget(app, query, fields) {
+  const out = [];
+  const fp = fields ? fields.map(f => `&fields=${encodeURIComponent(f)}`).join('') : '';
+  const token = app === APP_MASTER ? KINTONE_CONFIG.TOKEN_MASTER : KINTONE_CONFIG.TOKEN_NOHON;
+  for (let offset = 0; ; offset += 500) {
+    const q = encodeURIComponent(`${query} limit 500 offset ${offset}`.trim());
+    const res = await fetch(`${PROXY}/k/v1/records.json?app=${app}&query=${q}${fp}&subdomain=${DOMAIN}`, {
+      headers: { 'X-Cybozu-API-Token': token }
+    });
+    if (!res.ok) {
+      const e = await res.json().catch(() => ({}));
+      throw new Error(e.message || `取得に失敗しました（${res.status}）`);
+    }
+    const batch = (await res.json()).records || [];
+    out.push(...batch);
+    if (batch.length < 500) break;
+  }
+  return out;
+}
+
+async function kput(app, records) {
+  const token = app === APP_MASTER ? KINTONE_CONFIG.TOKEN_MASTER : KINTONE_CONFIG.TOKEN_NOHON;
+  for (let i = 0; i < records.length; i += 100) {
+    const res = await fetch(`${PROXY}/k/v1/records.json?subdomain=${DOMAIN}`, {
+      method: 'PUT',
+      headers: { 'Content-Type': 'application/json', 'X-Cybozu-API-Token': token },
+      body: JSON.stringify({ app, records: records.slice(i, i + 100) })
+    });
+    if (!res.ok) {
+      const t = await res.text();
+      throw new Error(`更新に失敗しました（${res.status}）：${t.slice(0, 200)}`);
+    }
+  }
+}
+
+/* ===== 読み込みと突き合わせ ===== */
+async function load() {
+  const el = document.getElementById('content');
+  el.innerHTML = '<div class="loading"><div class="spinner"></div>読み込み中…</div>';
+  const month = document.getElementById('month-sel').value;
+  try {
+    const [nohon, master] = await Promise.all([
+      kget(APP_NOHON, `${N.month} = "${month}" order by ${N.route} asc, 数値_1 asc`,
+        ['$id', N.sid, N.name, N.bldg, N.floor, N.route, N.group, N.nabon, N.osoi, N.memo, N.status]),
+      kget(APP_MASTER, 'order by $id asc', ['$id', M.id, M.name, M.nabon, M.osoi, M.status]),
+    ]);
+
+    data = Object.assign({ month }, computeDiffs(nohon, master));
+    render();
+  } catch (e) {
+    el.innerHTML = `<div class="err">${esc(e.message)}</div>`;
+  }
+}
+
+/* ===== 表示 ===== */
+function render() {
+  const d = data;
+  const waiting = d.nabon.length + d.osoi.length;   // 判断待ち＝マスタと食い違っているもの
+  const el = document.getElementById('content');
+
+  el.innerHTML = `
+    <div class="summary">
+      <div class="sm ${waiting ? 'hot' : ''}">
+        <div class="n" style="color:${waiting ? 'var(--red)' : 'var(--green)'}">${waiting}</div>
+        <div class="l">判断待ち</div>
+      </div>
+      <div class="sm"><div class="n">${d.nabon.length}</div><div class="l">通常納本数の違い</div></div>
+      <div class="sm"><div class="n">${d.osoi.length}</div><div class="l">早/遅の違い（グループ）</div></div>
+      <div class="sm"><div class="n">${d.check.length}</div><div class="l">要確認の店</div></div>
+      <div class="sm"><div class="n">${d.memo.length}</div><div class="l">コメント付きの店</div></div>
+    </div>
+
+    ${secNabon()}
+    ${secOsoi()}
+    ${secCheck()}
+    ${secMemo()}`;
+}
+
+function shopLine(r) {
+  const bldg = r[N.bldg]?.value || '';
+  const fl = r[N.floor]?.value || '';
+  const g = r[N.group]?.value || '';
+  return `<div class="nm">${esc(r[N.name]?.value || '(店名なし)')}</div>
+    <div class="meta">${esc(bldg)}${fl ? ` ${esc(fl)}階` : ''}${g ? ` / グループ ${esc(g)}` : ''}</div>`;
+}
+
+function secNabon() {
+  const rows = data.nabon.map((x, i) => `
+    <div class="row" id="nabon-${i}">
+      ${shopLine(x.r)}
+      <div class="vals">
+        <span class="v month">今月分 ${x.month}冊</span>
+        <span class="arrow">↔</span>
+        <span class="v master">マスタ ${x.master}冊</span>
+      </div>
+      <div class="acts">
+        <button class="b apply" onclick="applyNabon(${i})">マスタを ${x.month}冊 にする</button>
+        <button class="b revert" onclick="revertNabon(${i})">今月分を ${x.master}冊 に戻す</button>
+      </div>
+    </div>`).join('');
+  return `
+    <div class="sec">
+      <div class="sec-head">
+        <div class="sec-title">📦 通常納本数の違い</div>
+        <span class="cnt ${data.nabon.length ? '' : 'zero'}">${data.nabon.length}</span>
+        ${data.nabon.length ? `<button class="b bulk" onclick="bulkNabon()">すべてマスタに反映</button>` : ''}
+      </div>
+      <div class="sec-note">作業中に今月分の通常納本数を直した店です。マスタに反映するか、今月限りとして元に戻すかを選んでください。</div>
+      <div class="sec-body">${rows || '<div class="empty">違いはありません</div>'}</div>
+    </div>`;
+}
+
+function secOsoi() {
+  const rows = data.osoi.map((x, i) => {
+    const names = x.items.map(it => esc(it.r[N.name]?.value || '')).join('、');
+    const toMonth = x.items[0].monthOsoi;
+    return `
+    <div class="row" id="osoi-${i}">
+      <div class="nm">グループ ${esc(x.g)}<span style="font-weight:400;color:var(--muted);font-size:11px"> / ${x.items.length}店</span></div>
+      <div class="vals">
+        <span class="v month">今月分 ${toMonth ? '🌙 遅' : '☀️ 早'}</span>
+        <span class="arrow">↔</span>
+        <span class="v master">マスタ ${toMonth ? '☀️ 早' : '🌙 遅'}</span>
+      </div>
+      <div class="stores">${names}</div>
+      <div class="acts">
+        <button class="b apply" onclick="applyOsoi(${i})">マスタを「${toMonth ? '遅' : '早'}」にする</button>
+        <button class="b revert" onclick="revertOsoi(${i})">今月分をマスタに戻す</button>
+      </div>
+    </div>`;
+  }).join('');
+  return `
+    <div class="sec">
+      <div class="sec-head">
+        <div class="sec-title">🌙 早/遅の違い</div>
+        <span class="cnt ${data.osoi.length ? '' : 'zero'}">${data.osoi.length}</span>
+        ${data.osoi.length ? `<button class="b bulk" onclick="bulkOsoi()">すべてマスタに反映</button>` : ''}
+      </div>
+      <div class="sec-note">
+        作業中に「このグループを遅/早にする」で今月分だけ切り替えた分です。<br>
+        <strong>グループ内に1店でも遅があると、そのグループ全体が遅として割り当てられます。</strong>
+      </div>
+      <div class="sec-body">${rows || '<div class="empty">違いはありません</div>'}</div>
+    </div>`;
+}
+
+function secCheck() {
+  const rows = data.check.map((x, i) => `
+    <div class="row" id="check-${i}">
+      ${shopLine(x.r)}
+      <div class="vals"><span class="v master" style="background:#fde8e8;color:#b01818;">マスタ：要確認</span></div>
+      <div class="sec-note" style="padding:6px 0 0;">今月分のレコードは残っていますが、運転手・作業者の画面には出ていません。</div>
+      <div class="acts">
+        <button class="b back" onclick="backToActive(${i})">稼働中に戻す</button>
+      </div>
+    </div>`).join('');
+  return `
+    <div class="sec">
+      <div class="sec-head">
+        <div class="sec-title">⚠️ 要確認にした店</div>
+        <span class="cnt ${data.check.length ? '' : 'zero'}">${data.check.length}</span>
+      </div>
+      <div class="sec-note">作業中に「営業していない」として要確認にした店です。確認がとれたら稼働中に戻してください。</div>
+      <div class="sec-body">${rows || '<div class="empty">ありません</div>'}</div>
+    </div>`;
+}
+
+function secMemo() {
+  const rows = data.memo.map(x => `
+    <div class="row">
+      ${shopLine(x.r)}
+      <div class="memo">📝 ${esc(x.r[N.memo].value)}</div>
+    </div>`).join('');
+  return `
+    <div class="sec">
+      <div class="sec-head">
+        <div class="sec-title">📝 コメントが付いた店</div>
+        <span class="cnt ${data.memo.length ? '' : 'zero'}">${data.memo.length}</span>
+      </div>
+      <div class="sec-note">作業者が現場で残したコメントです。ここは見るだけで、判断は要りません。</div>
+      <div class="sec-body">${rows || '<div class="empty">ありません</div>'}</div>
+    </div>`;
+}
+
+/* ===== 反映・取り消し ===== */
+async function run(label, fn) {
+  try {
+    await fn();
+    await load();
+  } catch (e) {
+    alert(`${label}に失敗しました。\n\n${e.message}`);
+  }
+}
+
+function applyNabon(i) {
+  const x = data.nabon[i];
+  if (!confirm(`設置店マスタの通常納本数を ${x.month}冊 にします。\n\n${x.r[N.name]?.value}\n\nよろしいですか？`)) return;
+  run('反映', () => kput(APP_MASTER, [{ id: x.m.$id.value, record: { [M.nabon]: { value: String(x.month) } } }]));
+}
+function revertNabon(i) {
+  const x = data.nabon[i];
+  if (!confirm(`今月分の通常納本数を ${x.master}冊 に戻します（マスタは変えません）。\n\n${x.r[N.name]?.value}\n\nよろしいですか？`)) return;
+  run('取り消し', () => kput(APP_NOHON, [{ id: x.r.$id.value, record: { [N.nabon]: { value: String(x.master) } } }]));
+}
+function bulkNabon() {
+  if (!confirm(`通常納本数の違い ${data.nabon.length}件を、すべてマスタに反映します。\n\nよろしいですか？`)) return;
+  run('一括反映', () => kput(APP_MASTER,
+    data.nabon.map(x => ({ id: x.m.$id.value, record: { [M.nabon]: { value: String(x.month) } } }))));
+}
+
+function applyOsoi(i) {
+  const x = data.osoi[i];
+  const to = x.items[0].monthOsoi;
+  if (!confirm(`グループ ${x.g} の ${x.items.length}店について、\n設置店マスタを「${to ? '遅' : '早'}」にします。\n\nよろしいですか？`)) return;
+  run('反映', () => kput(APP_MASTER,
+    x.items.map(it => ({ id: it.m.$id.value, record: { [M.osoi]: { value: to ? [OSOI] : [] } } }))));
+}
+function revertOsoi(i) {
+  const x = data.osoi[i];
+  if (!confirm(`グループ ${x.g} の ${x.items.length}店について、\n今月分をマスタの値に戻します（マスタは変えません）。\n\nよろしいですか？`)) return;
+  run('取り消し', () => kput(APP_NOHON,
+    x.items.map(it => ({ id: it.r.$id.value, record: { [N.osoi]: { value: it.masterOsoi ? [OSOI] : [] } } }))));
+}
+function bulkOsoi() {
+  if (!confirm(`早/遅の違い ${data.osoi.length}グループを、すべてマスタに反映します。\n\nよろしいですか？`)) return;
+  const recs = [];
+  data.osoi.forEach(x => {
+    const to = x.items[0].monthOsoi;
+    x.items.forEach(it => recs.push({ id: it.m.$id.value, record: { [M.osoi]: { value: to ? [OSOI] : [] } } }));
+  });
+  run('一括反映', () => kput(APP_MASTER, recs));
+}
+
+function backToActive(i) {
+  const x = data.check[i];
+  if (!confirm(`設置店マスタを「稼働中」に戻します。\n\n${x.r[N.name]?.value}\n\n運転手・作業者の画面にまた出るようになります。よろしいですか？`)) return;
+  run('変更', () => kput(APP_MASTER, [{ id: x.m.$id.value, record: { [M.status]: { value: STATUS_ACTIVE } } }]));
+}
+
+/* ===== 起動 ===== */
+(async function init() {
+  await initMonth();
+  await load();
+})();
+</script>
+
+</body>
+</html>

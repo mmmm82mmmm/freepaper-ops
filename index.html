@@ -62,6 +62,11 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
   padding:10px 14px;font-size:11px;color:#7a5a00;line-height:1.6;
   margin:10px 0;display:flex;gap:8px;
 }
+/* 判断待ちがある時だけ赤くして、見落としを防ぐ */
+.menu-item.alert{background:#fff4f4;border:2px solid var(--red);}
+.menu-item.alert .menu-name{color:var(--red);}
+.alert-badge{display:inline-block;background:var(--red);color:#fff;font-size:11px;font-weight:900;
+  padding:1px 8px;border-radius:10px;margin-left:6px;vertical-align:1px;}
 .admin-tools{display:none;}
 .admin-tools.open{display:block;}
 
@@ -152,6 +157,15 @@ body{font-family:'Noto Sans JP',sans-serif;background:var(--bg);color:var(--ink)
           作業者・運転手の方は <strong>操作しないでください</strong>。誤操作によりデータが消失する可能性があります。
         </div>
       </div>
+
+      <a class="menu-item" id="mi-master-diff" href="./マスタ反映確認.html">
+        <div class="menu-icon">🔁</div>
+        <div class="menu-info">
+          <div class="menu-name">マスタ反映の確認<span id="md-badge"></span></div>
+          <div class="menu-desc">作業中に直した通常納本数・早/遅を、設置店マスタへ反映するか判断</div>
+        </div>
+        <div class="menu-arrow">›</div>
+      </a>
 
       <a class="menu-item" href="./作業号数設定.html">
         <div class="menu-icon">📅</div>
@@ -275,6 +289,93 @@ if (localStorage.getItem('fp_admin_open') === '1') {
   document.getElementById('admin-tools').classList.add('open');
   document.getElementById('admin-arrow').textContent = '▲';
 }
+
+// ===== 判断待ちの件数を調べて、あれば「マスタ反映の確認」を赤くする =====
+// 管理者がこの画面を開いた時だけ動く。失敗してもTOPは普通に使えるよう、
+// エラーは全て飲み込んで何も表示しない。
+(async function checkMasterDiff() {
+  var u = window.FP_AUTH && FP_AUTH.user;
+  var roles = (u && Array.isArray(u.roles)) ? u.roles : [];
+  if (roles.indexOf('管理者') < 0) return;
+  if (!window.KINTONE_CONFIG) return;
+
+  var PROXY = KINTONE_CONFIG.PROXY, DOMAIN = KINTONE_CONFIG.DOMAIN;
+  var APP_NOHON = 269, APP_MASTER = 268;
+  var INVALID = { '':1, 'なし':1, 'ナシ':1, '無し':1, '-':1, '―':1, '－':1 };
+
+  async function kget(app, query, fields) {
+    var token = app === APP_MASTER ? KINTONE_CONFIG.TOKEN_MASTER : KINTONE_CONFIG.TOKEN_NOHON;
+    var fp = fields.map(function (f) { return '&fields=' + encodeURIComponent(f); }).join('');
+    var out = [];
+    for (var offset = 0; ; offset += 500) {
+      var q = encodeURIComponent((query + ' limit 500 offset ' + offset).trim());
+      var res = await fetch(PROXY + '/k/v1/records.json?app=' + app + '&query=' + q + fp + '&subdomain=' + DOMAIN,
+        { headers: { 'X-Cybozu-API-Token': token } });
+      if (!res.ok) throw new Error('取得に失敗');
+      var batch = (await res.json()).records || [];
+      out = out.concat(batch);
+      if (batch.length < 500) break;
+    }
+    return out;
+  }
+
+  try {
+    // 作業号。管理者が固定していればそれ、無ければ翌月号
+    var month = null;
+    try {
+      var q = encodeURIComponent('文字列__1行_ = "__settings__" limit 1');
+      var r0 = await fetch(PROXY + '/k/v1/records.json?app=' + APP_NOHON + '&query=' + q + '&subdomain=' + DOMAIN,
+        { headers: { 'X-Cybozu-API-Token': KINTONE_CONFIG.TOKEN_NOHON } });
+      var d0 = await r0.json();
+      if (r0.ok && d0.records && d0.records.length) {
+        month = (JSON.parse(d0.records[0]['文字列__複数行__0'].value || '{}') || {}).forceWorkMonth || null;
+      }
+    } catch (e) {}
+    if (!month) {
+      var t = new Date();
+      t = new Date(t.getFullYear(), t.getMonth() + 1, 1);
+      month = t.getFullYear() + '年' + (t.getMonth() + 1) + '月号';
+    }
+
+    // 件数を知るだけなので、必要な列だけ取る
+    var pair = await Promise.all([
+      kget(APP_NOHON, '文字列__1行_ = "' + month + '"',
+        ['$id', '文字列__1行__5', '文字列__1行__0', '数値_2', 'チェックボックス_0']),
+      kget(APP_MASTER, '', ['$id', '文字列__1行__0', '数値_4', 'チェックボックス'])
+    ]);
+    var nohon = pair[0], master = pair[1];
+
+    var mById = {};
+    master.forEach(function (m) {
+      var sid = String((m['文字列__1行__0'] || {}).value || '').trim();
+      if (!INVALID[sid]) mById[sid] = m;
+    });
+
+    var nabonCount = 0, osoiGroups = {};
+    nohon.forEach(function (r) {
+      var sid = String((r['文字列__1行__5'] || {}).value || '').trim();
+      var m = INVALID[sid] ? null : mById[sid];
+      if (!m) return;
+      var a = parseFloat((r['数値_2'] || {}).value) || 0;
+      var b = parseFloat((m['数値_4'] || {}).value) || 0;
+      if (a !== b) nabonCount++;
+      var ro = ((r['チェックボックス_0'] || {}).value || []).indexOf('遅') >= 0;
+      var mo = ((m['チェックボックス'] || {}).value || []).indexOf('遅') >= 0;
+      if (ro !== mo) osoiGroups[(r['文字列__1行__0'] || {}).value || '-'] = 1;
+    });
+
+    var waiting = nabonCount + Object.keys(osoiGroups).length;
+    if (waiting > 0) {
+      var item = document.getElementById('mi-master-diff');
+      var badge = document.getElementById('md-badge');
+      if (item) item.classList.add('alert');
+      if (badge) badge.innerHTML = '<span class="alert-badge">判断待ち ' + waiting + '</span>';
+    }
+  } catch (e) {
+    // 取得できなくてもTOPは普通に使える。黙って何もしない
+    console.warn('判断待ちの件数を調べられませんでした:', e);
+  }
+})();
 
 // ログイン中の人を表示し、切り替え（ログアウト）の導線を出す
 (function () {

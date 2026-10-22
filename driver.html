@@ -509,7 +509,7 @@ body.text-xlarge .error-box{font-size:19px;}
       <span style="font-size:13px;font-weight:700;">冊</span>
     </div>
     <label id="shop-edit-master-label" style="display:flex;align-items:center;gap:6px;font-size:12px;margin-bottom:12px;">
-      <input id="shop-edit-master" type="checkbox" checked> 設置店マスタの通常納本数も直す（来月以降にも効く）
+      <input id="shop-edit-master" type="checkbox"> 設置店マスタの通常納本数も直す（来月以降にも効く）
     </label>
     <button id="shop-edit-save" onclick="saveShopNabon()" style="width:100%;padding:12px;background:var(--blue);color:#fff;border:none;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;font-family:inherit;">納本数を保存</button>
 
@@ -2346,8 +2346,11 @@ function openShopEdit(recId) {
     `${r['文字列__1行__0']?.value || ''} / ${building}${floor ? ` ${floor}階` : ''}${sid ? ` / 設置場所ID ${sid}` : ''}`;
   document.getElementById('shop-edit-nabon').value = r['数値_2']?.value || '';
   // 設置場所IDが無い店はマスタと突き合わせられない
+  // ★既定はオフ。作業中は今月分だけ直し、マスタへ反映するかは作業後に
+  //   管理者が「マスタ反映の確認」画面でまとめて判断する。
+  //   現場でその場でマスタも直したい時だけ、自分でチェックを入れる。
   const master = document.getElementById('shop-edit-master');
-  master.checked = !!sid;
+  master.checked = false;
   master.disabled = !sid;
   document.getElementById('shop-edit-master-label').style.opacity = sid ? '1' : '.4';
   document.getElementById('shop-edit-needs-check').disabled = !sid;
