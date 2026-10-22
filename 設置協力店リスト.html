@@ -69,7 +69,11 @@ select:focus,input:focus{outline:none;border-color:var(--blue);background:#fff;}
   padding:.1em 0;border-bottom:1px dotted #ddd;}
 .cols.noline .item{border-bottom:none;}
 .item .no{flex:0 0 auto;font-family:monospace;color:#777;text-align:right;}
-.item .nm{flex:1 1 auto;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+/* 店名は切らずに折り返す。長い名前が「…」で読めなくなるのを防ぐ。
+   折り返して縦に伸びたぶんは、下の fitSheet が文字を縮めて1ページに収める。
+   overflow-wrap:anywhere は英字だけの長い店名（FAIRFIELD BY MARRIOTT…）用。
+   min-width:0 が無いと flex の既定で縮まず、横にはみ出す。 */
+.item .nm{flex:1 1 auto;min-width:0;overflow-wrap:anywhere;}
 .item .ad{flex:0 0 auto;color:#555;font-variant-numeric:tabular-nums;}
 
 .empty{padding:40px;text-align:center;color:var(--muted);font-size:13px;}
