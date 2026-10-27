@@ -1168,7 +1168,6 @@ async function refreshRawRecords(force = false) {
 // ★rawRecords（kintoneの写し）からは消さない。消すと点検が「手元に無い」と判断して全件を取り直し続ける。
 // あわせて、運転手画面で今月分だけ直した値（通常納本数・早/遅）とマスタの違いを出すのにも使う。
 const NEEDS_CHECK_STATUS = '要確認';
-const OSOI_VALUE = '遅';           // 遅のチェックボックスの選択肢（今月分・マスタとも同じ名前）
 const MASTER_FIELDS = ['文字列__1行__0', '数値_4', 'チェックボックス', 'ドロップダウン'];
 let masterById = new Map();        // 設置場所ID → { nabon, osoi, status }
 let needsCheckIds = new Set();     // 要確認の 設置場所ID
@@ -2705,43 +2704,6 @@ async function saveShopEdit2() {
   }
 }
 
-// ===== グループの早／遅を今月分だけ切り替える =====
-// 遅かどうかはグループの店の「遅」チェックで決まる（isOsoiGroup）。グループの全店をそろえて切り替える。
-// 設置店マスタは触らない（kintoneで後から直す。直すまで割当タブに相違として出る）
-async function toggleGroupOsoi(g) {
-  const recs = rawRecords.filter(r => r['文字列__1行__0']?.value === g);
-  if (!recs.length) return;
-  const toOsoi = !isOsoiGroup(g);
-  const label = toOsoi ? '🌙 遅' : '☀️ 早（通常）';
-  const ok = confirm(
-    `グループ「${g}」（${recs.length}店）を ${label} にします。\n\n`
-    + `・今月分だけ変わります。設置店マスタ（kintone）は変わりません\n`
-    + `・kintoneを直すまで、割当タブに「kintoneと違う」と表示されます\n\nよろしいですか？`
-  );
-  if (!ok) return;
-  const value = toOsoi ? [OSOI_VALUE] : [];
-  const changes = recs
-    .filter(r => ((r['チェックボックス_0']?.value || []).length > 0) !== toOsoi)
-    .map(r => ({ id: r['$id'].value, record: { 'チェックボックス_0': { value } } }));
-  try {
-    for (let i = 0; i < changes.length; i += 100) {
-      const res = await fetch(`${PROXY}/k/v1/records.json?subdomain=${DOMAIN}`, {
-        method: 'PUT',
-        headers: { 'X-Cybozu-API-Token': TOKEN, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ app: APP, records: changes.slice(i, i + 100) })
-      });
-      if (!res.ok) {
-        let msg = `APIエラー: ${res.status}`;
-        try { const e = await res.json(); msg = e.message || msg; } catch (e2) {}
-        throw new Error(msg);
-      }
-    }
-    await loadData();
-  } catch (e) {
-    alert('切り替えられませんでした: ' + e.message);
-  }
-}
-
 // ===== kintone（設置店マスタ）との相違 =====
 let diffPanelOpen = false;
 function toggleDiffPanel() { diffPanelOpen = !diffPanelOpen; renderAssign(); }
@@ -3394,7 +3356,6 @@ function renderAssign() {
           <div style="font-size:11px;color:var(--muted);margin-left:4px;">▼</div>
         </div>
         <div id="detail-${g}" style="display:none;border-top:1px solid var(--border);">
-          ${!isVirtual ? `<div style="padding:8px 12px;border-bottom:1px solid var(--border);"><button onclick="toggleGroupOsoi('${g}')" style="width:100%;padding:8px;background:#fff;color:${isOsoiGroup(g) ? '#555' : '#d42020'};border:1px solid ${isOsoiGroup(g) ? 'var(--border)' : '#d42020'};border-radius:6px;font-size:12px;font-weight:700;cursor:pointer;font-family:inherit;">${isOsoiGroup(g) ? '☀️ このグループを早（通常）にする' : '🌙 このグループを遅にする'}（今月分のみ）</button></div>` : ''}
           ${shopList}
         </div>
         ${!isDone ? `<div class="assign-btn-row">
