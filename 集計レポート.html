@@ -831,7 +831,7 @@ function renderPrevMonth() {
 
   // マップ用（返却が確認できた店舗だけ）
   _shoukaMapItems.prev = storeData.filter(d => d.confirmed)
-    .map(d => ({ addr: d.addr, supply: d.prevNabon + d.prevRefill, henkyaku: d.henkyaku }));
+    .map(d => ({ name: d.name, bldg: d.bldg, addr: d.addr, supply: d.prevNabon + d.prevRefill, henkyaku: d.henkyaku }));
 
   content.innerHTML = `
     <!-- ヘッダー -->
@@ -1496,7 +1496,7 @@ function renderShouka() {
   // マップ用（返却欄が入っている店舗だけ。空欄のままだと消化率100%に見えてしまうため）
   _shoukaMapItems.shouka = allRecords
     .filter(r => getNum(r,'数値_2') > 0 && getVal(r,'数値_0') !== '')
-    .map(r => ({ addr: getVal(r,'文字列__1行__8'), supply: getNum(r,'数値_2') + getRefillTotal(r), henkyaku: getNum(r,'数値_0') }));
+    .map(r => ({ name: getVal(r,'文字列__1行__1'), bldg: getVal(r,'文字列__1行__2'), addr: getVal(r,'文字列__1行__8'), supply: getNum(r,'数値_2') + getRefillTotal(r), henkyaku: getNum(r,'数値_0') }));
 
   document.getElementById('shouka-content').innerHTML = `
     <!-- 全体サマリー -->
@@ -1859,13 +1859,14 @@ function shoukaMapPanelHtml(key) {
       </div>
       <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:8px;">
         円の<b>色</b>＝消化率、円の<b>大きさ</b>＝置いた冊数（納本＋補充）。円の中は「消化率／持去冊数」です。<br>
-        返却数がまだ分からない店舗は除いて計算しています。円にさわると内訳が出ます。
+        返却数がまだ分からない店舗は除いて計算しています。円をクリックすると、地図の下にそのブロックの店舗一覧が出ます。
       </div>
       <div id="${key}-map-canvas" style="width:100%;height:600px;border-radius:10px;overflow:hidden;border:2px solid var(--border);"></div>
       <div style="display:flex;flex-wrap:wrap;gap:10px;font-size:11px;margin-top:10px;">
         ${[[90,'90%〜'],[80,'80〜89%'],[70,'70〜79%'],[50,'50〜69%'],[0,'〜49%']].map(([n,lbl]) =>
           `<span style="display:inline-flex;align-items:center;gap:4px;"><span style="width:14px;height:14px;border-radius:50%;background:${shoukaRateColor(n)};border:1px solid #fff;box-shadow:0 0 0 1px #ccc;"></span>${lbl}</span>`).join('')}
       </div>
+      <div id="${key}-map-stores" style="margin-top:14px;"></div>
     </div>`;
 }
 
@@ -1879,8 +1880,9 @@ function renderShoukaMap(key) {
   (_shoukaMapItems[key] || []).forEach(it => {
     const p = parseAddr(it.addr);
     if (!p) { unparsed++; return; }
-    if (!blocks[it.addr]) blocks[it.addr] = { addr: it.addr, latlng: blockToLatLng(p), supply: 0, henkyaku: 0, count: 0 };
+    if (!blocks[it.addr]) blocks[it.addr] = { addr: it.addr, latlng: blockToLatLng(p), supply: 0, henkyaku: 0, count: 0, stores: [] };
     const b = blocks[it.addr];
+    b.stores.push(it);
     b.supply += it.supply;
     b.henkyaku += it.henkyaku;
     b.count++;
@@ -1908,6 +1910,8 @@ function renderShoukaMap(key) {
   map.invalidateSize(); // 地図の枠の大きさを測り直す（ずれると拡大しすぎて円が見えなくなる）
   if (map._shoukaLayer) map.removeLayer(map._shoukaLayer);
   const layer = map._shoukaLayer = L.layerGroup().addTo(map);
+  const storesBox = document.getElementById(key + '-map-stores');
+  if (storesBox) storesBox.innerHTML = '';
 
   const bounds = [];
   blockArr.forEach(b => {
@@ -1918,7 +1922,7 @@ function renderShoukaMap(key) {
       `${escH(b.addr)}（${b.count}店）<br>消化率 <b>${b.rate}%</b><br>` +
       `置いた ${b.supply}冊／返却 ${b.henkyaku}冊／持去 <b>${b.shouka}冊</b>`,
       { direction: 'top' }
-    ).addTo(layer);
+    ).on('click', () => showShoukaMapStores(key, b)).addTo(layer);
     const dark = b.rate >= 90 || b.rate < 50; // 濃い色の円は白文字
     const label = L.divIcon({
       className: 'map-book-label',
@@ -1933,6 +1937,35 @@ function renderShoukaMap(key) {
     bounds.push(b.latlng);
   });
   if (bounds.length) map.fitBounds(bounds, { padding: [30,30] });
+}
+
+// 円をクリックしたとき、地図の下にそのブロックの店舗一覧を出す（消化率の低い順）
+function showShoukaMapStores(key, b) {
+  const box = document.getElementById(key + '-map-stores');
+  if (!box) return;
+  const rows = b.stores.map(st => {
+    const shouka = st.supply - st.henkyaku;
+    const rate = st.supply > 0 ? Math.round(shouka / st.supply * 100) : 0;
+    return { ...st, shouka, rate };
+  }).sort((x, y) => x.rate - y.rate);
+  const rateColor = rate => rate >= 80 ? 'var(--green)' : rate >= 50 ? 'var(--amber)' : 'var(--red)';
+  box.innerHTML = `
+    <div class="section-title">${escH(b.addr)} の店舗（${rows.length}店）
+      <span style="font-size:10px;font-weight:400;color:var(--muted);margin-left:8px">消化率 ${b.rate}%／持去 ${b.shouka}冊・消化率の低い順</span>
+    </div>
+    <div style="overflow-x:auto">
+      <table class="data-table">
+        <thead><tr><th>店名</th><th>置いた</th><th>返却</th><th>持去</th><th>消化率</th></tr></thead>
+        <tbody>${rows.map(d => `<tr>
+          <td><strong>${escH(d.name)}</strong>${d.bldg ? `<div style="font-size:10px;color:var(--muted)">${escH(d.bldg)}</div>` : ''}</td>
+          <td class="mono">${d.supply}</td>
+          <td class="mono">${d.henkyaku}</td>
+          <td class="mono">${d.shouka}</td>
+          <td class="mono" style="color:${rateColor(d.rate)};font-weight:700">${d.rate}%</td>
+        </tr>`).join('')}</tbody>
+      </table>
+    </div>`;
+  box.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
 }
 
 function exportCSV() {
