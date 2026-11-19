@@ -2111,16 +2111,26 @@ function renderLeftover(alreadyAssigned) {
 
   // 1件でも回り終えたグループ
   const touched = new Set();
+  // ルートごとに、回り終えた一番先のグループ番号。自動割当は前に戻らないので、
+  // ここより手前に残っている店は、放っておくと誰にも配られない
+  const maxDoneNum = {};
   allRecords.forEach(r => {
     const st = r['ドロップダウン']?.value;
-    if (st === '完了' || st === '不在') touched.add(r['文字列__1行__0']?.value || '');
+    if (st !== '完了' && st !== '不在') return;
+    const g = r['文字列__1行__0']?.value || '';
+    touched.add(g);
+    const letter = getGroupLetter(g), num = getGroupNum(g);
+    if (maxDoneNum[letter] === undefined || num > maxDoneNum[letter]) maxDoneNum[letter] = num;
   });
 
   const list = allRecords.filter(r => {
     if (isClosedToday(r, workDay)) return false;                 // 今日も定休なら回れない
     if (r['ドロップダウン']?.value !== '未着手') return false;
     const g = r['文字列__1行__0']?.value || '';
-    if (!touched.has(g)) return false;                           // グループごと未着手＝通常の割当で回る
+    // グループの他の店が終わっている、または そのルートが先まで進んでしまっている
+    const passed = maxDoneNum[getGroupLetter(g)] !== undefined
+      && getGroupNum(g) < maxDoneNum[getGroupLetter(g)];
+    if (!touched.has(g) && !passed) return false;                // まだ誰も触れていない＝通常の割当で回る
     if (alreadyAssigned.has(String(r['$id'].value))) return false;
     if (routeFilter && (r['文字列__1行__4']?.value || '').toUpperCase() !== routeFilter) return false;
     return true;
