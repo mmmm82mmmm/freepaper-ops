@@ -477,6 +477,18 @@ body.text-xlarge .error-box{font-size:19px;}
     <div style="font-size:11px;font-weight:700;color:var(--amber);" id="revisit-summary"></div>
   </div>
 
+  <!-- 回り残し（定休などで飛ばされ、グループだけ先に進んでしまった店） -->
+  <div id="leftover-section" style="display:none;margin-bottom:22px;">
+    <div class="section-title" style="display:flex;align-items:center;gap:8px;">
+      🗓 回り残し <span id="leftover-count" style="font-size:10px;color:var(--muted);font-weight:700;"></span>
+    </div>
+    <div style="font-size:11px;color:var(--muted);line-height:1.7;margin-bottom:8px;">
+      同じグループの他の店は回り終えているのに、この店だけ残っています。<br>
+      定休日で飛ばした店などです。<strong>今日は回れます。</strong>差し込み先を選べば、グループごと割り当て直さずに拾えます。
+    </div>
+    <div id="leftover-list"></div>
+  </div>
+
   <!-- 振り分け待ちリスト -->
   <div id="revisit-list-main"></div>
 
@@ -2081,6 +2093,78 @@ async function autoAssignAll() {
 }
 
 // ===== 不在再訪機能 =====
+// ===== 回り残し =====
+// 定休日で飛ばした店は、その曜日だけ画面から外れる（記録は未着手のまま）。
+// 翌日には戻ってくるが、グループの他の店が終わっていると、この1店のために
+// グループごと割り当て直すことになり拾いにくい。ここに集めて差し込めるようにする。
+// ★「定休だったから」を正確に知るには前回の作業日を覚えておく必要があるが、
+//   その記録は持っていない。代わりに「グループは着手済みなのに未着手で残っている店」
+//   という条件で拾う。定休以外の理由で飛ばした店も同じように拾える。
+function renderLeftover(alreadyAssigned) {
+  const sectionEl = document.getElementById('leftover-section');
+  const listEl = document.getElementById('leftover-list');
+  const countEl = document.getElementById('leftover-count');
+  if (!sectionEl || !listEl) return 0;
+
+  const workDay = document.getElementById('work-day-select')?.value || '';
+  const routeFilter = document.getElementById('revisit-filter')?.value || '';
+
+  // 1件でも回り終えたグループ
+  const touched = new Set();
+  allRecords.forEach(r => {
+    const st = r['ドロップダウン']?.value;
+    if (st === '完了' || st === '不在') touched.add(r['文字列__1行__0']?.value || '');
+  });
+
+  const list = allRecords.filter(r => {
+    if (isClosedToday(r, workDay)) return false;                 // 今日も定休なら回れない
+    if (r['ドロップダウン']?.value !== '未着手') return false;
+    const g = r['文字列__1行__0']?.value || '';
+    if (!touched.has(g)) return false;                           // グループごと未着手＝通常の割当で回る
+    if (alreadyAssigned.has(String(r['$id'].value))) return false;
+    if (routeFilter && (r['文字列__1行__4']?.value || '').toUpperCase() !== routeFilter) return false;
+    return true;
+  }).sort((a, b) => {
+    const ra = (a['文字列__1行__4']?.value || ''), rb = (b['文字列__1行__4']?.value || '');
+    if (ra !== rb) return ra.localeCompare(rb);
+    return (parseFloat(a['数値_1']?.value) || 0) - (parseFloat(b['数値_1']?.value) || 0);
+  });
+
+  if (!list.length) { sectionEl.style.display = 'none'; return 0; }
+  sectionEl.style.display = '';
+  if (countEl) countEl.textContent = `${list.length}件`;
+
+  listEl.innerHTML = list.map(r => {
+    const recId = r['$id'].value;
+    const route = (r['文字列__1行__4']?.value || '').toUpperCase();
+    const teikyu = r['チェックボックス_2']?.value || [];
+    const teikyuBadge = teikyu.length
+      ? `<span style="font-size:10px;color:#7a3dc4;font-weight:700;background:#f0e8ff;padding:2px 6px;border-radius:4px;">🚫定休:${teikyu.join('・')}</span>` : '';
+    const bldg = r['文字列__1行__2']?.value || '';
+    const floor = r['文字列__1行__3']?.value || '';
+    const nabon = parseInt(r['数値_2']?.value) || 0;
+    const mapN = parseInt(r['数値_3']?.value) || 0;
+    const memo = (r['文字列__複数行_']?.value || '').trim();
+    return `
+      <div style="background:var(--card);border-radius:10px;padding:14px;margin-bottom:10px;border:2px solid #7a3dc4;">
+        <div style="display:flex;align-items:center;gap:6px;margin-bottom:4px;flex-wrap:wrap;">
+          <span style="font-size:10px;color:#7a3dc4;font-weight:700;background:#f0e8ff;padding:2px 6px;border-radius:4px;">${escDrv(r['文字列__1行__0']?.value || '')} 未着手</span>
+          ${isOsoiGroup(r['文字列__1行__0']?.value || '') ? OSOI_TAG : ''}
+          ${teikyuBadge}
+          ${timeBadge(r, '2px 6px')}
+          <span style="font-size:10px;color:#1a5cd4;font-weight:700;background:#e8f0ff;padding:2px 6px;border-radius:4px;">📦${nabon}冊</span>
+          ${mapN > 0 ? `<span style="font-size:10px;color:#c47a0a;font-weight:700;background:#fff3e0;padding:2px 6px;border-radius:4px;">🗺️MAP${mapN}冊</span>` : ''}
+          <span style="font-size:14px;font-weight:900;">${escDrv(r['文字列__1行__1']?.value || '')}</span>
+          <button onclick="openShopEdit2('${recId}')" style="margin-left:auto;padding:3px 8px;background:#fff;color:#555;border:1px solid var(--border);border-radius:5px;font-size:10px;font-weight:700;cursor:pointer;font-family:inherit;">✏️修正</button>
+        </div>
+        <div style="font-size:11px;color:var(--muted);margin-bottom:6px;">${escDrv(bldg)}${floor ? ` ${escDrv(floor)}階` : ''}</div>
+        ${memo ? `<div style="font-size:11px;color:#b01818;background:#fdecec;padding:4px 8px;border-radius:4px;margin-bottom:6px;font-weight:700;">📝 作業者メモ: ${escDrv(memo)}</div>` : ''}
+        <button onclick="openSoloModal('${route}', ${recId})" style="width:100%;padding:12px;background:#7a3dc4;color:white;border:none;border-radius:8px;font-weight:900;font-size:14px;cursor:pointer;">📍 差し込み位置を選んで追加</button>
+      </div>`;
+  }).join('');
+  return list.length;
+}
+
 function renderRevisit() {
   // 全ての不在店舗を取得（遅フラグの有無問わず）
   const absentRecords = allRecords.filter(r => r['ドロップダウン']?.value === '不在');
@@ -2094,6 +2178,9 @@ function renderRevisit() {
 
   const pending = absentRecords.filter(r => !alreadyAssigned.has(r['$id'].value));
   const done = absentRecords.filter(r => alreadyAssigned.has(r['$id'].value));
+
+  // 回り残し（定休などで飛ばされ、グループだけ先に進んでしまった店）
+  renderLeftover(alreadyAssigned);
 
   // バナー＆タブバッジを更新
   const bannerEl = document.getElementById('revisit-banner');
