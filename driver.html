@@ -3333,11 +3333,13 @@ function renderAssign() {
     }).join('');
 
     // 閉じた見出しにも出す：束の合計と、時間指定のある店（④ 開かなくても見える）
-    const bundleSum = groupRecs.filter(isBundleShop)
-      .reduce((s, r) => s + Math.floor((parseInt(r['数値_2']?.value) || 0) / BUNDLE_SIZE), 0);
+    // 束渡しの店の冊数を合計してから束に直す。店ごとに切り捨てると余りが消えて
+    // 「1束」としか出ず、あと何冊積むのかが分からなかった
+    const bundleBooks = groupRecs.filter(isBundleShop)
+      .reduce((s, r) => s + (parseInt(r['数値_2']?.value) || 0), 0);
     const timedRecs = groupRecs.filter(r => timeNoteOf(r) && r['ドロップダウン']?.value !== '完了');
-    const bundleHead = bundleSum > 0
-      ? `<span style="background:#1a5cd4;color:#fff;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🎁${bundleSum}束</span>` : '';
+    const bundleHead = bundleBooks > 0
+      ? `<span style="background:#1a5cd4;color:#fff;padding:1px 5px;border-radius:3px;font-weight:900;margin-right:3px;">🎁${bundleText(bundleBooks)}</span>` : '';
     const timedLine = timedRecs.length > 0
       ? `<div style="margin-top:3px;font-size:10px;color:#b01818;font-weight:700;line-height:1.5;">⏰ ${
           timedRecs.slice(0, 3).map(r => `${escDrv(r['文字列__1行__1']?.value || '')}：${escDrv(timeNoteOf(r))}`).join(' ／ ')
